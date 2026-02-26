@@ -1,9 +1,12 @@
 using ICSharpCode.AvalonEdit.CodeCompletion;
 using ICSharpCode.AvalonEdit.Document;
 using ICSharpCode.AvalonEdit.Editing;
+using KaneCode.Theming;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.Completion;
 using System.Diagnostics;
+using System.Windows;
+using System.Windows.Controls;
 using System.Windows.Media;
 
 namespace KaneCode.Services;
@@ -22,36 +25,40 @@ internal sealed class RoslynCompletionProvider
     }
 
     /// <summary>
-    /// Gets completion items at the specified caret offset.
+    /// Gets completion items at the specified caret offset after ensuring the workspace text is up-to-date.
     /// </summary>
-    public async Task<IReadOnlyList<RoslynCompletionData>> GetCompletionsAsync(
+    public async Task<CompletionResult?> GetCompletionsAsync(
         string filePath,
+        string currentText,
         int caretOffset,
         CancellationToken cancellationToken = default)
     {
         if (!RoslynWorkspaceService.IsCSharpFile(filePath))
         {
-            return [];
+            return null;
         }
+
+        // Push the latest editor text into Roslyn so completions reflect the current state
+        await _roslynService.UpdateDocumentTextAsync(filePath, currentText, cancellationToken).ConfigureAwait(false);
 
         var document = _roslynService.GetDocument(filePath);
         if (document is null)
         {
-            return [];
+            return null;
         }
 
         var completionService = CompletionService.GetService(document);
         if (completionService is null)
         {
-            return [];
+            return null;
         }
 
         var completionList = await completionService.GetCompletionsAsync(
             document, caretOffset, cancellationToken: cancellationToken).ConfigureAwait(false);
 
-        if (completionList is null)
+        if (completionList is null || completionList.ItemsList.Count == 0)
         {
-            return [];
+            return null;
         }
 
         var results = new List<RoslynCompletionData>(completionList.ItemsList.Count);
@@ -60,21 +67,80 @@ internal sealed class RoslynCompletionProvider
             results.Add(new RoslynCompletionData(item, document, completionService));
         }
 
-        return results;
+        // Roslyn tells us the span it considers the "filter text" for the completion.
+        // Use its start as the CompletionWindow.StartOffset so AvalonEdit filters as you type.
+        var defaultSpanStart = completionList.Span.Start;
+
+        return new CompletionResult(results, defaultSpanStart);
     }
 
     /// <summary>
-    /// Determines whether completion should be triggered for the given character.
+    /// Determines whether completion should be auto-triggered for the given character.
     /// </summary>
-    public static bool ShouldTriggerCompletion(char typedChar)
+    public static bool ShouldAutoTrigger(char typedChar)
     {
-        return typedChar == '.' || char.IsLetter(typedChar);
+        return typedChar == '.' || char.IsLetter(typedChar) || typedChar == '_';
+    }
+
+    /// <summary>
+    /// Applies theme colors to a <see cref="CompletionWindow"/> so text is readable in dark themes.
+    /// </summary>
+    public static void ApplyTheme(CompletionWindow window)
+    {
+        ArgumentNullException.ThrowIfNull(window);
+
+        var bgBrush = Application.Current.TryFindResource(ThemeResourceKeys.CompletionBackground) as Brush;
+        var fgBrush = Application.Current.TryFindResource(ThemeResourceKeys.CompletionForeground) as Brush;
+
+        if (bgBrush is not null)
+        {
+            window.Background = bgBrush;
+        }
+
+        if (fgBrush is not null)
+        {
+            window.Foreground = fgBrush;
+        }
+
+        if (Application.Current.TryFindResource(ThemeResourceKeys.CompletionBorder) is Brush borderBrush)
+        {
+            window.BorderBrush = borderBrush;
+            window.BorderThickness = new Thickness(1);
+        }
+
+        // Style the inner ListBox so items inherit the foreground color
+        var listBox = FindCompletionListBox(window);
+        if (listBox is not null)
+        {
+            listBox.Foreground = fgBrush ?? SystemColors.ControlTextBrush;
+            listBox.Background = bgBrush ?? SystemColors.WindowBrush;
+        }
+    }
+
+    /// <summary>
+    /// Walks the visual/logical tree of the CompletionWindow to find the inner ListBox.
+    /// </summary>
+    private static ListBox? FindCompletionListBox(CompletionWindow window)
+    {
+        // CompletionWindow.CompletionList is a CompletionList control that contains a ListBox
+        var completionList = window.CompletionList;
+        if (completionList is null)
+        {
+            return null;
+        }
+
+        return completionList.ListBox;
     }
 }
 
 /// <summary>
+/// Result of a completion query, containing items and the span start for filtering.
+/// </summary>
+internal sealed record CompletionResult(IReadOnlyList<RoslynCompletionData> Items, int SpanStart);
+
+/// <summary>
 /// An AvalonEdit completion data item backed by a Roslyn <see cref="CompletionItem"/>.
-/// Descriptions and completion changes are pre-fetched asynchronously to avoid blocking the UI thread.
+/// Description is pre-fetched asynchronously; completion change is fetched on demand at insertion time.
 /// </summary>
 internal sealed class RoslynCompletionData : ICompletionData
 {
@@ -83,7 +149,6 @@ internal sealed class RoslynCompletionData : ICompletionData
     private readonly CompletionService _completionService;
 
     private readonly Task<string> _descriptionTask;
-    private readonly Task<CompletionChange?> _changeTask;
 
     public RoslynCompletionData(
         Microsoft.CodeAnalysis.Completion.CompletionItem roslynItem,
@@ -94,9 +159,7 @@ internal sealed class RoslynCompletionData : ICompletionData
         _document = document;
         _completionService = completionService;
 
-        // Pre-fetch description and completion change on a background thread
         _descriptionTask = FetchDescriptionAsync();
-        _changeTask = FetchChangeAsync();
     }
 
     public ImageSource? Image => null;
@@ -124,36 +187,30 @@ internal sealed class RoslynCompletionData : ICompletionData
     {
         try
         {
-            var change = _changeTask.IsCompletedSuccessfully ? _changeTask.Result : null;
-
-            if (change?.TextChange is { } textChange)
+            // Fetch the completion change to get the intended replacement text (may include
+            // extras like parentheses or generic parameters beyond the display text).
+            string insertText = Text;
+            try
             {
-                var doc = textArea.Document;
-                var start = textChange.Span.Start;
-                var length = textChange.Span.Length;
-
-                // Clamp to document bounds
-                if (start < 0)
+                var change = _completionService.GetChangeAsync(_document, _roslynItem).GetAwaiter().GetResult();
+                if (change?.TextChange is { } textChange)
                 {
-                    start = 0;
+                    insertText = textChange.NewText;
                 }
-
-                if (start + length > doc.TextLength)
-                {
-                    length = doc.TextLength - start;
-                }
-
-                doc.Replace(start, length, textChange.NewText);
             }
-            else
+            catch (Exception ex)
             {
-                // Fallback: simple text insertion (pre-fetch not ready or returned null)
-                textArea.Document.Replace(completionSegment, Text);
+                Debug.WriteLine($"Failed to fetch completion change: {ex.Message}");
             }
+
+            // Always use AvalonEdit's completionSegment for the replacement range.
+            // The Roslyn TextChange.Span was computed against a stale document snapshot
+            // captured when the completion window opened, so it doesn't account for
+            // characters typed while the window was filtering.
+            textArea.Document.Replace(completionSegment, insertText);
         }
         catch
         {
-            // Fallback on any error
             textArea.Document.Replace(completionSegment, Text);
         }
     }
@@ -169,19 +226,6 @@ internal sealed class RoslynCompletionData : ICompletionData
         {
             Debug.WriteLine($"Failed to fetch completion description: {ex.Message}");
             return string.Empty;
-        }
-    }
-
-    private async Task<CompletionChange?> FetchChangeAsync()
-    {
-        try
-        {
-            return await _completionService.GetChangeAsync(_document, _roslynItem).ConfigureAwait(false);
-        }
-        catch (Exception ex)
-        {
-            Debug.WriteLine($"Failed to fetch completion change: {ex.Message}");
-            return null;
         }
     }
 }

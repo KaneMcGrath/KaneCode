@@ -332,18 +332,13 @@ internal static class MSBuildProjectLoader
         HashSet<string> addedPaths,
         string targetFramework)
     {
-        // Use trusted platform assemblies from the current runtime
-        var trustedAssemblies = AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES") as string;
-        if (string.IsNullOrEmpty(trustedAssemblies))
+        var frameworkRefs = SharedFrameworkResolver.GetFrameworkReferences(targetFramework);
+        foreach (var reference in frameworkRefs)
         {
-            return;
-        }
-
-        foreach (var assemblyPath in trustedAssemblies.Split(Path.PathSeparator))
-        {
-            if (File.Exists(assemblyPath) && addedPaths.Add(assemblyPath))
+            var path = reference.Display ?? string.Empty;
+            if (!string.IsNullOrEmpty(path) && addedPaths.Add(path))
             {
-                references.Add(MetadataReference.CreateFromFile(assemblyPath));
+                references.Add(reference);
             }
         }
     }
