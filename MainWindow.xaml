@@ -8,7 +8,8 @@ xmlns:controls="clr-namespace:KaneCode.Controls"
 xmlns:avalonEdit="http://icsharpcode.net/sharpdevelop/avalonedit"
 mc:Ignorable="d"
 Title="{Binding WindowTitle}" Height="450" Width="800"
-Background="{DynamicResource WindowBackground}">
+Background="{DynamicResource WindowBackground}"
+Icon="Icons/KaneCode.ico">
     <DockPanel>
         <!-- Top Bar -->
         <Menu DockPanel.Dock="Top"

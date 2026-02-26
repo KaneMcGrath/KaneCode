@@ -27,12 +27,14 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
     private readonly RoslynWorkspaceService _roslynService = new();
     private readonly RoslynCompletionProvider _completionProvider;
     private readonly RoslynNavigationService _navigationService;
+    private readonly RoslynQuickInfoService _quickInfoService;
     private RoslynClassificationColorizer? _classificationColorizer;
     private RoslynDiagnosticRenderer? _diagnosticRenderer;
     private SearchPanel? _searchPanel;
     private CompletionWindow? _completionWindow;
     private CancellationTokenSource? _analysisCts;
     private CancellationTokenSource? _navigationCts;
+    private CancellationTokenSource? _quickInfoCts;
     private CancellationTokenSource? _loadCts;
     private bool _isLoadingProject;
     private readonly TimeSpan _analysisDelay = TimeSpan.FromMilliseconds(500);
@@ -43,6 +45,7 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
         ThemeManager.ThemeChanged += OnThemeChanged;
         _completionProvider = new RoslynCompletionProvider(_roslynService);
         _navigationService = new RoslynNavigationService(_roslynService);
+        _quickInfoService = new RoslynQuickInfoService(_roslynService);
 
         NewFileCommand = new RelayCommand(_ => NewFile());
         OpenFileCommand = new RelayCommand(_ => OpenFile());
@@ -1014,6 +1017,33 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
     }
 
     /// <summary>
+    /// Gets Quick Info (hover tooltip) text for the symbol at the given editor offset.
+    /// Returns null if no info is available or the file is not a C# file.
+    /// </summary>
+    public async Task<QuickInfoResult?> GetQuickInfoAsync(int offset)
+    {
+        if (_editor is null || ActiveTab is null || !RoslynWorkspaceService.IsCSharpFile(ActiveTab.FilePath))
+        {
+            return null;
+        }
+
+        _quickInfoCts?.Cancel();
+        _quickInfoCts?.Dispose();
+        _quickInfoCts = new CancellationTokenSource();
+        var ct = _quickInfoCts.Token;
+
+        try
+        {
+            await _roslynService.UpdateDocumentTextAsync(ActiveTab.FilePath, _editor.Text, ct).ConfigureAwait(true);
+            return await _quickInfoService.GetQuickInfoAsync(ActiveTab.FilePath, offset, ct).ConfigureAwait(true);
+        }
+        catch (OperationCanceledException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
     /// Closes all open tabs, prompting to save dirty files. Returns false if the user cancels.
     /// </summary>
     private async Task<bool> CloseAllTabsAsync()
@@ -1107,6 +1137,8 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
         _analysisCts?.Dispose();
         _navigationCts?.Cancel();
         _navigationCts?.Dispose();
+        _quickInfoCts?.Cancel();
+        _quickInfoCts?.Dispose();
         _roslynService.Dispose();
     }
 }

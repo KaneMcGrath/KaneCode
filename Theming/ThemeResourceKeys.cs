@@ -92,4 +92,9 @@ internal static class ThemeResourceKeys
     public const string ErrorListHeaderForeground = nameof(ErrorListHeaderForeground);
     public const string ErrorListSelectedBackground = nameof(ErrorListSelectedBackground);
     public const string ErrorListGridLine = nameof(ErrorListGridLine);
+
+    // Quick Info tooltip
+    public const string TooltipBackground = nameof(TooltipBackground);
+    public const string TooltipForeground = nameof(TooltipForeground);
+    public const string TooltipBorder = nameof(TooltipBorder);
 }

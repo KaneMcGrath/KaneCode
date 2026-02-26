@@ -86,6 +86,11 @@
     <SolidColorBrush x:Key="OptionsSelectedCategoryForeground" Color="#1E1E1E" />
     <SolidColorBrush x:Key="OptionsHoverCategoryBackground" Color="#E0E0E0" />
 
+    <!-- Quick Info tooltip -->
+    <SolidColorBrush x:Key="TooltipBackground" Color="#F6F6F6" />
+    <SolidColorBrush x:Key="TooltipForeground" Color="#1E1E1E" />
+    <SolidColorBrush x:Key="TooltipBorder" Color="#CCCCCC" />
+
     <!-- Error list panel -->
     <SolidColorBrush x:Key="ErrorListBackground" Color="#FFFFFF" />
     <SolidColorBrush x:Key="ErrorListForeground" Color="#1E1E1E" />

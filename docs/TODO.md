@@ -4,13 +4,16 @@
 > See [architecture.md](architecture.md) for full design details and issue analysis.
 >
 > **AI agents**: pick the next unchecked `[ ]` item in the lowest-numbered phase.
-> Mark `[~]` when starting work, `[x]` when complete, and move finished items
-> to the **Completed** section at the bottom with the date.
+> Mark `[~]` when starting work, `[O]` when complete and awaiting review, 
+> Under the item give a few brief runtime testing items, for a QA team to verify.
+> The QA team will mark `[x]` when it is tested.
+
 
 ## Status Key
 
 - `[ ]` — Not started
 - `[~]` — In progress
+- `[O]` — Awaiting review
 - `[x]` — Complete
 
 ---
@@ -48,10 +51,10 @@
   - Bind Ctrl+F / Ctrl+H
   - Files: `ViewModels/MainViewModel.cs`, `MainWindow.xaml.cs`
 
-- [ ] **2.4 Quick Info / Hover tooltips**
-  - Show type, method, or diagnostic info on mouse hover
-  - Use Roslyn's `QuickInfoService`
-  - Files: new `Services/RoslynQuickInfoService.cs`, `MainWindow.xaml.cs`
+- [X] **2.4 Quick Info / Hover tooltips**
+- Show type, method, or diagnostic info on mouse hover
+- Use Roslyn's `QuickInfoService`
+- Files: new `Services/RoslynQuickInfoService.cs`, `MainWindow.xaml.cs`
 
 - [ ] **2.5 Signature help**
   - Show parameter info popup when typing `(` or `,` in method calls
@@ -153,34 +156,4 @@
 - [ ] **4.7 Git integration**
   - Show changed files, diff view, basic commit/push
   - Files: new `Services/GitService.cs`
-
----
-
-## Completed
-
-- [x] **1.1 Fix thread safety in RoslynWorkspaceService** — 2025-07-15
-  - Added `SemaphoreSlim(1,1)` to `RoslynWorkspaceService` to serialize all workspace mutations
-  - All mutation methods are now async (`OpenOrUpdateDocumentAsync`, `UpdateDocumentTextAsync`, `CloseDocumentAsync`, `ClearWorkspaceAsync`, `AddProjectAsync`, `AddDocumentToProjectAsync`)
-  - Read-only methods (`GetDocument`, `GetDiagnosticsAsync`) remain lock-free (immutable solution snapshots)
-  - `MSBuildProjectLoader` methods are now async (`LoadProjectAsync`, `LoadSolutionAsync`) with `CancellationToken` support
-  - `MainViewModel` cancels in-flight analysis (`_analysisCts?.Cancel()`) before project/solution loads
-  - `SemaphoreSlim` is disposed in `RoslynWorkspaceService.Dispose()`
-  - Removed unused `using System.Reflection`
-
-- [x] **1.2 Fix sync-over-async in completion provider** — 2025-07-15
-  - Removed `.Wait(500ms)` from `Description` getter and `.GetAwaiter().GetResult()` from `Complete` method
-  - Both `Description` (via `GetDescriptionAsync`) and `CompletionChange` (via `GetChangeAsync`) are now pre-fetched asynchronously on construction
-  - `Description` getter returns the pre-fetched result if ready, otherwise falls back to `DisplayText` (no blocking)
-  - `Complete` uses the pre-fetched `CompletionChange` if ready, otherwise falls back to simple text insertion (no blocking)
-  - Errors in background fetches are logged via `Debug.WriteLine` and handled gracefully with fallbacks
-
-- [x] **2.1 Error list panel** — 2025-07-16
-  - New `Controls/ErrorListPanel.xaml` with themed DataGrid showing severity icon, code, description, file, line, column
-  - Header bar with summary counts (errors, warnings, messages) that update live via CollectionChanged
-  - Double-click row raises `NavigateRequested` event → `MainViewModel.NavigateToDiagnostic()` opens file and scrolls to offset
-  - New `Models/DiagnosticItem.cs` record with `SeverityIcon` property (🛑/⚠/ℹ)
-  - `MainViewModel.RunRoslynAnalysisAsync` populates `DiagnosticItems` with line/column info from Roslyn source text
-  - Panel placed below editor in `MainWindow.xaml` with resizable GridSplitter
-  - Theme resources added to both `DarkTheme.xaml` and `LightTheme.xaml` (ErrorListBackground, ErrorListForeground, etc.)
-  - Status bar shows diagnostic summary (error/warning counts)
 
