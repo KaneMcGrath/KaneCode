@@ -754,14 +754,10 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
 
         var typedChar = e.Text[0];
 
-        // Trigger completion on '.' or Ctrl+Space style (auto on letter)
-        if (RoslynCompletionProvider.ShouldTriggerCompletion(typedChar))
+        // Auto-trigger completion on '.' or identifier characters when no window is open
+        if (_completionWindow is null && RoslynCompletionProvider.ShouldAutoTrigger(typedChar))
         {
-            // Only auto-trigger on '.' — letters require manual trigger or are handled by ongoing window
-            if (typedChar == '.' && _completionWindow is null)
-            {
-                await ShowCompletionWindowAsync().ConfigureAwait(true);
-            }
+            await ShowCompletionWindowAsync().ConfigureAwait(true);
         }
 
         // Trigger signature help on '(' or ','  
@@ -790,28 +786,49 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
         try
         {
             var caretOffset = _editor.CaretOffset;
-            var completions = await _completionProvider.GetCompletionsAsync(
-                ActiveTab.FilePath, caretOffset).ConfigureAwait(true);
+            var currentText = _editor.Text;
 
-            if (completions.Count == 0)
+            var result = await _completionProvider.GetCompletionsAsync(
+                ActiveTab.FilePath, currentText, caretOffset).ConfigureAwait(true);
+
+            if (result is null || result.Items.Count == 0)
+            {
+                return;
+            }
+
+            // Don't show if another window appeared while we were awaiting
+            if (_completionWindow is not null)
             {
                 return;
             }
 
             _completionWindow = new CompletionWindow(_editor.TextArea);
 
-            if (Application.Current.TryFindResource(ThemeResourceKeys.CompletionBackground) is Brush bgBrush)
-            {
-                _completionWindow.Background = bgBrush;
-            }
+            // Set the start offset so AvalonEdit filters as the user types
+            _completionWindow.StartOffset = result.SpanStart;
 
-            foreach (var item in completions)
+            RoslynCompletionProvider.ApplyTheme(_completionWindow);
+
+            foreach (var item in result.Items)
             {
                 _completionWindow.CompletionList.CompletionData.Add(item);
             }
 
             _completionWindow.Show();
             _completionWindow.Closed += (_, _) => _completionWindow = null;
+
+            // The Roslyn query is async, so the user may have typed additional characters
+            // between the trigger and now. AvalonEdit only filters on subsequent keystrokes,
+            // so the initial display would be unfiltered. Pre-filter by extracting the text
+            // already typed in the completion span and selecting into the list.
+            var currentCaret = _editor.CaretOffset;
+            if (currentCaret > _completionWindow.StartOffset)
+            {
+                var filterText = _editor.Document.GetText(
+                    _completionWindow.StartOffset,
+                    currentCaret - _completionWindow.StartOffset);
+                _completionWindow.CompletionList.SelectItem(filterText);
+            }
         }
         catch (OperationCanceledException)
         {

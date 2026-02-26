@@ -340,35 +340,6 @@ internal sealed class RoslynWorkspaceService : IDisposable
 
     private static List<MetadataReference> GetDefaultReferences()
     {
-        var references = new List<MetadataReference>();
-        var trustedAssemblies = AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES") as string;
-
-        if (string.IsNullOrEmpty(trustedAssemblies))
-        {
-            // Fallback: add at least the core runtime reference
-            var runtimeDir = Path.GetDirectoryName(typeof(object).Assembly.Location)!;
-            AddReferenceIfExists(references, Path.Combine(runtimeDir, "System.Runtime.dll"));
-            AddReferenceIfExists(references, Path.Combine(runtimeDir, "System.Console.dll"));
-            AddReferenceIfExists(references, Path.Combine(runtimeDir, "System.Collections.dll"));
-            AddReferenceIfExists(references, Path.Combine(runtimeDir, "System.Linq.dll"));
-            AddReferenceIfExists(references, Path.Combine(runtimeDir, "mscorlib.dll"));
-            AddReferenceIfExists(references, Path.Combine(runtimeDir, "netstandard.dll"));
-            return references;
-        }
-
-        foreach (var assemblyPath in trustedAssemblies.Split(Path.PathSeparator))
-        {
-            AddReferenceIfExists(references, assemblyPath);
-        }
-
-        return references;
-    }
-
-    private static void AddReferenceIfExists(List<MetadataReference> references, string path)
-    {
-        if (File.Exists(path))
-        {
-            references.Add(MetadataReference.CreateFromFile(path));
-        }
+        return SharedFrameworkResolver.GetFrameworkReferences(targetFramework: null);
     }
 }
