@@ -22,7 +22,8 @@ Primary capabilities currently implemented:
 - C# diagnostics with squiggle rendering
 - Error list panel with click-to-navigate
 - C# completion (`.` auto-trigger and `Ctrl+Space`)
-- Light/Dark theme switching
+- Light/Dark theme switching (via Options window)
+- Options window with categorized settings (General, Appearance, Hotkeys)
 - Multi-tab editing with per-tab `TextDocument` (undo/redo preserved per tab)
 
 ---
@@ -49,6 +50,8 @@ From `KaneCode.csproj`:
   - Application startup and global resource dictionary setup
 - `MainWindow.xaml` / `MainWindow.xaml.cs`
   - Main shell UI and event wiring
+- `OptionsWindow.xaml` / `OptionsWindow.xaml.cs`
+  - Modal options dialog with categorized settings pages
 - `ViewModels/MainViewModel.cs`
   - Central coordinator for commands, tabs, editor integration, file/project loading, and Roslyn analysis
 - `Services/*`
@@ -91,6 +94,7 @@ Pattern used: practical MVVM without a framework. The ViewModel still directly t
 `MainWindow.xaml` is a 3-column shell:
 
 - Top menu (`File`, `Edit`, `View`, `Help`)
+- `View` > `Options` opens the Options dialog
 - Left: Explorer (`TreeView`) bound to `ProjectItems`
 - Center: vertically split into:
   - Top: tab strip + single AvalonEdit `TextEditor`
@@ -279,13 +283,35 @@ Triggers:
 
 - `ThemeManager` swaps merged resource dictionaries at runtime
 - Built-in themes: dark and light
+- Theme selection is done via the Options window (Appearance category), no longer through the View menu
 - `MainViewModel` listens to `ThemeChanged` and reapplies editor syntax colors
 - `MenuStyles.xaml` is always merged at app level
 - Error list panel has its own theme keys (`ErrorListBackground`, `ErrorListForeground`, `ErrorListHeaderBackground`, `ErrorListHeaderForeground`, `ErrorListSelectedBackground`, `ErrorListGridLine`)
+- Options window has its own theme keys (`OptionsSelectedCategoryBackground`, `OptionsSelectedCategoryForeground`, `OptionsHoverCategoryBackground`)
 
 ---
 
-## 14. Status text behavior
+## 14. Options window
+
+`OptionsWindow` is a modal dialog opened from the `View` > `Options` menu item via `OpenOptionsCommand`.
+
+Structure:
+
+- Left panel: category list (`ListBox`) with items: General, Appearance, Hotkeys
+- Right panel: content area that switches visibility based on selected category
+- Selecting a category hides all content pages and shows the matching one
+
+Current settings:
+
+- **General**: placeholder, no settings yet
+- **Appearance**: theme selection (`ComboBox` with Dark/Light), applies immediately via `ThemeManager.ApplyTheme`
+- **Hotkeys**: placeholder, no configurable hotkeys yet
+
+The combo box initializes to the current theme on load and changes are applied in real-time without requiring a confirmation button.
+
+---
+
+## 15. Status text behavior
 
 `StatusText` priority:
 
@@ -295,7 +321,7 @@ Triggers:
 
 ---
 
-## 15. Disposal and cleanup
+## 16. Disposal and cleanup
 
 `MainViewModel.Dispose()`:
 
@@ -307,6 +333,6 @@ This runs from `MainWindow.OnClosed`.
 
 ---
 
-## 16. Scope note
+## 17. Scope note
 
 This file describes implemented behavior only. For backlog, known gaps, and phased roadmap, use `docs/TODO.md`.

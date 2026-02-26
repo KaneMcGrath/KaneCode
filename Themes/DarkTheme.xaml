@@ -81,6 +81,11 @@
     <SolidColorBrush x:Key="CompletionSelectedBackground" Color="#094771" />
     <SolidColorBrush x:Key="CompletionBorder" Color="#3E3E42" />
 
+    <!-- Options window -->
+    <SolidColorBrush x:Key="OptionsSelectedCategoryBackground" Color="#094771" />
+    <SolidColorBrush x:Key="OptionsSelectedCategoryForeground" Color="#FFFFFF" />
+    <SolidColorBrush x:Key="OptionsHoverCategoryBackground" Color="#2A2D2E" />
+
     <!-- Error list panel -->
     <SolidColorBrush x:Key="ErrorListBackground" Color="#1E1E1E" />
     <SolidColorBrush x:Key="ErrorListForeground" Color="#D4D4D4" />

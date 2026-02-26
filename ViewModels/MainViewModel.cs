@@ -53,8 +53,7 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
         PasteCommand = new RelayCommand(_ => _editor?.Paste(), _ => _editor is not null);
         CloseTabCommand = new RelayCommand(param => CloseTab(param as OpenFileTab), _ => ActiveTab is not null);
         ExitCommand = new RelayCommand(_ => ExitApplication());
-        SetDarkThemeCommand = new RelayCommand(_ => ThemeManager.ApplyTheme(AppTheme.Dark));
-        SetLightThemeCommand = new RelayCommand(_ => ThemeManager.ApplyTheme(AppTheme.Light));
+        OpenOptionsCommand = new RelayCommand(_ => OpenOptions());
     }
 
     public ICommand NewFileCommand { get; }
@@ -71,8 +70,7 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
     public ICommand PasteCommand { get; }
     public ICommand CloseTabCommand { get; }
     public ICommand ExitCommand { get; }
-    public ICommand SetDarkThemeCommand { get; }
-    public ICommand SetLightThemeCommand { get; }
+    public ICommand OpenOptionsCommand { get; }
 
     private ObservableCollection<ProjectItem> _projectItems = [];
     public ObservableCollection<ProjectItem> ProjectItems
@@ -516,6 +514,15 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
 
             OnPropertyChanged(nameof(StatusText));
         }
+    }
+
+    private void OpenOptions()
+    {
+        var optionsWindow = new OptionsWindow
+        {
+            Owner = Application.Current.MainWindow
+        };
+        optionsWindow.ShowDialog();
     }
 
     private void ExitApplication()

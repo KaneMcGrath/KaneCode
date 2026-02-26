@@ -36,10 +36,7 @@ Background="{DynamicResource WindowBackground}">
                 <MenuItem Header="_Paste" Command="{Binding PasteCommand}" InputGestureText="Ctrl+V" />
             </MenuItem>
             <MenuItem Header="_View">
-                <MenuItem Header="_Theme">
-                    <MenuItem Header="_Dark" Command="{Binding SetDarkThemeCommand}" />
-                    <MenuItem Header="_Light" Command="{Binding SetLightThemeCommand}" />
-                </MenuItem>
+                <MenuItem Header="_Options" Command="{Binding OpenOptionsCommand}" />
             </MenuItem>
             <MenuItem Header="_Help">
                 <MenuItem Header="_About" />
