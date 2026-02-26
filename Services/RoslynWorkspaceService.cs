@@ -186,6 +186,60 @@ internal sealed class RoslynWorkspaceService : IDisposable
     }
 
     /// <summary>
+    /// Gets tracked open documents that should be re-analyzed when the specified file changes.
+    /// Includes the edited file and any open files in projects that transitively depend on its project.
+    /// </summary>
+    public IReadOnlyList<string> GetDependentOpenDocumentFilePaths(string filePath)
+    {
+        ArgumentNullException.ThrowIfNull(filePath);
+
+        if (!_documentIds.TryGetValue(filePath, out var sourceDocumentId))
+        {
+            return [filePath];
+        }
+
+        var solution = _workspace.CurrentSolution;
+        var sourceDocument = solution.GetDocument(sourceDocumentId);
+        if (sourceDocument is null)
+        {
+            return [filePath];
+        }
+
+        var dependencyGraph = solution.GetProjectDependencyGraph();
+        var projectIdsToReanalyze = dependencyGraph
+            .GetProjectsThatTransitivelyDependOnThisProject(sourceDocument.Project.Id)
+            .Append(sourceDocument.Project.Id)
+            .ToHashSet();
+
+        var dependentPaths = new List<string>();
+        foreach (var path in _documentIds.Keys)
+        {
+            if (!_documentIds.TryGetValue(path, out var documentId))
+            {
+                continue;
+            }
+
+            var document = solution.GetDocument(documentId);
+            if (document is null)
+            {
+                continue;
+            }
+
+            if (projectIdsToReanalyze.Contains(document.Project.Id))
+            {
+                dependentPaths.Add(path);
+            }
+        }
+
+        if (dependentPaths.Count == 0)
+        {
+            dependentPaths.Add(filePath);
+        }
+
+        return dependentPaths;
+    }
+
+    /// <summary>
     /// Returns true if the workspace has any loaded MSBuild projects (beyond the default adhoc project).
     /// </summary>
     public bool HasLoadedProjects => !_projectIds.IsEmpty;

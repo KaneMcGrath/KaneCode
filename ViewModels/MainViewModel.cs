@@ -948,61 +948,38 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
                 await _classificationColorizer.UpdateClassificationsAsync(cancellationToken).ConfigureAwait(false);
             }
 
-            // Diagnostics
-            var diagnostics = await _roslynService.GetDiagnosticsAsync(filePath, cancellationToken).ConfigureAwait(false);
-            var entries = new List<DiagnosticEntry>();
-            foreach (var diag in diagnostics)
+            // Diagnostics for active file + dependent open files
+            var allDiagnosticItems = new List<DiagnosticItem>();
+            var activeFileEntries = new List<DiagnosticEntry>();
+            var filesToAnalyze = _roslynService.GetDependentOpenDocumentFilePaths(filePath);
+
+            foreach (var path in filesToAnalyze.Where(RoslynWorkspaceService.IsCSharpFile).Distinct(StringComparer.OrdinalIgnoreCase))
             {
-                if (diag.Severity == DiagnosticSeverity.Hidden)
+                var (entries, items) = await BuildDiagnosticsForFileAsync(path, cancellationToken).ConfigureAwait(false);
+                allDiagnosticItems.AddRange(items);
+
+                if (string.Equals(path, filePath, StringComparison.OrdinalIgnoreCase))
                 {
-                    continue;
+                    activeFileEntries = entries;
                 }
-
-                var span = diag.Location.SourceSpan;
-                entries.Add(new DiagnosticEntry(span.Start, span.End, diag.Severity, diag.GetMessage(), diag.Id));
-            }
-
-            // Build error list items with line/column info
-            var document = _roslynService.GetDocument(filePath);
-            var sourceText = document is not null
-                ? await document.GetTextAsync(cancellationToken).ConfigureAwait(false)
-                : null;
-
-            var diagnosticItems = new List<DiagnosticItem>();
-            var fileName = Path.GetFileName(filePath);
-            foreach (var entry in entries)
-            {
-                var line = 0;
-                var column = 0;
-                if (sourceText is not null && entry.Start >= 0 && entry.Start <= sourceText.Length)
-                {
-                    var linePosition = sourceText.Lines.GetLinePosition(entry.Start);
-                    line = linePosition.Line + 1;
-                    column = linePosition.Character + 1;
-                }
-
-                diagnosticItems.Add(new DiagnosticItem(
-                    entry.Severity, entry.Id, entry.Message,
-                    fileName, line, column,
-                    entry.Start, entry.End, filePath));
             }
 
             // Update UI on dispatcher
             await Application.Current.Dispatcher.InvokeAsync(() =>
             {
-                _diagnosticRenderer?.UpdateDiagnostics(entries);
+                _diagnosticRenderer?.UpdateDiagnostics(activeFileEntries);
                 _editor?.TextArea.TextView.Redraw();
 
                 // Update error list panel
                 DiagnosticItems.Clear();
-                foreach (var item in diagnosticItems)
+                foreach (var item in allDiagnosticItems.OrderBy(i => i.Severity).ThenBy(i => i.File).ThenBy(i => i.Line).ThenBy(i => i.Column))
                 {
                     DiagnosticItems.Add(item);
                 }
 
                 // Update status with diagnostic summary
-                var errorCount = entries.Count(e => e.Severity == DiagnosticSeverity.Error);
-                var warningCount = entries.Count(e => e.Severity == DiagnosticSeverity.Warning);
+                var errorCount = allDiagnosticItems.Count(e => e.Severity == DiagnosticSeverity.Error);
+                var warningCount = allDiagnosticItems.Count(e => e.Severity == DiagnosticSeverity.Warning);
                 if (errorCount > 0 || warningCount > 0)
                 {
                     _diagnosticStatusText = $"{errorCount} error(s), {warningCount} warning(s)";
@@ -1019,6 +996,50 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
         {
             // Analysis was superseded by a newer request
         }
+    }
+
+    private async Task<(List<DiagnosticEntry> Entries, List<DiagnosticItem> Items)> BuildDiagnosticsForFileAsync(
+        string filePath,
+        CancellationToken cancellationToken)
+    {
+        var diagnostics = await _roslynService.GetDiagnosticsAsync(filePath, cancellationToken).ConfigureAwait(false);
+        var entries = new List<DiagnosticEntry>();
+        foreach (var diag in diagnostics)
+        {
+            if (diag.Severity == DiagnosticSeverity.Hidden)
+            {
+                continue;
+            }
+
+            var span = diag.Location.SourceSpan;
+            entries.Add(new DiagnosticEntry(span.Start, span.End, diag.Severity, diag.GetMessage(), diag.Id));
+        }
+
+        var document = _roslynService.GetDocument(filePath);
+        var sourceText = document is not null
+            ? await document.GetTextAsync(cancellationToken).ConfigureAwait(false)
+            : null;
+
+        var items = new List<DiagnosticItem>();
+        var fileName = Path.GetFileName(filePath);
+        foreach (var entry in entries)
+        {
+            var line = 0;
+            var column = 0;
+            if (sourceText is not null && entry.Start >= 0 && entry.Start <= sourceText.Length)
+            {
+                var linePosition = sourceText.Lines.GetLinePosition(entry.Start);
+                line = linePosition.Line + 1;
+                column = linePosition.Character + 1;
+            }
+
+            items.Add(new DiagnosticItem(
+                entry.Severity, entry.Id, entry.Message,
+                fileName, line, column,
+                entry.Start, entry.End, filePath));
+        }
+
+        return (entries, items);
     }
 
     private string? _diagnosticStatusText;

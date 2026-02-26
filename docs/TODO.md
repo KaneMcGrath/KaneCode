@@ -61,7 +61,7 @@
 - Use Roslyn's semantic model to resolve method overloads and parameter info
 - Files: new `Services/RoslynSignatureHelpService.cs`, `ViewModels/MainViewModel.cs`
 
-- [ ] **2.6 Multi-file re-analysis**
+- [X] **2.6 Multi-file re-analysis**
   - Editing file A should trigger re-analysis of open file B if B depends on A
   - Currently only the active file is analyzed after edits
   - Ref: architecture.md §5.4 #33
