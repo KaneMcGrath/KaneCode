@@ -14,7 +14,7 @@ namespace KaneCode.Services;
 /// a <see cref="RoslynWorkspaceService"/> with the project structure,
 /// source files, and references.
 /// </summary>
-internal sealed class MSBuildProjectLoader
+internal static class MSBuildProjectLoader
 {
     private static bool _msBuildRegistered;
     private static readonly object _registerLock = new();

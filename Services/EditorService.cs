@@ -18,7 +18,7 @@ internal static class EditorService
         "bin", "obj", ".vs", ".git", "node_modules", "packages", ".idea"
     };
 
-    private static readonly HashSet<string> ExcludedFiles = new(StringComparer.OrdinalIgnoreCase)
+    private static readonly HashSet<string> ExcludedExtensions = new(StringComparer.OrdinalIgnoreCase)
     {
         ".suo", ".user", ".ds_store"
     };
@@ -169,7 +169,7 @@ internal static class EditorService
 
             foreach (var file in dirInfo.EnumerateFiles().OrderBy(f => f.Name, StringComparer.OrdinalIgnoreCase))
             {
-                if (ExcludedFiles.Contains(file.Extension))
+                if (ExcludedExtensions.Contains(file.Extension))
                 {
                     continue;
                 }

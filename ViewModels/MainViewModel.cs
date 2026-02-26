@@ -32,6 +32,7 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
     private CancellationTokenSource? _loadCts;
     private bool _isLoadingProject;
     private readonly TimeSpan _analysisDelay = TimeSpan.FromMilliseconds(500);
+    private CancellationTokenSource? _loadingStatusClearCts;
 
     public MainViewModel()
     {
@@ -283,6 +284,7 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
             ProjectItems = new ObservableCollection<ProjectItem>(root.Children);
 
             LoadingStatus = $"Loaded: {result.Name} ({result.TargetFramework}) — {result.SourceFiles.Length} file(s)";
+            ScheduleLoadingStatusClear();
         }
         catch (OperationCanceledException)
         {
@@ -331,6 +333,7 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
             var totalFiles = result.Projects.Sum(p => p.SourceFiles.Length);
             var projectNames = string.Join(", ", result.Projects.Select(p => p.Name));
             LoadingStatus = $"Loaded: {result.Name} — {result.Projects.Length} project(s), {totalFiles} file(s) [{projectNames}]";
+            ScheduleLoadingStatusClear();
         }
         catch (OperationCanceledException)
         {
@@ -600,6 +603,12 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
             OnPropertyChanged(nameof(WindowTitle));
         }
 
+        // Clear loading status on first edit so it doesn't permanently override status text
+        if (LoadingStatus is not null)
+        {
+            LoadingStatus = null;
+        }
+
         ScheduleRoslynAnalysis();
     }
 
@@ -796,6 +805,31 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
     private string? _diagnosticStatusText;
 
     /// <summary>
+    /// Clears <see cref="LoadingStatus"/> after a delay so it doesn't permanently override status text.
+    /// </summary>
+    private void ScheduleLoadingStatusClear()
+    {
+        _loadingStatusClearCts?.Cancel();
+        _loadingStatusClearCts = new CancellationTokenSource();
+        var ct = _loadingStatusClearCts.Token;
+
+        _ = ClearLoadingStatusAfterDelayAsync(ct);
+    }
+
+    private async Task ClearLoadingStatusAfterDelayAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            await Task.Delay(TimeSpan.FromSeconds(10), cancellationToken).ConfigureAwait(true);
+            LoadingStatus = null;
+        }
+        catch (OperationCanceledException)
+        {
+            // Superseded by a newer load or manual clear
+        }
+    }
+
+    /// <summary>
     /// Cancels any in-flight project/solution load.
     /// </summary>
     private void CancelPreviousLoad()
@@ -812,6 +846,8 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
     {
         ThemeManager.ThemeChanged -= OnThemeChanged;
         CancelPreviousLoad();
+        _loadingStatusClearCts?.Cancel();
+        _loadingStatusClearCts?.Dispose();
         _analysisCts?.Cancel();
         _analysisCts?.Dispose();
         _roslynService.Dispose();

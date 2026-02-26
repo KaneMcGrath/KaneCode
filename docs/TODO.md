@@ -58,7 +58,7 @@
   - Ref: architecture.md §5.1 #7
   - Files: `ViewModels/MainViewModel.cs`
 
-- [ ] **1.7 Code quality fixes**
+- [X] **1.7 Code quality fixes**
   - Make `MSBuildProjectLoader` a `static class` (only static members)
   - Remove unused `using System.Reflection` from `RoslynWorkspaceService`
   - Rename `EditorService.ExcludedFiles` → `ExcludedExtensions` (it filters extensions, not filenames)
