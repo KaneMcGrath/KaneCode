@@ -43,8 +43,45 @@ internal static class ThemeResourceKeys
     public const string EditorBackground = nameof(EditorBackground);
     public const string EditorForeground = nameof(EditorForeground);
     public const string EditorLineNumbersForeground = nameof(EditorLineNumbersForeground);
+    public const string SyntaxDefaultForeground = nameof(SyntaxDefaultForeground);
+    public const string SyntaxKeywordForeground = nameof(SyntaxKeywordForeground);
+    public const string SyntaxCommentForeground = nameof(SyntaxCommentForeground);
+    public const string SyntaxStringForeground = nameof(SyntaxStringForeground);
+    public const string SyntaxNumberForeground = nameof(SyntaxNumberForeground);
+    public const string SyntaxPreprocessorForeground = nameof(SyntaxPreprocessorForeground);
+    public const string SyntaxTypeForeground = nameof(SyntaxTypeForeground);
 
     // TreeView
     public const string TreeViewItemSelectedBackground = nameof(TreeViewItemSelectedBackground);
     public const string TreeViewItemSelectedForeground = nameof(TreeViewItemSelectedForeground);
+
+    // Roslyn semantic classification
+    public const string RoslynTypeForeground = nameof(RoslynTypeForeground);
+    public const string RoslynInterfaceForeground = nameof(RoslynInterfaceForeground);
+    public const string RoslynEnumForeground = nameof(RoslynEnumForeground);
+    public const string RoslynEnumMemberForeground = nameof(RoslynEnumMemberForeground);
+    public const string RoslynDelegateForeground = nameof(RoslynDelegateForeground);
+    public const string RoslynTypeParameterForeground = nameof(RoslynTypeParameterForeground);
+    public const string RoslynMethodForeground = nameof(RoslynMethodForeground);
+    public const string RoslynPropertyForeground = nameof(RoslynPropertyForeground);
+    public const string RoslynEventForeground = nameof(RoslynEventForeground);
+    public const string RoslynFieldForeground = nameof(RoslynFieldForeground);
+    public const string RoslynParameterForeground = nameof(RoslynParameterForeground);
+    public const string RoslynLocalForeground = nameof(RoslynLocalForeground);
+    public const string RoslynNamespaceForeground = nameof(RoslynNamespaceForeground);
+    public const string RoslynControlKeywordForeground = nameof(RoslynControlKeywordForeground);
+    public const string RoslynStringEscapeForeground = nameof(RoslynStringEscapeForeground);
+    public const string RoslynOperatorOverloadForeground = nameof(RoslynOperatorOverloadForeground);
+    public const string RoslynLabelForeground = nameof(RoslynLabelForeground);
+
+    // Diagnostics
+    public const string DiagnosticErrorForeground = nameof(DiagnosticErrorForeground);
+    public const string DiagnosticWarningForeground = nameof(DiagnosticWarningForeground);
+    public const string DiagnosticInfoForeground = nameof(DiagnosticInfoForeground);
+
+    // Completion popup
+    public const string CompletionBackground = nameof(CompletionBackground);
+    public const string CompletionForeground = nameof(CompletionForeground);
+    public const string CompletionSelectedBackground = nameof(CompletionSelectedBackground);
+    public const string CompletionBorder = nameof(CompletionBorder);
 }

@@ -10,6 +10,8 @@ Plans include:
 AI Plans:
  - standard code completion, chat, and agent mode interfaces
  - Write with non existent functions and have the agent write them for you in the background
+ - Teacher: Agents can be instructed to teach you the codebase and navagate the IDE for you
+ 
 
 
 

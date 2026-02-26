@@ -16,6 +16,8 @@
                 <MenuItem Header="_New" Command="{Binding NewFileCommand}" InputGestureText="Ctrl+N" />
                 <MenuItem Header="_Open File" Command="{Binding OpenFileCommand}" InputGestureText="Ctrl+O" />
                 <MenuItem Header="Open _Folder" Command="{Binding OpenFolderCommand}" />
+                <MenuItem Header="Open _Project..." Command="{Binding OpenProjectCommand}" />
+                <MenuItem Header="Open _Solution..." Command="{Binding OpenSolutionCommand}" />
                 <Separator />
                 <MenuItem Header="_Save" Command="{Binding SaveCommand}" InputGestureText="Ctrl+S" />
                 <MenuItem Header="Save _As..." Command="{Binding SaveAsCommand}" InputGestureText="Ctrl+Shift+S" />
@@ -161,6 +163,7 @@
                                            FontFamily="Cascadia Code, Consolas, Courier New"
                                            FontSize="14"
                                            ShowLineNumbers="True"
+                                           LineNumbersForeground="{DynamicResource EditorLineNumbersForeground}"
                                            Background="{DynamicResource EditorBackground}"
                                            Foreground="{DynamicResource EditorForeground}"
                                            HorizontalScrollBarVisibility="Auto"

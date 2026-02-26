@@ -18,11 +18,23 @@ public partial class MainWindow : Window
         InitializeComponent();
         DataContext = _viewModel;
         Loaded += OnLoaded;
+        Closed += OnClosed;
     }
 
     private void OnLoaded(object sender, RoutedEventArgs e)
     {
         _viewModel.AttachEditor(CodeEditor);
+
+        // Ctrl+Space triggers code completion
+        CodeEditor.InputBindings.Add(new KeyBinding(
+            new RelayInputCommand(async () => await _viewModel.ShowCompletionWindowAsync()),
+            Key.Space,
+            ModifierKeys.Control));
+    }
+
+    private void OnClosed(object? sender, EventArgs e)
+    {
+        _viewModel.Dispose();
     }
 
     private void FileTree_MouseDoubleClick(object sender, MouseButtonEventArgs e)
@@ -40,5 +52,22 @@ public partial class MainWindow : Window
         {
             _viewModel.SwitchToTab(tab);
         }
+    }
+
+    /// <summary>
+    /// Simple ICommand wrapper for async actions used by input bindings.
+    /// </summary>
+    private sealed class RelayInputCommand : ICommand
+    {
+        private readonly Func<Task> _execute;
+
+        public RelayInputCommand(Func<Task> execute)
+        {
+            _execute = execute;
+        }
+
+        public event EventHandler? CanExecuteChanged { add { } remove { } }
+        public bool CanExecute(object? parameter) => true;
+        public async void Execute(object? parameter) => await _execute();
     }
 }

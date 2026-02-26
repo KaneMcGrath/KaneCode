@@ -1,5 +1,9 @@
 using System.IO;
+using System.Windows;
+using System.Windows.Media;
+using ICSharpCode.AvalonEdit.Highlighting;
 using KaneCode.Models;
+using KaneCode.Theming;
 
 namespace KaneCode.Services;
 
@@ -66,6 +70,72 @@ internal static class EditorService
             ".vb" => "VB",
             _ => null
         };
+    }
+
+    /// <summary>
+    /// Applies themed syntax colors to an AvalonEdit highlighting definition.
+    /// </summary>
+    public static void ApplySyntaxHighlightingTheme(IHighlightingDefinition? highlighting)
+    {
+        if (highlighting is null)
+        {
+            return;
+        }
+
+        foreach (var color in highlighting.NamedHighlightingColors)
+        {
+            var resourceKey = GetSyntaxResourceKey(color.Name);
+            if (Application.Current.TryFindResource(resourceKey) is SolidColorBrush brush)
+            {
+                color.Foreground = new SimpleHighlightingBrush(brush.Color);
+            }
+        }
+    }
+
+    private static string GetSyntaxResourceKey(string? highlightingName)
+    {
+        if (string.IsNullOrWhiteSpace(highlightingName))
+        {
+            return ThemeResourceKeys.SyntaxDefaultForeground;
+        }
+
+        if (highlightingName.Contains("Comment", StringComparison.OrdinalIgnoreCase))
+        {
+            return ThemeResourceKeys.SyntaxCommentForeground;
+        }
+
+        if (highlightingName.Contains("Keyword", StringComparison.OrdinalIgnoreCase))
+        {
+            return ThemeResourceKeys.SyntaxKeywordForeground;
+        }
+
+        if (highlightingName.Contains("String", StringComparison.OrdinalIgnoreCase)
+            || highlightingName.Contains("Char", StringComparison.OrdinalIgnoreCase))
+        {
+            return ThemeResourceKeys.SyntaxStringForeground;
+        }
+
+        if (highlightingName.Contains("Number", StringComparison.OrdinalIgnoreCase)
+            || highlightingName.Contains("Digit", StringComparison.OrdinalIgnoreCase))
+        {
+            return ThemeResourceKeys.SyntaxNumberForeground;
+        }
+
+        if (highlightingName.Contains("Preprocessor", StringComparison.OrdinalIgnoreCase))
+        {
+            return ThemeResourceKeys.SyntaxPreprocessorForeground;
+        }
+
+        if (highlightingName.Contains("Type", StringComparison.OrdinalIgnoreCase)
+            || highlightingName.Contains("Class", StringComparison.OrdinalIgnoreCase)
+            || highlightingName.Contains("Struct", StringComparison.OrdinalIgnoreCase)
+            || highlightingName.Contains("Enum", StringComparison.OrdinalIgnoreCase)
+            || highlightingName.Contains("Interface", StringComparison.OrdinalIgnoreCase))
+        {
+            return ThemeResourceKeys.SyntaxTypeForeground;
+        }
+
+        return ThemeResourceKeys.SyntaxDefaultForeground;
     }
 
     /// <summary>

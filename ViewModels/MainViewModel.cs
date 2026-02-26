@@ -1,30 +1,46 @@
 using ICSharpCode.AvalonEdit;
+using ICSharpCode.AvalonEdit.CodeCompletion;
 using ICSharpCode.AvalonEdit.Highlighting;
 using KaneCode.Infrastructure;
 using KaneCode.Models;
 using KaneCode.Services;
 using KaneCode.Theming;
+using Microsoft.CodeAnalysis;
 using Microsoft.Win32;
 using System.Collections.ObjectModel;
 using System.IO;
 using System.Windows;
 using System.Windows.Input;
+using System.Windows.Media;
 
 namespace KaneCode.ViewModels;
 
 /// <summary>
 /// Main view model that orchestrates project loading, file opening, editing, and saving.
 /// </summary>
-internal sealed class MainViewModel : ObservableObject
+internal sealed class MainViewModel : ObservableObject, IDisposable
 {
     private TextEditor? _editor;
     private bool _isActivating;
 
+    private readonly RoslynWorkspaceService _roslynService = new();
+    private readonly RoslynCompletionProvider _completionProvider;
+    private RoslynClassificationColorizer? _classificationColorizer;
+    private RoslynDiagnosticRenderer? _diagnosticRenderer;
+    private CompletionWindow? _completionWindow;
+    private CancellationTokenSource? _analysisCts;
+    private readonly TimeSpan _analysisDelay = TimeSpan.FromMilliseconds(500);
+
     public MainViewModel()
     {
+        ThemeManager.ThemeChanged += OnThemeChanged;
+        _completionProvider = new RoslynCompletionProvider(_roslynService);
+
         NewFileCommand = new RelayCommand(_ => NewFile());
         OpenFileCommand = new RelayCommand(_ => OpenFile());
         OpenFolderCommand = new RelayCommand(_ => OpenFolder());
+        OpenProjectCommand = new RelayCommand(_ => OpenProject());
+        OpenSolutionCommand = new RelayCommand(_ => OpenSolution());
         SaveCommand = new RelayCommand(_ => Save(), _ => ActiveTab is not null);
         SaveAsCommand = new RelayCommand(_ => SaveAs(), _ => ActiveTab is not null);
         UndoCommand = new RelayCommand(_ => _editor?.Undo(), _ => _editor?.CanUndo == true);
@@ -41,6 +57,8 @@ internal sealed class MainViewModel : ObservableObject
     public ICommand NewFileCommand { get; }
     public ICommand OpenFileCommand { get; }
     public ICommand OpenFolderCommand { get; }
+    public ICommand OpenProjectCommand { get; }
+    public ICommand OpenSolutionCommand { get; }
     public ICommand SaveCommand { get; }
     public ICommand SaveAsCommand { get; }
     public ICommand UndoCommand { get; }
@@ -69,6 +87,20 @@ internal sealed class MainViewModel : ObservableObject
             if (SetProperty(ref _projectRootPath, value))
             {
                 OnPropertyChanged(nameof(WindowTitle));
+            }
+        }
+    }
+
+    private string? _loadingStatus;
+    /// <summary>Status text shown during project/solution loading.</summary>
+    public string? LoadingStatus
+    {
+        get => _loadingStatus;
+        private set
+        {
+            if (SetProperty(ref _loadingStatus, value))
+            {
+                OnPropertyChanged(nameof(StatusText));
             }
         }
     }
@@ -108,15 +140,46 @@ internal sealed class MainViewModel : ObservableObject
         }
     }
 
-    public string StatusText => ActiveTab is not null
-        ? $"Editing: {ActiveTab.FilePath}"
-        : "Ready";
+    public string StatusText
+    {
+        get
+        {
+            if (!string.IsNullOrEmpty(_loadingStatus))
+            {
+                return _loadingStatus;
+            }
+
+            if (ActiveTab is null)
+            {
+                return "Ready";
+            }
+
+            var status = $"Editing: {ActiveTab.FilePath}";
+            if (!string.IsNullOrEmpty(_diagnosticStatusText))
+            {
+                status += $"  |  {_diagnosticStatusText}";
+            }
+
+            return status;
+        }
+    }
 
     public void AttachEditor(TextEditor editor)
     {
         ArgumentNullException.ThrowIfNull(editor);
         _editor = editor;
         _editor.TextChanged += OnEditorTextChanged;
+
+        _classificationColorizer = new RoslynClassificationColorizer(_roslynService);
+        _editor.TextArea.TextView.LineTransformers.Add(_classificationColorizer);
+
+        _diagnosticRenderer = new RoslynDiagnosticRenderer();
+        _editor.TextArea.TextView.BackgroundRenderers.Add(_diagnosticRenderer);
+
+        _editor.TextArea.TextEntering += OnTextEntering;
+        _editor.TextArea.TextEntered += OnTextEntered;
+
+        ApplyEditorTheme();
     }
 
     private void NewFile()
@@ -151,6 +214,95 @@ internal sealed class MainViewModel : ObservableObject
         }
 
         LoadProjectRoot(dialog.FolderName);
+    }
+
+    private void OpenProject()
+    {
+        var dialog = new OpenFileDialog
+        {
+            Filter = "C# Project Files (*.csproj)|*.csproj",
+            Title = "Open C# Project"
+        };
+
+        if (dialog.ShowDialog() != true)
+        {
+            return;
+        }
+
+        _ = LoadProjectFileAsync(dialog.FileName);
+    }
+
+    private void OpenSolution()
+    {
+        var dialog = new OpenFileDialog
+        {
+            Filter = "Solution Files (*.sln)|*.sln",
+            Title = "Open Solution"
+        };
+
+        if (dialog.ShowDialog() != true)
+        {
+            return;
+        }
+
+        _ = LoadSolutionFileAsync(dialog.FileName);
+    }
+
+    private async Task LoadProjectFileAsync(string projectPath)
+    {
+        var projectDir = Path.GetDirectoryName(projectPath)!;
+        LoadingStatus = $"Loading project: {Path.GetFileName(projectPath)}...";
+
+        try
+        {
+            var result = await Task.Run(() =>
+                MSBuildProjectLoader.LoadProject(projectPath, _roslynService)).ConfigureAwait(true);
+
+            if (result is null)
+            {
+                MessageBox.Show($"Failed to load project:\n{projectPath}", "Error",
+                    MessageBoxButton.OK, MessageBoxImage.Error);
+                return;
+            }
+
+            ProjectRootPath = projectDir;
+            var root = EditorService.BuildFileTree(projectDir);
+            ProjectItems = new ObservableCollection<ProjectItem>(root.Children);
+
+            LoadingStatus = $"Loaded: {result.Name} ({result.TargetFramework}) — {result.SourceFiles.Length} file(s)";
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            MessageBox.Show($"Failed to load project:\n{ex.Message}", "Error",
+                MessageBoxButton.OK, MessageBoxImage.Error);
+            LoadingStatus = null;
+        }
+    }
+
+    private async Task LoadSolutionFileAsync(string solutionPath)
+    {
+        var solutionDir = Path.GetDirectoryName(solutionPath)!;
+        LoadingStatus = $"Loading solution: {Path.GetFileName(solutionPath)}...";
+
+        try
+        {
+            var result = await Task.Run(() =>
+                MSBuildProjectLoader.LoadSolution(solutionPath, _roslynService)).ConfigureAwait(true);
+
+            ProjectRootPath = solutionDir;
+            var root = EditorService.BuildFileTree(solutionDir);
+            ProjectItems = new ObservableCollection<ProjectItem>(root.Children);
+
+            var totalFiles = result.Projects.Sum(p => p.SourceFiles.Length);
+            var projectNames = string.Join(", ", result.Projects.Select(p => p.Name));
+            LoadingStatus = $"Loaded: {result.Name} — {result.Projects.Length} project(s), {totalFiles} file(s) [{projectNames}]";
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            MessageBox.Show($"Failed to load solution:\n{ex.Message}", "Error",
+                MessageBoxButton.OK, MessageBoxImage.Error);
+            LoadingStatus = null;
+        }
     }
 
     public void OpenFileByPath(string filePath)
@@ -283,6 +435,7 @@ internal sealed class MainViewModel : ObservableObject
         }
 
         OpenTabs.Remove(tab);
+        _roslynService.CloseDocument(tab.FilePath);
 
         if (OpenTabs.Count > 0)
         {
@@ -358,6 +511,40 @@ internal sealed class MainViewModel : ObservableObject
             _editor.SyntaxHighlighting = hlName is not null
                 ? HighlightingManager.Instance.GetDefinition(hlName)
                 : null;
+            EditorService.ApplySyntaxHighlightingTheme(_editor.SyntaxHighlighting);
+            _editor.TextArea.TextView.Redraw();
+
+            // Register with Roslyn for C# files
+            if (RoslynWorkspaceService.IsCSharpFile(tab.FilePath))
+            {
+                // If the file is already tracked (from a loaded project), just update its text.
+                // Otherwise, add it to the default adhoc project.
+                var existingDoc = _roslynService.GetDocument(tab.FilePath);
+                if (existingDoc is not null)
+                {
+                    _roslynService.UpdateDocumentText(tab.FilePath, _editor.Text);
+                }
+                else
+                {
+                    _roslynService.OpenOrUpdateDocument(tab.FilePath, _editor.Text);
+                }
+
+                if (_classificationColorizer is not null)
+                {
+                    _classificationColorizer.FilePath = tab.FilePath;
+                }
+
+                ScheduleRoslynAnalysis();
+            }
+            else
+            {
+                // Clear Roslyn overlays for non-C# files
+                _diagnosticRenderer?.UpdateDiagnostics([]);
+                if (_classificationColorizer is not null)
+                {
+                    _classificationColorizer.FilePath = null;
+                }
+            }
 
             tab.IsDirty = false;
             OnPropertyChanged(nameof(WindowTitle));
@@ -381,6 +568,8 @@ internal sealed class MainViewModel : ObservableObject
             ActiveTab.IsDirty = true;
             OnPropertyChanged(nameof(WindowTitle));
         }
+
+        ScheduleRoslynAnalysis();
     }
 
     public void SwitchToTab(OpenFileTab tab)
@@ -403,5 +592,182 @@ internal sealed class MainViewModel : ObservableObject
         {
             OpenFileByPath(item.FullPath);
         }
+    }
+
+    private void OnThemeChanged(AppTheme _)
+    {
+        ApplyEditorTheme();
+    }
+
+    private void ApplyEditorTheme()
+    {
+        if (_editor is null)
+        {
+            return;
+        }
+
+        if (Application.Current.TryFindResource(ThemeResourceKeys.EditorLineNumbersForeground) is Brush lineNumberBrush)
+        {
+            _editor.LineNumbersForeground = lineNumberBrush;
+        }
+
+        EditorService.ApplySyntaxHighlightingTheme(_editor.SyntaxHighlighting);
+        _editor.TextArea.TextView.Redraw();
+    }
+
+    private void OnTextEntering(object? sender, System.Windows.Input.TextCompositionEventArgs e)
+    {
+        if (_completionWindow is not null && e.Text.Length > 0)
+        {
+            if (!char.IsLetterOrDigit(e.Text[0]) && e.Text[0] != '_' && e.Text[0] != '.')
+            {
+                _completionWindow.CompletionList.RequestInsertion(e);
+            }
+        }
+    }
+
+    private async void OnTextEntered(object? sender, System.Windows.Input.TextCompositionEventArgs e)
+    {
+        if (ActiveTab is null || _editor is null)
+        {
+            return;
+        }
+
+        // Trigger completion on '.' or Ctrl+Space style (auto on letter)
+        if (e.Text.Length == 1 && RoslynCompletionProvider.ShouldTriggerCompletion(e.Text[0]))
+        {
+            // Only auto-trigger on '.' — letters require manual trigger or are handled by ongoing window
+            if (e.Text[0] == '.' && _completionWindow is null)
+            {
+                await ShowCompletionWindowAsync().ConfigureAwait(true);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Shows the Roslyn completion window at the current caret position.
+    /// Can be called from keyboard shortcut (Ctrl+Space) or auto-trigger.
+    /// </summary>
+    public async Task ShowCompletionWindowAsync()
+    {
+        if (ActiveTab is null || _editor is null || !RoslynWorkspaceService.IsCSharpFile(ActiveTab.FilePath))
+        {
+            return;
+        }
+
+        try
+        {
+            var caretOffset = _editor.CaretOffset;
+            var completions = await _completionProvider.GetCompletionsAsync(
+                ActiveTab.FilePath, caretOffset).ConfigureAwait(true);
+
+            if (completions.Count == 0)
+            {
+                return;
+            }
+
+            _completionWindow = new CompletionWindow(_editor.TextArea);
+
+            if (Application.Current.TryFindResource(ThemeResourceKeys.CompletionBackground) is Brush bgBrush)
+            {
+                _completionWindow.Background = bgBrush;
+            }
+
+            foreach (var item in completions)
+            {
+                _completionWindow.CompletionList.CompletionData.Add(item);
+            }
+
+            _completionWindow.Show();
+            _completionWindow.Closed += (_, _) => _completionWindow = null;
+        }
+        catch (OperationCanceledException)
+        {
+            // Ignored
+        }
+    }
+
+    /// <summary>
+    /// Triggers background Roslyn analysis (classification + diagnostics) with a debounce delay.
+    /// </summary>
+    private void ScheduleRoslynAnalysis()
+    {
+        if (ActiveTab is null || !RoslynWorkspaceService.IsCSharpFile(ActiveTab.FilePath))
+        {
+            return;
+        }
+
+        _analysisCts?.Cancel();
+        _analysisCts = new CancellationTokenSource();
+        var ct = _analysisCts.Token;
+        var filePath = ActiveTab.FilePath;
+        var text = _editor?.Text ?? string.Empty;
+
+        _ = RunRoslynAnalysisAsync(filePath, text, ct);
+    }
+
+    private async Task RunRoslynAnalysisAsync(string filePath, string text, CancellationToken cancellationToken)
+    {
+        try
+        {
+            await Task.Delay(_analysisDelay, cancellationToken).ConfigureAwait(false);
+
+            _roslynService.UpdateDocumentText(filePath, text);
+
+            // Semantic classification
+            if (_classificationColorizer is not null)
+            {
+                _classificationColorizer.FilePath = filePath;
+                await _classificationColorizer.UpdateClassificationsAsync(cancellationToken).ConfigureAwait(false);
+            }
+
+            // Diagnostics
+            var diagnostics = await _roslynService.GetDiagnosticsAsync(filePath, cancellationToken).ConfigureAwait(false);
+            var entries = new List<DiagnosticEntry>();
+            foreach (var diag in diagnostics)
+            {
+                if (diag.Severity == DiagnosticSeverity.Hidden)
+                {
+                    continue;
+                }
+
+                var span = diag.Location.SourceSpan;
+                entries.Add(new DiagnosticEntry(span.Start, span.End, diag.Severity, diag.GetMessage(), diag.Id));
+            }
+
+            // Update UI on dispatcher
+            await Application.Current.Dispatcher.InvokeAsync(() =>
+            {
+                _diagnosticRenderer?.UpdateDiagnostics(entries);
+                _editor?.TextArea.TextView.Redraw();
+
+                // Update status with diagnostic summary
+                var errorCount = entries.Count(e => e.Severity == DiagnosticSeverity.Error);
+                var warningCount = entries.Count(e => e.Severity == DiagnosticSeverity.Warning);
+                if (errorCount > 0 || warningCount > 0)
+                {
+                    _diagnosticStatusText = $"{errorCount} error(s), {warningCount} warning(s)";
+                }
+                else
+                {
+                    _diagnosticStatusText = null;
+                }
+
+                OnPropertyChanged(nameof(StatusText));
+            });
+        }
+        catch (OperationCanceledException)
+        {
+            // Analysis was superseded by a newer request
+        }
+    }
+
+    private string? _diagnosticStatusText;
+
+    public void Dispose()
+    {
+        _analysisCts?.Cancel();
+        _analysisCts?.Dispose();
+        _roslynService.Dispose();
     }
 }

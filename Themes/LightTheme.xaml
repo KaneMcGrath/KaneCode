@@ -39,9 +39,46 @@
     <SolidColorBrush x:Key="EditorBackground" Color="#FFFFFF" />
     <SolidColorBrush x:Key="EditorForeground" Color="#1E1E1E" />
     <SolidColorBrush x:Key="EditorLineNumbersForeground" Color="#2B91AF" />
+    <SolidColorBrush x:Key="SyntaxDefaultForeground" Color="#1E1E1E" />
+    <SolidColorBrush x:Key="SyntaxKeywordForeground" Color="#0000FF" />
+    <SolidColorBrush x:Key="SyntaxCommentForeground" Color="#008000" />
+    <SolidColorBrush x:Key="SyntaxStringForeground" Color="#A31515" />
+    <SolidColorBrush x:Key="SyntaxNumberForeground" Color="#098658" />
+    <SolidColorBrush x:Key="SyntaxPreprocessorForeground" Color="#AF00DB" />
+    <SolidColorBrush x:Key="SyntaxTypeForeground" Color="#267F99" />
 
     <!-- TreeView -->
     <SolidColorBrush x:Key="TreeViewItemSelectedBackground" Color="#C9DEF5" />
     <SolidColorBrush x:Key="TreeViewItemSelectedForeground" Color="#1E1E1E" />
+
+    <!-- Roslyn semantic classification -->
+    <SolidColorBrush x:Key="RoslynTypeForeground" Color="#267F99" />
+    <SolidColorBrush x:Key="RoslynInterfaceForeground" Color="#267F99" />
+    <SolidColorBrush x:Key="RoslynEnumForeground" Color="#267F99" />
+    <SolidColorBrush x:Key="RoslynEnumMemberForeground" Color="#0070C1" />
+    <SolidColorBrush x:Key="RoslynDelegateForeground" Color="#267F99" />
+    <SolidColorBrush x:Key="RoslynTypeParameterForeground" Color="#267F99" />
+    <SolidColorBrush x:Key="RoslynMethodForeground" Color="#795E26" />
+    <SolidColorBrush x:Key="RoslynPropertyForeground" Color="#001080" />
+    <SolidColorBrush x:Key="RoslynEventForeground" Color="#001080" />
+    <SolidColorBrush x:Key="RoslynFieldForeground" Color="#001080" />
+    <SolidColorBrush x:Key="RoslynParameterForeground" Color="#001080" />
+    <SolidColorBrush x:Key="RoslynLocalForeground" Color="#001080" />
+    <SolidColorBrush x:Key="RoslynNamespaceForeground" Color="#1E1E1E" />
+    <SolidColorBrush x:Key="RoslynControlKeywordForeground" Color="#AF00DB" />
+    <SolidColorBrush x:Key="RoslynStringEscapeForeground" Color="#EE0000" />
+    <SolidColorBrush x:Key="RoslynOperatorOverloadForeground" Color="#795E26" />
+    <SolidColorBrush x:Key="RoslynLabelForeground" Color="#1E1E1E" />
+
+    <!-- Diagnostics -->
+    <SolidColorBrush x:Key="DiagnosticErrorForeground" Color="#E51400" />
+    <SolidColorBrush x:Key="DiagnosticWarningForeground" Color="#BF8803" />
+    <SolidColorBrush x:Key="DiagnosticInfoForeground" Color="#1A85FF" />
+
+    <!-- Completion popup -->
+    <SolidColorBrush x:Key="CompletionBackground" Color="#F3F3F3" />
+    <SolidColorBrush x:Key="CompletionForeground" Color="#1E1E1E" />
+    <SolidColorBrush x:Key="CompletionSelectedBackground" Color="#C9DEF5" />
+    <SolidColorBrush x:Key="CompletionBorder" Color="#CCCCCC" />
 
 </ResourceDictionary>

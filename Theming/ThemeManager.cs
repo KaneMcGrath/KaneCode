@@ -12,11 +12,17 @@ internal static class ThemeManager
 
     private static ResourceDictionary? _currentThemeDictionary;
 
+    public static AppTheme CurrentTheme { get; private set; } = AppTheme.Dark;
+
+    public static event Action<AppTheme>? ThemeChanged;
+
     /// <summary>
     /// Applies the specified theme to the application.
     /// </summary>
     public static void ApplyTheme(AppTheme theme)
     {
+        CurrentTheme = theme;
+
         var uri = theme switch
         {
             AppTheme.Light => LightThemeUri,
@@ -33,6 +39,7 @@ internal static class ThemeManager
 
         appResources.MergedDictionaries.Add(newDictionary);
         _currentThemeDictionary = newDictionary;
+        ThemeChanged?.Invoke(theme);
     }
 
     /// <summary>

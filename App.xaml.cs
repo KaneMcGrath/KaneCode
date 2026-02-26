@@ -1,5 +1,6 @@
-﻿using System.Windows;
+﻿using KaneCode.Services;
 using KaneCode.Theming;
+using System.Windows;
 
 namespace KaneCode;
 
@@ -11,6 +12,10 @@ public partial class App : Application
     protected override void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
+
+        // Must register MSBuild before any MSBuild types are loaded
+        MSBuildProjectLoader.EnsureMSBuildRegistered();
+
         ThemeManager.ApplyTheme(AppTheme.Dark);
     }
 }
