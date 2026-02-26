@@ -1,0 +1,28 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:avalonDock="https://github.com/Dirkster99/AvalonDock"
+                    xmlns:avalonDockControls="clr-namespace:AvalonDock.Controls;assembly=AvalonDock">
+
+    <!-- DockingManager background -->
+    <Style TargetType="{x:Type avalonDock:DockingManager}">
+        <Setter Property="Background" Value="{DynamicResource WindowBackground}" />
+    </Style>
+
+    <!-- Anchorable (tool window) pane title styling -->
+    <Style TargetType="{x:Type avalonDockControls:AnchorablePaneTitle}">
+        <Setter Property="Background" Value="{DynamicResource PanelBackground}" />
+        <Setter Property="Foreground" Value="{DynamicResource PanelHeaderForeground}" />
+    </Style>
+
+    <!-- LayoutAnchorablePaneControl (the container for anchorable panes) -->
+    <Style TargetType="{x:Type avalonDockControls:LayoutAnchorablePaneControl}">
+        <Setter Property="Background" Value="{DynamicResource PanelBackground}" />
+        <Setter Property="Foreground" Value="{DynamicResource PanelForeground}" />
+    </Style>
+
+    <!-- LayoutDocumentPaneControl (the container for document panes) -->
+    <Style TargetType="{x:Type avalonDockControls:LayoutDocumentPaneControl}">
+        <Setter Property="Background" Value="{DynamicResource EditorBackground}" />
+    </Style>
+
+</ResourceDictionary>
