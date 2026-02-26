@@ -97,11 +97,13 @@ Icon="Icons/KaneCode.ico">
                     <!-- Center: Document + Error List (vertical split) -->
                     <avalonDock:LayoutPanel Orientation="Vertical">
 
-                        <!-- Document area: tab strip + code editor -->
-                        <avalonDock:LayoutDocumentPane>
-                            <avalonDock:LayoutDocument Title="Editor"
-                                                       CanClose="False"
-                                                       ContentId="EditorDocument">
+                        <!-- Editor panel -->
+                        <avalonDock:LayoutAnchorablePane>
+                            <avalonDock:LayoutAnchorable Title="Editor"
+                                                         CanClose="False"
+                                                         CanHide="False"
+                                                         CanAutoHide="False"
+                                                         ContentId="EditorPane">
                                 <DockPanel>
                                     <!-- Tab strip -->
                                     <ListBox DockPanel.Dock="Top"
@@ -171,8 +173,8 @@ Icon="Icons/KaneCode.ico">
                                                            HorizontalScrollBarVisibility="Auto"
                                                            VerticalScrollBarVisibility="Auto" />
                                 </DockPanel>
-                            </avalonDock:LayoutDocument>
-                        </avalonDock:LayoutDocumentPane>
+                            </avalonDock:LayoutAnchorable>
+                        </avalonDock:LayoutAnchorablePane>
 
                         <!-- Bottom: Error List panel -->
                         <avalonDock:LayoutAnchorablePane DockHeight="150">

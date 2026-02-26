@@ -25,4 +25,15 @@
         <Setter Property="Background" Value="{DynamicResource EditorBackground}" />
     </Style>
 
+    <!-- Dock tabs (shown when multiple panels share a pane) -->
+    <Style TargetType="{x:Type avalonDockControls:LayoutAnchorableTabItem}">
+        <Setter Property="Background" Value="{DynamicResource TabStripBackground}" />
+        <Setter Property="Foreground" Value="{DynamicResource TabForeground}" />
+    </Style>
+
+    <Style TargetType="{x:Type avalonDockControls:LayoutDocumentTabItem}">
+        <Setter Property="Background" Value="{DynamicResource TabStripBackground}" />
+        <Setter Property="Foreground" Value="{DynamicResource TabForeground}" />
+    </Style>
+
 </ResourceDictionary>
