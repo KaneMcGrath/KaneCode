@@ -28,13 +28,16 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
     private readonly RoslynCompletionProvider _completionProvider;
     private readonly RoslynNavigationService _navigationService;
     private readonly RoslynQuickInfoService _quickInfoService;
+    private readonly RoslynSignatureHelpService _signatureHelpService;
     private RoslynClassificationColorizer? _classificationColorizer;
     private RoslynDiagnosticRenderer? _diagnosticRenderer;
     private SearchPanel? _searchPanel;
     private CompletionWindow? _completionWindow;
+    private OverloadInsightWindow? _insightWindow;
     private CancellationTokenSource? _analysisCts;
     private CancellationTokenSource? _navigationCts;
     private CancellationTokenSource? _quickInfoCts;
+    private CancellationTokenSource? _signatureHelpCts;
     private CancellationTokenSource? _loadCts;
     private bool _isLoadingProject;
     private readonly TimeSpan _analysisDelay = TimeSpan.FromMilliseconds(500);
@@ -46,6 +49,7 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
         _completionProvider = new RoslynCompletionProvider(_roslynService);
         _navigationService = new RoslynNavigationService(_roslynService);
         _quickInfoService = new RoslynQuickInfoService(_roslynService);
+        _signatureHelpService = new RoslynSignatureHelpService(_roslynService);
 
         NewFileCommand = new RelayCommand(_ => NewFile());
         OpenFileCommand = new RelayCommand(_ => OpenFile());
@@ -743,14 +747,32 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
             return;
         }
 
+        if (e.Text.Length != 1)
+        {
+            return;
+        }
+
+        var typedChar = e.Text[0];
+
         // Trigger completion on '.' or Ctrl+Space style (auto on letter)
-        if (e.Text.Length == 1 && RoslynCompletionProvider.ShouldTriggerCompletion(e.Text[0]))
+        if (RoslynCompletionProvider.ShouldTriggerCompletion(typedChar))
         {
             // Only auto-trigger on '.' — letters require manual trigger or are handled by ongoing window
-            if (e.Text[0] == '.' && _completionWindow is null)
+            if (typedChar == '.' && _completionWindow is null)
             {
                 await ShowCompletionWindowAsync().ConfigureAwait(true);
             }
+        }
+
+        // Trigger signature help on '(' or ','  
+        if (typedChar is '(' or ',')
+        {
+            await ShowSignatureHelpAsync().ConfigureAwait(true);
+        }
+        // Dismiss signature help on ')'
+        else if (typedChar == ')')
+        {
+            CloseSignatureHelp();
         }
     }
 
@@ -794,6 +816,68 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
         catch (OperationCanceledException)
         {
             // Ignored
+        }
+    }
+
+    /// <summary>
+    /// Shows the Roslyn signature help (parameter info) window at the current caret position.
+    /// Triggered automatically when typing '(' or ','.
+    /// </summary>
+    public async Task ShowSignatureHelpAsync()
+    {
+        if (ActiveTab is null || _editor is null || !RoslynWorkspaceService.IsCSharpFile(ActiveTab.FilePath))
+        {
+            return;
+        }
+
+        _signatureHelpCts?.Cancel();
+        _signatureHelpCts?.Dispose();
+        _signatureHelpCts = new CancellationTokenSource();
+        var ct = _signatureHelpCts.Token;
+
+        try
+        {
+            var caretOffset = _editor.CaretOffset;
+            await _roslynService.UpdateDocumentTextAsync(ActiveTab.FilePath, _editor.Text, ct).ConfigureAwait(true);
+
+            var result = await _signatureHelpService.GetSignatureHelpAsync(
+                ActiveTab.FilePath, caretOffset, ct).ConfigureAwait(true);
+
+            if (result is null || result.Overloads.Count == 0)
+            {
+                return;
+            }
+
+            CloseSignatureHelp();
+
+            _insightWindow = new OverloadInsightWindow(_editor.TextArea)
+            {
+                Provider = new SignatureHelpOverloadProvider(result)
+            };
+
+            if (Application.Current.TryFindResource(ThemeResourceKeys.TooltipBackground) is Brush sigBgBrush)
+            {
+                _insightWindow.Background = sigBgBrush;
+            }
+
+            _insightWindow.Closed += (_, _) => _insightWindow = null;
+            _insightWindow.Show();
+        }
+        catch (OperationCanceledException)
+        {
+            // Superseded by a newer request
+        }
+    }
+
+    /// <summary>
+    /// Closes the signature help insight window if it is currently open.
+    /// </summary>    
+    private void CloseSignatureHelp()
+    {
+        if (_insightWindow is not null)
+        {
+            _insightWindow.Close();
+            _insightWindow = null;
         }
     }
 
@@ -1139,6 +1223,8 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
         _navigationCts?.Dispose();
         _quickInfoCts?.Cancel();
         _quickInfoCts?.Dispose();
+        _signatureHelpCts?.Cancel();
+        _signatureHelpCts?.Dispose();
         _roslynService.Dispose();
     }
 }

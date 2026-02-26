@@ -56,10 +56,10 @@
 - Use Roslyn's `QuickInfoService`
 - Files: new `Services/RoslynQuickInfoService.cs`, `MainWindow.xaml.cs`
 
-- [ ] **2.5 Signature help**
-  - Show parameter info popup when typing `(` or `,` in method calls
-  - Use Roslyn's `SignatureHelpService`
-  - Files: new `Services/RoslynSignatureHelpService.cs`
+- [X] **2.5 Signature help**
+- Show parameter info popup when typing `(` or `,` in method calls
+- Use Roslyn's semantic model to resolve method overloads and parameter info
+- Files: new `Services/RoslynSignatureHelpService.cs`, `ViewModels/MainViewModel.cs`
 
 - [ ] **2.6 Multi-file re-analysis**
   - Editing file A should trigger re-analysis of open file B if B depends on A
