@@ -1,0 +1,183 @@
+﻿<Window x:Class="KaneCode.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:local="clr-namespace:KaneCode"
+        xmlns:avalonEdit="http://icsharpcode.net/sharpdevelop/avalonedit"
+        mc:Ignorable="d"
+        Title="{Binding WindowTitle}" Height="450" Width="800"
+        Background="{DynamicResource WindowBackground}">
+    <DockPanel>
+        <!-- Top Bar -->
+        <Menu DockPanel.Dock="Top"
+              Background="{DynamicResource MenuBackground}">
+            <MenuItem Header="_File">
+                <MenuItem Header="_New" Command="{Binding NewFileCommand}" InputGestureText="Ctrl+N" />
+                <MenuItem Header="_Open File" Command="{Binding OpenFileCommand}" InputGestureText="Ctrl+O" />
+                <MenuItem Header="Open _Folder" Command="{Binding OpenFolderCommand}" />
+                <Separator />
+                <MenuItem Header="_Save" Command="{Binding SaveCommand}" InputGestureText="Ctrl+S" />
+                <MenuItem Header="Save _As..." Command="{Binding SaveAsCommand}" InputGestureText="Ctrl+Shift+S" />
+                <Separator />
+                <MenuItem Header="_Close Tab" Command="{Binding CloseTabCommand}" InputGestureText="Ctrl+W" />
+                <Separator />
+                <MenuItem Header="E_xit" Command="{Binding ExitCommand}" />
+            </MenuItem>
+            <MenuItem Header="_Edit">
+                <MenuItem Header="_Undo" Command="{Binding UndoCommand}" InputGestureText="Ctrl+Z" />
+                <MenuItem Header="_Redo" Command="{Binding RedoCommand}" InputGestureText="Ctrl+Y" />
+                <Separator />
+                <MenuItem Header="Cu_t" Command="{Binding CutCommand}" InputGestureText="Ctrl+X" />
+                <MenuItem Header="_Copy" Command="{Binding CopyCommand}" InputGestureText="Ctrl+C" />
+                <MenuItem Header="_Paste" Command="{Binding PasteCommand}" InputGestureText="Ctrl+V" />
+            </MenuItem>
+            <MenuItem Header="_View">
+                <MenuItem Header="_Theme">
+                    <MenuItem Header="_Dark" Command="{Binding SetDarkThemeCommand}" />
+                    <MenuItem Header="_Light" Command="{Binding SetLightThemeCommand}" />
+                </MenuItem>
+            </MenuItem>
+            <MenuItem Header="_Help">
+                <MenuItem Header="_About" />
+            </MenuItem>
+        </Menu>
+
+        <!-- Status Bar -->
+        <StatusBar DockPanel.Dock="Bottom"
+                   Background="{DynamicResource StatusBarBackground}">
+            <StatusBarItem>
+                <TextBlock Text="{Binding StatusText}"
+                           Foreground="{DynamicResource StatusBarForeground}" />
+            </StatusBarItem>
+        </StatusBar>
+
+        <Grid>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" MinWidth="50" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="3*" MinWidth="50" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" MinWidth="50" />
+            </Grid.ColumnDefinitions>
+
+            <!-- Left Panel - File Explorer -->
+            <Border Grid.Column="0" Background="{DynamicResource PanelBackground}">
+                <DockPanel>
+                    <TextBlock DockPanel.Dock="Top" Text="Explorer" FontWeight="SemiBold"
+                               Margin="8,6"
+                               Foreground="{DynamicResource PanelHeaderForeground}" />
+                    <TreeView x:Name="FileTree"
+                              ItemsSource="{Binding ProjectItems}"
+                              Background="Transparent" BorderThickness="0"
+                              Foreground="{DynamicResource PanelForeground}"
+                              MouseDoubleClick="FileTree_MouseDoubleClick">
+                        <TreeView.ItemTemplate>
+                            <HierarchicalDataTemplate DataType="{x:Type local:ProjectItem}"
+                                                       ItemsSource="{Binding Children}">
+                                <StackPanel Orientation="Horizontal" Margin="2">
+                                    <TextBlock Text="{Binding Name}" />
+                                </StackPanel>
+                            </HierarchicalDataTemplate>
+                        </TreeView.ItemTemplate>
+                        <TreeView.ItemContainerStyle>
+                            <Style TargetType="TreeViewItem">
+                                <Setter Property="IsExpanded" Value="{Binding IsExpanded, Mode=TwoWay}" />
+                                <Setter Property="IsSelected" Value="{Binding IsSelected, Mode=TwoWay}" />
+                                <Setter Property="Foreground" Value="{DynamicResource PanelForeground}" />
+                            </Style>
+                        </TreeView.ItemContainerStyle>
+                    </TreeView>
+                </DockPanel>
+            </Border>
+
+            <!-- Splitter between Panel 1 and Panel 2 -->
+            <GridSplitter Grid.Column="1" Width="4" HorizontalAlignment="Center"
+                          VerticalAlignment="Stretch"
+                          Background="{DynamicResource SplitterBackground}" />
+
+            <!-- Middle Panel - Code Editor -->
+            <Border Grid.Column="2" Background="{DynamicResource EditorBackground}">
+                <DockPanel>
+                    <!-- Tab strip -->
+                    <ListBox DockPanel.Dock="Top"
+                             ItemsSource="{Binding OpenTabs}"
+                             SelectedItem="{Binding ActiveTab, Mode=OneWay}"
+                             SelectionChanged="TabList_SelectionChanged"
+                             Background="{DynamicResource TabStripBackground}"
+                             BorderThickness="0"
+                             Height="28">
+                        <ListBox.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <StackPanel Orientation="Horizontal" />
+                            </ItemsPanelTemplate>
+                        </ListBox.ItemsPanel>
+                        <ListBox.ItemContainerStyle>
+                            <Style TargetType="ListBoxItem">
+                                <Setter Property="Background" Value="Transparent" />
+                                <Setter Property="Foreground" Value="{DynamicResource TabForeground}" />
+                                <Setter Property="Padding" Value="0" />
+                                <Setter Property="Margin" Value="0" />
+                                <Setter Property="Template">
+                                    <Setter.Value>
+                                        <ControlTemplate TargetType="ListBoxItem">
+                                            <Border x:Name="Bd"
+                                                    Background="{TemplateBinding Background}"
+                                                    Padding="{TemplateBinding Padding}">
+                                                <ContentPresenter />
+                                            </Border>
+                                            <ControlTemplate.Triggers>
+                                                <Trigger Property="IsSelected" Value="True">
+                                                    <Setter TargetName="Bd" Property="Background"
+                                                            Value="{DynamicResource TabSelectedBackground}" />
+                                                    <Setter Property="Foreground"
+                                                            Value="{DynamicResource TabSelectedForeground}" />
+                                                </Trigger>
+                                            </ControlTemplate.Triggers>
+                                        </ControlTemplate>
+                                    </Setter.Value>
+                                </Setter>
+                            </Style>
+                        </ListBox.ItemContainerStyle>
+                        <ListBox.ItemTemplate>
+                            <DataTemplate DataType="{x:Type local:OpenFileTab}">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="{Binding DisplayName}" Margin="8,2,4,2" FontSize="12"
+                                               VerticalAlignment="Center" />
+                                    <Button Content="✕" FontSize="10" Padding="2,0"
+                                            VerticalAlignment="Center"
+                                            Foreground="{DynamicResource TabCloseButtonForeground}"
+                                            Background="Transparent" BorderThickness="0" Cursor="Hand"
+                                            Command="{Binding DataContext.CloseTabCommand,
+                                                RelativeSource={RelativeSource AncestorType=Window}}"
+                                            CommandParameter="{Binding}" />
+                                </StackPanel>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+
+                    <!-- Editor -->
+                    <avalonEdit:TextEditor x:Name="CodeEditor"
+                                           FontFamily="Cascadia Code, Consolas, Courier New"
+                                           FontSize="14"
+                                           ShowLineNumbers="True"
+                                           Background="{DynamicResource EditorBackground}"
+                                           Foreground="{DynamicResource EditorForeground}"
+                                           HorizontalScrollBarVisibility="Auto"
+                                           VerticalScrollBarVisibility="Auto" />
+                </DockPanel>
+            </Border>
+
+            <!-- Splitter between Panel 2 and Panel 3 -->
+            <GridSplitter Grid.Column="3" Width="4" HorizontalAlignment="Center"
+                          VerticalAlignment="Stretch"
+                          Background="{DynamicResource SplitterBackground}" />
+
+            <!-- Right Panel -->
+            <Border Grid.Column="4" Background="{DynamicResource PanelSecondaryBackground}">
+                <TextBlock Text="Panel 3" HorizontalAlignment="Center" VerticalAlignment="Center"
+                           Foreground="{DynamicResource PanelForeground}" />
+            </Border>
+        </Grid>
+    </DockPanel>
+</Window>
