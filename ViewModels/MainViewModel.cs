@@ -1,12 +1,16 @@
+using ICSharpCode.AvalonEdit;
+using ICSharpCode.AvalonEdit.Highlighting;
+using KaneCode.Infrastructure;
+using KaneCode.Models;
+using KaneCode.Services;
+using KaneCode.Theming;
+using Microsoft.Win32;
 using System.Collections.ObjectModel;
 using System.IO;
 using System.Windows;
 using System.Windows.Input;
-using ICSharpCode.AvalonEdit;
-using ICSharpCode.AvalonEdit.Highlighting;
-using Microsoft.Win32;
 
-namespace KaneCode;
+namespace KaneCode.ViewModels;
 
 /// <summary>
 /// Main view model that orchestrates project loading, file opening, editing, and saving.
@@ -34,8 +38,6 @@ internal sealed class MainViewModel : ObservableObject
         SetLightThemeCommand = new RelayCommand(_ => ThemeManager.ApplyTheme(AppTheme.Light));
     }
 
-    // -- Commands --
-
     public ICommand NewFileCommand { get; }
     public ICommand OpenFileCommand { get; }
     public ICommand OpenFolderCommand { get; }
@@ -51,8 +53,6 @@ internal sealed class MainViewModel : ObservableObject
     public ICommand SetDarkThemeCommand { get; }
     public ICommand SetLightThemeCommand { get; }
 
-    // -- Project tree --
-
     private ObservableCollection<ProjectItem> _projectItems = [];
     public ObservableCollection<ProjectItem> ProjectItems
     {
@@ -61,18 +61,17 @@ internal sealed class MainViewModel : ObservableObject
     }
 
     private string? _projectRootPath;
-    /// <summary>Root path of the currently open folder/project.</summary>
     public string? ProjectRootPath
     {
         get => _projectRootPath;
         private set
         {
             if (SetProperty(ref _projectRootPath, value))
+            {
                 OnPropertyChanged(nameof(WindowTitle));
+            }
         }
     }
-
-    // -- Open tabs --
 
     public ObservableCollection<OpenFileTab> OpenTabs { get; } = [];
 
@@ -90,17 +89,21 @@ internal sealed class MainViewModel : ObservableObject
         }
     }
 
-    // -- Status --
-
     public string WindowTitle
     {
         get
         {
             var parts = new List<string> { "Kane Code" };
             if (!string.IsNullOrEmpty(ProjectRootPath))
+            {
                 parts.Add(Path.GetFileName(ProjectRootPath));
+            }
+
             if (ActiveTab is not null)
+            {
                 parts.Add(ActiveTab.DisplayName);
+            }
+
             return string.Join(" — ", parts);
         }
     }
@@ -109,20 +112,12 @@ internal sealed class MainViewModel : ObservableObject
         ? $"Editing: {ActiveTab.FilePath}"
         : "Ready";
 
-    // -- Initialization --
-
-    /// <summary>
-    /// Binds the view model to the AvalonEdit <see cref="TextEditor"/> control.
-    /// Must be called once after the window is loaded.
-    /// </summary>
     public void AttachEditor(TextEditor editor)
     {
         ArgumentNullException.ThrowIfNull(editor);
         _editor = editor;
         _editor.TextChanged += OnEditorTextChanged;
     }
-
-    // -- Command implementations --
 
     private void NewFile()
     {
@@ -140,7 +135,9 @@ internal sealed class MainViewModel : ObservableObject
         };
 
         if (dialog.ShowDialog() != true)
+        {
             return;
+        }
 
         OpenFileByPath(dialog.FileName);
     }
@@ -149,20 +146,20 @@ internal sealed class MainViewModel : ObservableObject
     {
         var dialog = new OpenFolderDialog();
         if (dialog.ShowDialog() != true)
+        {
             return;
+        }
 
         LoadProjectRoot(dialog.FolderName);
     }
 
-    /// <summary>
-    /// Opens a file in the editor by its full path. If already open, switches to that tab.
-    /// </summary>
     public void OpenFileByPath(string filePath)
     {
         if (string.IsNullOrWhiteSpace(filePath) || !File.Exists(filePath))
+        {
             return;
+        }
 
-        // Check if already open
         var existing = OpenTabs.FirstOrDefault(t =>
             string.Equals(t.FilePath, filePath, StringComparison.OrdinalIgnoreCase));
         if (existing is not null)
@@ -186,7 +183,6 @@ internal sealed class MainViewModel : ObservableObject
         }
     }
 
-    /// <summary>Loads a directory as the project root and populates the file tree.</summary>
     public void LoadProjectRoot(string rootPath)
     {
         ArgumentNullException.ThrowIfNull(rootPath);
@@ -199,7 +195,9 @@ internal sealed class MainViewModel : ObservableObject
     private void Save()
     {
         if (ActiveTab is null || _editor is null)
+        {
             return;
+        }
 
         if (ActiveTab.FilePath == "Untitled")
         {
@@ -223,7 +221,9 @@ internal sealed class MainViewModel : ObservableObject
     private void SaveAs()
     {
         if (_editor is null)
+        {
             return;
+        }
 
         var dialog = new SaveFileDialog
         {
@@ -232,15 +232,18 @@ internal sealed class MainViewModel : ObservableObject
         };
 
         if (dialog.ShowDialog() != true)
+        {
             return;
+        }
 
         try
         {
             EditorService.WriteFile(dialog.FileName, _editor.Text);
 
-            // Replace the tab with the new path
             if (ActiveTab is not null)
+            {
                 OpenTabs.Remove(ActiveTab);
+            }
 
             var newTab = new OpenFileTab(dialog.FileName);
             OpenTabs.Add(newTab);
@@ -257,7 +260,9 @@ internal sealed class MainViewModel : ObservableObject
     {
         tab ??= ActiveTab;
         if (tab is null)
+        {
             return;
+        }
 
         if (tab.IsDirty)
         {
@@ -293,7 +298,6 @@ internal sealed class MainViewModel : ObservableObject
 
     private void ExitApplication()
     {
-        // Prompt for any unsaved tabs
         foreach (var tab in OpenTabs.Where(t => t.IsDirty).ToList())
         {
             ActiveTab = tab;
@@ -316,26 +320,25 @@ internal sealed class MainViewModel : ObservableObject
         Application.Current.Shutdown();
     }
 
-    // -- Helpers --
-
-    /// <summary>Content cache for tabs so we can restore text when switching.</summary>
     private readonly Dictionary<string, string> _tabContentCache = new(StringComparer.OrdinalIgnoreCase);
 
     private void ActivateTab(OpenFileTab tab, string? content = null, string? syntaxHighlighting = null)
     {
         if (_editor is null)
+        {
             return;
+        }
 
-        // Save current tab content before switching
         if (ActiveTab is not null && !_isActivating)
+        {
             _tabContentCache[ActiveTab.FilePath] = _editor.Text;
+        }
 
         _isActivating = true;
         try
         {
             ActiveTab = tab;
 
-            // Restore or load content
             if (content is not null)
             {
                 _editor.Text = content;
@@ -351,7 +354,6 @@ internal sealed class MainViewModel : ObservableObject
                 _tabContentCache[tab.FilePath] = _editor.Text;
             }
 
-            // Set syntax highlighting
             var hlName = syntaxHighlighting ?? EditorService.GetSyntaxHighlighting(tab.FilePath);
             _editor.SyntaxHighlighting = hlName is not null
                 ? HighlightingManager.Instance.GetDefinition(hlName)
@@ -370,7 +372,9 @@ internal sealed class MainViewModel : ObservableObject
     private void OnEditorTextChanged(object? sender, EventArgs e)
     {
         if (_isActivating || ActiveTab is null)
+        {
             return;
+        }
 
         if (!ActiveTab.IsDirty)
         {
@@ -379,27 +383,25 @@ internal sealed class MainViewModel : ObservableObject
         }
     }
 
-    /// <summary>
-    /// Switches the editor to the given already-open tab, loading its cached content.
-    /// </summary>
     public void SwitchToTab(OpenFileTab tab)
     {
         ArgumentNullException.ThrowIfNull(tab);
 
         if (_isActivating || tab == ActiveTab)
+        {
             return;
+        }
 
         ActivateTab(tab);
     }
 
-    /// <summary>
-    /// Handles a tree-view item being selected (double-click on a file opens it).
-    /// </summary>
     public void OnProjectItemSelected(ProjectItem item)
     {
         ArgumentNullException.ThrowIfNull(item);
 
         if (!item.IsDirectory)
+        {
             OpenFileByPath(item.FullPath);
+        }
     }
 }

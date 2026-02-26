@@ -1,6 +1,6 @@
 using System.Windows.Input;
 
-namespace KaneCode;
+namespace KaneCode.Infrastructure;
 
 /// <summary>
 /// A simple <see cref="ICommand"/> implementation that delegates to Action/Func callbacks.

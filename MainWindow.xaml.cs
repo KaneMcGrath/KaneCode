@@ -1,6 +1,8 @@
 ﻿using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
+using KaneCode.Models;
+using KaneCode.ViewModels;
 
 namespace KaneCode;
 

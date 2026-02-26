@@ -3,7 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-        xmlns:local="clr-namespace:KaneCode"
+        xmlns:models="clr-namespace:KaneCode.Models"
         xmlns:avalonEdit="http://icsharpcode.net/sharpdevelop/avalonedit"
         mc:Ignorable="d"
         Title="{Binding WindowTitle}" Height="450" Width="800"
@@ -73,7 +73,7 @@
                               Foreground="{DynamicResource PanelForeground}"
                               MouseDoubleClick="FileTree_MouseDoubleClick">
                         <TreeView.ItemTemplate>
-                            <HierarchicalDataTemplate DataType="{x:Type local:ProjectItem}"
+                            <HierarchicalDataTemplate DataType="{x:Type models:ProjectItem}"
                                                        ItemsSource="{Binding Children}">
                                 <StackPanel Orientation="Horizontal" Margin="2">
                                     <TextBlock Text="{Binding Name}" />
@@ -140,7 +140,7 @@
                             </Style>
                         </ListBox.ItemContainerStyle>
                         <ListBox.ItemTemplate>
-                            <DataTemplate DataType="{x:Type local:OpenFileTab}">
+                            <DataTemplate DataType="{x:Type models:OpenFileTab}">
                                 <StackPanel Orientation="Horizontal">
                                     <TextBlock Text="{Binding DisplayName}" Margin="8,2,4,2" FontSize="12"
                                                VerticalAlignment="Center" />

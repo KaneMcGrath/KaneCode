@@ -1,4 +1,6 @@
-namespace KaneCode;
+using KaneCode.Infrastructure;
+
+namespace KaneCode.Models;
 
 /// <summary>
 /// Tracks an open file tab in the editor.
@@ -26,7 +28,9 @@ public sealed class OpenFileTab : ObservableObject
         set
         {
             if (SetProperty(ref _isDirty, value))
+            {
                 OnPropertyChanged(nameof(DisplayName));
+            }
         }
     }
 

@@ -1,4 +1,4 @@
-namespace KaneCode;
+namespace KaneCode.Theming;
 
 /// <summary>
 /// String constants for all theme-aware resource keys used across the application.

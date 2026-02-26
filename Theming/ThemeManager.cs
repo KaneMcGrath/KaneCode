@@ -1,6 +1,6 @@
 using System.Windows;
 
-namespace KaneCode;
+namespace KaneCode.Theming;
 
 /// <summary>
 /// Manages application themes by swapping resource dictionaries at runtime.
@@ -27,7 +27,9 @@ internal static class ThemeManager
         var appResources = Application.Current.Resources;
 
         if (_currentThemeDictionary is not null)
+        {
             appResources.MergedDictionaries.Remove(_currentThemeDictionary);
+        }
 
         appResources.MergedDictionaries.Add(newDictionary);
         _currentThemeDictionary = newDictionary;
@@ -44,7 +46,9 @@ internal static class ThemeManager
         var appResources = Application.Current.Resources;
 
         if (_currentThemeDictionary is not null)
+        {
             appResources.MergedDictionaries.Remove(_currentThemeDictionary);
+        }
 
         appResources.MergedDictionaries.Add(newDictionary);
         _currentThemeDictionary = newDictionary;

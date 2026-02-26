@@ -1,7 +1,8 @@
 using System.Collections.ObjectModel;
 using System.IO;
+using KaneCode.Infrastructure;
 
-namespace KaneCode;
+namespace KaneCode.Models;
 
 /// <summary>
 /// Represents a file or directory node in the project explorer tree.

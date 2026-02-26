@@ -1,6 +1,7 @@
 using System.IO;
+using KaneCode.Models;
 
-namespace KaneCode;
+namespace KaneCode.Services;
 
 /// <summary>
 /// Provides file I/O and syntax-highlighting resolution for the editor.
@@ -36,7 +37,9 @@ internal static class EditorService
 
         var directory = Path.GetDirectoryName(path);
         if (!string.IsNullOrEmpty(directory))
+        {
             Directory.CreateDirectory(directory);
+        }
 
         File.WriteAllText(path, content);
     }
@@ -85,7 +88,9 @@ internal static class EditorService
             foreach (var dir in dirInfo.EnumerateDirectories().OrderBy(d => d.Name, StringComparer.OrdinalIgnoreCase))
             {
                 if (ExcludedDirectories.Contains(dir.Name))
+                {
                     continue;
+                }
 
                 var dirItem = new ProjectItem(dir.FullName, isDirectory: true);
                 PopulateChildren(dirItem, dir);
@@ -95,7 +100,9 @@ internal static class EditorService
             foreach (var file in dirInfo.EnumerateFiles().OrderBy(f => f.Name, StringComparer.OrdinalIgnoreCase))
             {
                 if (ExcludedFiles.Contains(file.Extension))
+                {
                     continue;
+                }
 
                 parent.Children.Add(new ProjectItem(file.FullName, isDirectory: false));
             }
