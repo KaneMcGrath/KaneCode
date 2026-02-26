@@ -38,12 +38,12 @@
 - Click row → navigate to source location
 - Files: `MainWindow.xaml`, new `Controls/ErrorListPanel.xaml`
 
-- [~] **2.2 Go to Definition (F12 / Ctrl+Click)**
+- [X] **2.2 Go to Definition (F12 / Ctrl+Click)**
   - Use `SymbolFinder.FindSourceDeclarationsAsync` or `IGoToDefinitionService`
   - Navigate to source location in the editor
   - Files: new `Services/RoslynNavigationService.cs`, `ViewModels/MainViewModel.cs`
 
-- [ ] **2.3 Find / Replace**
+- [X] **2.3 Find / Replace**
   - Enable AvalonEdit's built-in `SearchPanel` (minimal code)
   - Bind Ctrl+F / Ctrl+H
   - Files: `ViewModels/MainViewModel.cs`, `MainWindow.xaml.cs`

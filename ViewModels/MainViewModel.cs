@@ -1,6 +1,7 @@
 using ICSharpCode.AvalonEdit;
 using ICSharpCode.AvalonEdit.CodeCompletion;
 using ICSharpCode.AvalonEdit.Highlighting;
+using ICSharpCode.AvalonEdit.Search;
 using KaneCode.Infrastructure;
 using KaneCode.Models;
 using KaneCode.Services;
@@ -28,6 +29,7 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
     private readonly RoslynNavigationService _navigationService;
     private RoslynClassificationColorizer? _classificationColorizer;
     private RoslynDiagnosticRenderer? _diagnosticRenderer;
+    private SearchPanel? _searchPanel;
     private CompletionWindow? _completionWindow;
     private CancellationTokenSource? _analysisCts;
     private CancellationTokenSource? _navigationCts;
@@ -54,6 +56,8 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
         CutCommand = new RelayCommand(_ => _editor?.Cut(), _ => _editor is not null);
         CopyCommand = new RelayCommand(_ => _editor?.Copy(), _ => _editor is not null);
         PasteCommand = new RelayCommand(_ => _editor?.Paste(), _ => _editor is not null);
+        FindCommand = new RelayCommand(_ => ShowFindPanel(), _ => _editor is not null);
+        ReplaceCommand = new RelayCommand(_ => ShowReplacePanel(), _ => _editor is not null);
         GoToDefinitionCommand = new RelayCommand(async _ => await GoToDefinitionAsync(), _ => CanGoToDefinition());
         CloseTabCommand = new RelayCommand(param => CloseTab(param as OpenFileTab), _ => ActiveTab is not null);
         ExitCommand = new RelayCommand(_ => ExitApplication());
@@ -72,6 +76,8 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
     public ICommand CutCommand { get; }
     public ICommand CopyCommand { get; }
     public ICommand PasteCommand { get; }
+    public ICommand FindCommand { get; }
+    public ICommand ReplaceCommand { get; }
     public ICommand GoToDefinitionCommand { get; }
     public ICommand CloseTabCommand { get; }
     public ICommand ExitCommand { get; }
@@ -187,10 +193,44 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
         _diagnosticRenderer = new RoslynDiagnosticRenderer();
         _editor.TextArea.TextView.BackgroundRenderers.Add(_diagnosticRenderer);
 
+        _searchPanel = SearchPanel.Install(_editor.TextArea);
+
         _editor.TextArea.TextEntering += OnTextEntering;
         _editor.TextArea.TextEntered += OnTextEntered;
 
         ApplyEditorTheme();
+    }
+
+    private void ShowFindPanel()
+    {
+        if (_editor is null)
+        {
+            return;
+        }
+
+        if (ApplicationCommands.Find.CanExecute(null, _editor.TextArea))
+        {
+            ApplicationCommands.Find.Execute(null, _editor.TextArea);
+            return;
+        }
+
+        _searchPanel?.Open();
+    }
+
+    private void ShowReplacePanel()
+    {
+        if (_editor is null)
+        {
+            return;
+        }
+
+        if (ApplicationCommands.Replace.CanExecute(null, _editor.TextArea))
+        {
+            ApplicationCommands.Replace.Execute(null, _editor.TextArea);
+            return;
+        }
+
+        _searchPanel?.Open();
     }
 
     private void NewFile()

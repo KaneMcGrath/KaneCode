@@ -23,6 +23,7 @@ Primary capabilities currently implemented:
 - Error list panel with click-to-navigate
 - C# completion (`.` auto-trigger and `Ctrl+Space`)
 - Go to Definition (`F12`, `Ctrl+Click`)
+- Find / Replace (`Ctrl+F`, `Ctrl+H`) via AvalonEdit `SearchPanel`
 - Light/Dark theme switching (via Options window)
 - Options window with categorized settings (General, Appearance, Hotkeys)
 - Multi-tab editing with per-tab `TextDocument` (undo/redo preserved per tab)
@@ -84,6 +85,7 @@ Pattern used: practical MVVM without a framework. The ViewModel still directly t
 3. `MainWindow.OnLoaded(...)`
    - Calls `MainViewModel.AttachEditor(CodeEditor)`.
    - Adds `Ctrl+Space` binding to trigger completion.
+   - Adds `Ctrl+F` / `Ctrl+H` bindings for Find / Replace.
    - Adds `F12` and `Ctrl+Click` handlers to trigger Go to Definition.
 
 4. `MainWindow.OnClosed(...)`
@@ -120,6 +122,7 @@ Tab strip binds to `OpenTabs`; selecting a tab calls `SwitchToTab`. Closing a ta
 - Theme response (`ThemeManager.ThemeChanged`)
 - Roslyn analysis scheduling (debounced)
 - Completion popup creation
+- Find / Replace command handling
 - Status text and loading status
 
 ### Key state
@@ -270,6 +273,19 @@ Triggers:
 
 - Auto: `.`
 - Manual: `Ctrl+Space`
+
+---
+
+## 12.1 Find / Replace behavior
+
+`MainViewModel.AttachEditor(...)` installs AvalonEdit's built-in `SearchPanel` on the editor text area.
+
+`FindCommand` / `ReplaceCommand` execute WPF `ApplicationCommands.Find` and `ApplicationCommands.Replace` against the editor, with fallback to opening the search panel.
+
+Triggers:
+
+- `Ctrl+F`: open find UI
+- `Ctrl+H`: open replace UI
 
 ---
 

@@ -31,6 +31,16 @@ public partial class MainWindow : Window
             Key.Space,
             ModifierKeys.Control));
 
+        CodeEditor.InputBindings.Add(new KeyBinding(
+            _viewModel.FindCommand,
+            Key.F,
+            ModifierKeys.Control));
+
+        CodeEditor.InputBindings.Add(new KeyBinding(
+            _viewModel.ReplaceCommand,
+            Key.H,
+            ModifierKeys.Control));
+
         // F12 triggers Go to Definition
         CodeEditor.InputBindings.Add(new KeyBinding(
             new RelayInputCommand(async () => await _viewModel.GoToDefinitionAsync()),
