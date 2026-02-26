@@ -84,4 +84,12 @@ internal static class ThemeResourceKeys
     public const string CompletionForeground = nameof(CompletionForeground);
     public const string CompletionSelectedBackground = nameof(CompletionSelectedBackground);
     public const string CompletionBorder = nameof(CompletionBorder);
+
+    // Error list panel
+    public const string ErrorListBackground = nameof(ErrorListBackground);
+    public const string ErrorListForeground = nameof(ErrorListForeground);
+    public const string ErrorListHeaderBackground = nameof(ErrorListHeaderBackground);
+    public const string ErrorListHeaderForeground = nameof(ErrorListHeaderForeground);
+    public const string ErrorListSelectedBackground = nameof(ErrorListSelectedBackground);
+    public const string ErrorListGridLine = nameof(ErrorListGridLine);
 }

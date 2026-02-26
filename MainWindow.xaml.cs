@@ -54,6 +54,11 @@ public partial class MainWindow : Window
         }
     }
 
+    private void ErrorList_NavigateRequested(object? sender, DiagnosticItem item)
+    {
+        _viewModel.NavigateToDiagnostic(item);
+    }
+
     /// <summary>
     /// Simple ICommand wrapper for async actions used by input bindings.
     /// </summary>

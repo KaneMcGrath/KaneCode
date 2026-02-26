@@ -1,13 +1,14 @@
 ﻿<Window x:Class="KaneCode.MainWindow"
-        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
-        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-        xmlns:models="clr-namespace:KaneCode.Models"
-        xmlns:avalonEdit="http://icsharpcode.net/sharpdevelop/avalonedit"
-        mc:Ignorable="d"
-        Title="{Binding WindowTitle}" Height="450" Width="800"
-        Background="{DynamicResource WindowBackground}">
+xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+xmlns:models="clr-namespace:KaneCode.Models"
+xmlns:controls="clr-namespace:KaneCode.Controls"
+xmlns:avalonEdit="http://icsharpcode.net/sharpdevelop/avalonedit"
+mc:Ignorable="d"
+Title="{Binding WindowTitle}" Height="450" Width="800"
+Background="{DynamicResource WindowBackground}">
     <DockPanel>
         <!-- Top Bar -->
         <Menu DockPanel.Dock="Top"
@@ -98,77 +99,97 @@
                           VerticalAlignment="Stretch"
                           Background="{DynamicResource SplitterBackground}" />
 
-            <!-- Middle Panel - Code Editor -->
+            <!-- Middle Panel - Code Editor + Error List -->
             <Border Grid.Column="2" Background="{DynamicResource EditorBackground}">
-                <DockPanel>
-                    <!-- Tab strip -->
-                    <ListBox DockPanel.Dock="Top"
-                             ItemsSource="{Binding OpenTabs}"
-                             SelectedItem="{Binding ActiveTab, Mode=OneWay}"
-                             SelectionChanged="TabList_SelectionChanged"
-                             Background="{DynamicResource TabStripBackground}"
-                             BorderThickness="0"
-                             Height="28">
-                        <ListBox.ItemsPanel>
-                            <ItemsPanelTemplate>
-                                <StackPanel Orientation="Horizontal" />
-                            </ItemsPanelTemplate>
-                        </ListBox.ItemsPanel>
-                        <ListBox.ItemContainerStyle>
-                            <Style TargetType="ListBoxItem">
-                                <Setter Property="Background" Value="Transparent" />
-                                <Setter Property="Foreground" Value="{DynamicResource TabForeground}" />
-                                <Setter Property="Padding" Value="0" />
-                                <Setter Property="Margin" Value="0" />
-                                <Setter Property="Template">
-                                    <Setter.Value>
-                                        <ControlTemplate TargetType="ListBoxItem">
-                                            <Border x:Name="Bd"
-                                                    Background="{TemplateBinding Background}"
-                                                    Padding="{TemplateBinding Padding}">
-                                                <ContentPresenter />
-                                            </Border>
-                                            <ControlTemplate.Triggers>
-                                                <Trigger Property="IsSelected" Value="True">
-                                                    <Setter TargetName="Bd" Property="Background"
-                                                            Value="{DynamicResource TabSelectedBackground}" />
-                                                    <Setter Property="Foreground"
-                                                            Value="{DynamicResource TabSelectedForeground}" />
-                                                </Trigger>
-                                            </ControlTemplate.Triggers>
-                                        </ControlTemplate>
-                                    </Setter.Value>
-                                </Setter>
-                            </Style>
-                        </ListBox.ItemContainerStyle>
-                        <ListBox.ItemTemplate>
-                            <DataTemplate DataType="{x:Type models:OpenFileTab}">
-                                <StackPanel Orientation="Horizontal">
-                                    <TextBlock Text="{Binding DisplayName}" Margin="8,2,4,2" FontSize="12"
-                                               VerticalAlignment="Center" />
-                                    <Button Content="✕" FontSize="10" Padding="2,0"
-                                            VerticalAlignment="Center"
-                                            Foreground="{DynamicResource TabCloseButtonForeground}"
-                                            Background="Transparent" BorderThickness="0" Cursor="Hand"
-                                            Command="{Binding DataContext.CloseTabCommand,
-                                                RelativeSource={RelativeSource AncestorType=Window}}"
-                                            CommandParameter="{Binding}" />
-                                </StackPanel>
-                            </DataTemplate>
-                        </ListBox.ItemTemplate>
-                    </ListBox>
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="*" MinHeight="50" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="150" MinHeight="50" />
+                    </Grid.RowDefinitions>
 
-                    <!-- Editor -->
-                    <avalonEdit:TextEditor x:Name="CodeEditor"
-                                           FontFamily="Cascadia Code, Consolas, Courier New"
-                                           FontSize="14"
-                                           ShowLineNumbers="True"
-                                           LineNumbersForeground="{DynamicResource EditorLineNumbersForeground}"
-                                           Background="{DynamicResource EditorBackground}"
-                                           Foreground="{DynamicResource EditorForeground}"
-                                           HorizontalScrollBarVisibility="Auto"
-                                           VerticalScrollBarVisibility="Auto" />
-                </DockPanel>
+                    <DockPanel Grid.Row="0">
+                        <!-- Tab strip -->
+                        <ListBox DockPanel.Dock="Top"
+                                 ItemsSource="{Binding OpenTabs}"
+                                 SelectedItem="{Binding ActiveTab, Mode=OneWay}"
+                                 SelectionChanged="TabList_SelectionChanged"
+                                 Background="{DynamicResource TabStripBackground}"
+                                 BorderThickness="0"
+                                 Height="28">
+                            <ListBox.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <StackPanel Orientation="Horizontal" />
+                                </ItemsPanelTemplate>
+                            </ListBox.ItemsPanel>
+                            <ListBox.ItemContainerStyle>
+                                <Style TargetType="ListBoxItem">
+                                    <Setter Property="Background" Value="Transparent" />
+                                    <Setter Property="Foreground" Value="{DynamicResource TabForeground}" />
+                                    <Setter Property="Padding" Value="0" />
+                                    <Setter Property="Margin" Value="0" />
+                                    <Setter Property="Template">
+                                        <Setter.Value>
+                                            <ControlTemplate TargetType="ListBoxItem">
+                                                <Border x:Name="Bd"
+                                                        Background="{TemplateBinding Background}"
+                                                        Padding="{TemplateBinding Padding}">
+                                                    <ContentPresenter />
+                                                </Border>
+                                                <ControlTemplate.Triggers>
+                                                    <Trigger Property="IsSelected" Value="True">
+                                                        <Setter TargetName="Bd" Property="Background"
+                                                                Value="{DynamicResource TabSelectedBackground}" />
+                                                        <Setter Property="Foreground"
+                                                                Value="{DynamicResource TabSelectedForeground}" />
+                                                    </Trigger>
+                                                </ControlTemplate.Triggers>
+                                            </ControlTemplate>
+                                        </Setter.Value>
+                                    </Setter>
+                                </Style>
+                            </ListBox.ItemContainerStyle>
+                            <ListBox.ItemTemplate>
+                                <DataTemplate DataType="{x:Type models:OpenFileTab}">
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock Text="{Binding DisplayName}" Margin="8,2,4,2" FontSize="12"
+                                                   VerticalAlignment="Center" />
+                                        <Button Content="✕" FontSize="10" Padding="2,0"
+                                                VerticalAlignment="Center"
+                                                Foreground="{DynamicResource TabCloseButtonForeground}"
+                                                Background="Transparent" BorderThickness="0" Cursor="Hand"
+                                                Command="{Binding DataContext.CloseTabCommand,
+                                                    RelativeSource={RelativeSource AncestorType=Window}}"
+                                                CommandParameter="{Binding}" />
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+
+                        <!-- Editor -->
+                        <avalonEdit:TextEditor x:Name="CodeEditor"
+                                               FontFamily="Cascadia Code, Consolas, Courier New"
+                                               FontSize="14"
+                                               ShowLineNumbers="True"
+                                               LineNumbersForeground="{DynamicResource EditorLineNumbersForeground}"
+                                               Background="{DynamicResource EditorBackground}"
+                                               Foreground="{DynamicResource EditorForeground}"
+                                               HorizontalScrollBarVisibility="Auto"
+                                               VerticalScrollBarVisibility="Auto" />
+                    </DockPanel>
+
+                    <!-- Horizontal splitter between editor and error list -->
+                    <GridSplitter Grid.Row="1" Height="4"
+                                  HorizontalAlignment="Stretch"
+                                  VerticalAlignment="Center"
+                                  Background="{DynamicResource SplitterBackground}" />
+
+                    <!-- Error List Panel -->
+                    <controls:ErrorListPanel Grid.Row="2"
+                                             x:Name="ErrorList"
+                                             Diagnostics="{Binding DiagnosticItems}"
+                                             NavigateRequested="ErrorList_NavigateRequested" />
+                </Grid>
             </Border>
 
             <!-- Splitter between Panel 2 and Panel 3 -->

@@ -81,4 +81,12 @@
     <SolidColorBrush x:Key="CompletionSelectedBackground" Color="#C9DEF5" />
     <SolidColorBrush x:Key="CompletionBorder" Color="#CCCCCC" />
 
+    <!-- Error list panel -->
+    <SolidColorBrush x:Key="ErrorListBackground" Color="#FFFFFF" />
+    <SolidColorBrush x:Key="ErrorListForeground" Color="#1E1E1E" />
+    <SolidColorBrush x:Key="ErrorListHeaderBackground" Color="#E8E8E8" />
+    <SolidColorBrush x:Key="ErrorListHeaderForeground" Color="#1E1E1E" />
+    <SolidColorBrush x:Key="ErrorListSelectedBackground" Color="#C9DEF5" />
+    <SolidColorBrush x:Key="ErrorListGridLine" Color="#CCCCCC" />
+
 </ResourceDictionary>

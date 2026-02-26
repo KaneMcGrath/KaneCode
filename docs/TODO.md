@@ -33,10 +33,10 @@
 
 > The features most expected in a code editor.
 
-- [ ] **2.1 Error list panel**
-  - Add a data grid below the editor showing diagnostics (error, warning, info)
-  - Click row → navigate to source location
-  - Files: `MainWindow.xaml`, new `Controls/ErrorListPanel.xaml`
+- [x] **2.1 Error list panel**
+- Add a data grid below the editor showing diagnostics (error, warning, info)
+- Click row → navigate to source location
+- Files: `MainWindow.xaml`, new `Controls/ErrorListPanel.xaml`
 
 - [ ] **2.2 Go to Definition (F12 / Ctrl+Click)**
   - Use `SymbolFinder.FindSourceDeclarationsAsync` or `IGoToDefinitionService`
@@ -173,4 +173,14 @@
   - `Description` getter returns the pre-fetched result if ready, otherwise falls back to `DisplayText` (no blocking)
   - `Complete` uses the pre-fetched `CompletionChange` if ready, otherwise falls back to simple text insertion (no blocking)
   - Errors in background fetches are logged via `Debug.WriteLine` and handled gracefully with fallbacks
+
+- [x] **2.1 Error list panel** — 2025-07-16
+  - New `Controls/ErrorListPanel.xaml` with themed DataGrid showing severity icon, code, description, file, line, column
+  - Header bar with summary counts (errors, warnings, messages) that update live via CollectionChanged
+  - Double-click row raises `NavigateRequested` event → `MainViewModel.NavigateToDiagnostic()` opens file and scrolls to offset
+  - New `Models/DiagnosticItem.cs` record with `SeverityIcon` property (🛑/⚠/ℹ)
+  - `MainViewModel.RunRoslynAnalysisAsync` populates `DiagnosticItems` with line/column info from Roslyn source text
+  - Panel placed below editor in `MainWindow.xaml` with resizable GridSplitter
+  - Theme resources added to both `DarkTheme.xaml` and `LightTheme.xaml` (ErrorListBackground, ErrorListForeground, etc.)
+  - Status bar shows diagnostic summary (error/warning counts)
 

@@ -110,6 +110,11 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
 
     public ObservableCollection<OpenFileTab> OpenTabs { get; } = [];
 
+    /// <summary>
+    /// Diagnostics shown in the error list panel, updated after each analysis pass.
+    /// </summary>
+    public ObservableCollection<DiagnosticItem> DiagnosticItems { get; } = [];
+
     private OpenFileTab? _activeTab;
     public OpenFileTab? ActiveTab
     {
@@ -253,6 +258,11 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
 
     private async Task LoadProjectFileAsync(string projectPath)
     {
+        if (!await CloseAllTabsAsync().ConfigureAwait(true))
+        {
+            return;
+        }
+
         CancelPreviousLoad();
         var cts = new CancellationTokenSource();
         _loadCts = cts;
@@ -307,6 +317,11 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
 
     private async Task LoadSolutionFileAsync(string solutionPath)
     {
+        if (!await CloseAllTabsAsync().ConfigureAwait(true))
+        {
+            return;
+        }
+
         CancelPreviousLoad();
         var cts = new CancellationTokenSource();
         _loadCts = cts;
@@ -775,11 +790,43 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
                 entries.Add(new DiagnosticEntry(span.Start, span.End, diag.Severity, diag.GetMessage(), diag.Id));
             }
 
+            // Build error list items with line/column info
+            var document = _roslynService.GetDocument(filePath);
+            var sourceText = document is not null
+                ? await document.GetTextAsync(cancellationToken).ConfigureAwait(false)
+                : null;
+
+            var diagnosticItems = new List<DiagnosticItem>();
+            var fileName = Path.GetFileName(filePath);
+            foreach (var entry in entries)
+            {
+                var line = 0;
+                var column = 0;
+                if (sourceText is not null && entry.Start >= 0 && entry.Start <= sourceText.Length)
+                {
+                    var linePosition = sourceText.Lines.GetLinePosition(entry.Start);
+                    line = linePosition.Line + 1;
+                    column = linePosition.Character + 1;
+                }
+
+                diagnosticItems.Add(new DiagnosticItem(
+                    entry.Severity, entry.Id, entry.Message,
+                    fileName, line, column,
+                    entry.Start, entry.End, filePath));
+            }
+
             // Update UI on dispatcher
             await Application.Current.Dispatcher.InvokeAsync(() =>
             {
                 _diagnosticRenderer?.UpdateDiagnostics(entries);
                 _editor?.TextArea.TextView.Redraw();
+
+                // Update error list panel
+                DiagnosticItems.Clear();
+                foreach (var item in diagnosticItems)
+                {
+                    DiagnosticItems.Add(item);
+                }
 
                 // Update status with diagnostic summary
                 var errorCount = entries.Count(e => e.Severity == DiagnosticSeverity.Error);
@@ -803,6 +850,94 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
     }
 
     private string? _diagnosticStatusText;
+
+    /// <summary>
+    /// Navigates the editor to the source location of the specified diagnostic.
+    /// Opens the file if it is not already open.
+    /// </summary>
+    public void NavigateToDiagnostic(DiagnosticItem item)
+    {
+        ArgumentNullException.ThrowIfNull(item);
+
+        if (_editor is null)
+        {
+            return;
+        }
+
+        // Open the file if not already in a tab
+        var tab = OpenTabs.FirstOrDefault(t =>
+            string.Equals(t.FilePath, item.FilePath, StringComparison.OrdinalIgnoreCase));
+
+        if (tab is null)
+        {
+            OpenFileByPath(item.FilePath);
+            tab = ActiveTab;
+        }
+        else if (tab != ActiveTab)
+        {
+            ActivateTab(tab);
+        }
+
+        if (tab is null)
+        {
+            return;
+        }
+
+        // Navigate to offset
+        var offset = Math.Min(item.StartOffset, _editor.Document.TextLength);
+        if (offset >= 0)
+        {
+            _editor.CaretOffset = offset;
+            _editor.ScrollToLine(item.Line);
+            _editor.TextArea.Focus();
+        }
+    }
+
+    /// <summary>
+    /// Closes all open tabs, prompting to save dirty files. Returns false if the user cancels.
+    /// </summary>
+    private async Task<bool> CloseAllTabsAsync()
+    {
+        foreach (var tab in OpenTabs.Where(t => t.IsDirty).ToList())
+        {
+            ActiveTab = tab;
+            var result = MessageBox.Show(
+                $"Save changes to {tab.FileName}?",
+                "Unsaved Changes",
+                MessageBoxButton.YesNoCancel,
+                MessageBoxImage.Warning);
+
+            switch (result)
+            {
+                case MessageBoxResult.Yes:
+                    Save();
+                    break;
+                case MessageBoxResult.Cancel:
+                    return false;
+            }
+        }
+
+        foreach (var tab in OpenTabs.ToList())
+        {
+            await _roslynService.CloseDocumentAsync(tab.FilePath).ConfigureAwait(true);
+        }
+
+        OpenTabs.Clear();
+        ActiveTab = null;
+        DiagnosticItems.Clear();
+        _diagnosticRenderer?.UpdateDiagnostics([]);
+        _diagnosticStatusText = null;
+
+        if (_editor is not null)
+        {
+            _editor.Document = new ICSharpCode.AvalonEdit.Document.TextDocument();
+        }
+
+        OnPropertyChanged(nameof(WindowTitle));
+        OnPropertyChanged(nameof(StatusText));
+
+        return true;
+    }
 
     /// <summary>
     /// Clears <see cref="LoadingStatus"/> after a delay so it doesn't permanently override status text.
