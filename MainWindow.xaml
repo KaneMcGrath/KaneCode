@@ -31,6 +31,8 @@ Background="{DynamicResource WindowBackground}">
                 <MenuItem Header="_Undo" Command="{Binding UndoCommand}" InputGestureText="Ctrl+Z" />
                 <MenuItem Header="_Redo" Command="{Binding RedoCommand}" InputGestureText="Ctrl+Y" />
                 <Separator />
+                <MenuItem Header="Go to _Definition" Command="{Binding GoToDefinitionCommand}" InputGestureText="F12" />
+                <Separator />
                 <MenuItem Header="Cu_t" Command="{Binding CutCommand}" InputGestureText="Ctrl+X" />
                 <MenuItem Header="_Copy" Command="{Binding CopyCommand}" InputGestureText="Ctrl+C" />
                 <MenuItem Header="_Paste" Command="{Binding PasteCommand}" InputGestureText="Ctrl+V" />

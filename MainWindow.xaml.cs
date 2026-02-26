@@ -30,11 +30,32 @@ public partial class MainWindow : Window
             new RelayInputCommand(async () => await _viewModel.ShowCompletionWindowAsync()),
             Key.Space,
             ModifierKeys.Control));
+
+        // F12 triggers Go to Definition
+        CodeEditor.InputBindings.Add(new KeyBinding(
+            new RelayInputCommand(async () => await _viewModel.GoToDefinitionAsync()),
+            Key.F12,
+            ModifierKeys.None));
+
+        // Ctrl+Click triggers Go to Definition
+        CodeEditor.PreviewMouseLeftButtonUp += CodeEditor_PreviewMouseLeftButtonUp;
     }
 
     private void OnClosed(object? sender, EventArgs e)
     {
+        CodeEditor.PreviewMouseLeftButtonUp -= CodeEditor_PreviewMouseLeftButtonUp;
         _viewModel.Dispose();
+    }
+
+    private async void CodeEditor_PreviewMouseLeftButtonUp(object sender, MouseButtonEventArgs e)
+    {
+        if ((Keyboard.Modifiers & ModifierKeys.Control) != ModifierKeys.Control)
+        {
+            return;
+        }
+
+        await _viewModel.GoToDefinitionAsync();
+        e.Handled = true;
     }
 
     private void FileTree_MouseDoubleClick(object sender, MouseButtonEventArgs e)

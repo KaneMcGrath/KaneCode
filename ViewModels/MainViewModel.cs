@@ -25,10 +25,12 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
 
     private readonly RoslynWorkspaceService _roslynService = new();
     private readonly RoslynCompletionProvider _completionProvider;
+    private readonly RoslynNavigationService _navigationService;
     private RoslynClassificationColorizer? _classificationColorizer;
     private RoslynDiagnosticRenderer? _diagnosticRenderer;
     private CompletionWindow? _completionWindow;
     private CancellationTokenSource? _analysisCts;
+    private CancellationTokenSource? _navigationCts;
     private CancellationTokenSource? _loadCts;
     private bool _isLoadingProject;
     private readonly TimeSpan _analysisDelay = TimeSpan.FromMilliseconds(500);
@@ -38,6 +40,7 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
     {
         ThemeManager.ThemeChanged += OnThemeChanged;
         _completionProvider = new RoslynCompletionProvider(_roslynService);
+        _navigationService = new RoslynNavigationService(_roslynService);
 
         NewFileCommand = new RelayCommand(_ => NewFile());
         OpenFileCommand = new RelayCommand(_ => OpenFile());
@@ -51,6 +54,7 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
         CutCommand = new RelayCommand(_ => _editor?.Cut(), _ => _editor is not null);
         CopyCommand = new RelayCommand(_ => _editor?.Copy(), _ => _editor is not null);
         PasteCommand = new RelayCommand(_ => _editor?.Paste(), _ => _editor is not null);
+        GoToDefinitionCommand = new RelayCommand(async _ => await GoToDefinitionAsync(), _ => CanGoToDefinition());
         CloseTabCommand = new RelayCommand(param => CloseTab(param as OpenFileTab), _ => ActiveTab is not null);
         ExitCommand = new RelayCommand(_ => ExitApplication());
         OpenOptionsCommand = new RelayCommand(_ => OpenOptions());
@@ -68,6 +72,7 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
     public ICommand CutCommand { get; }
     public ICommand CopyCommand { get; }
     public ICommand PasteCommand { get; }
+    public ICommand GoToDefinitionCommand { get; }
     public ICommand CloseTabCommand { get; }
     public ICommand ExitCommand { get; }
     public ICommand OpenOptionsCommand { get; }
@@ -901,6 +906,74 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
     }
 
     /// <summary>
+    /// Navigates to the source definition for the symbol at the caret (or provided offset).
+    /// </summary>
+    public async Task GoToDefinitionAsync(int? offset = null)
+    {
+        if (_editor is null || ActiveTab is null || !RoslynWorkspaceService.IsCSharpFile(ActiveTab.FilePath))
+        {
+            return;
+        }
+
+        _navigationCts?.Cancel();
+        _navigationCts?.Dispose();
+        _navigationCts = new CancellationTokenSource();
+        var ct = _navigationCts.Token;
+
+        try
+        {
+            var targetOffset = offset ?? _editor.CaretOffset;
+            await _roslynService.UpdateDocumentTextAsync(ActiveTab.FilePath, _editor.Text, ct).ConfigureAwait(true);
+
+            var target = await _navigationService
+                .FindDefinitionAsync(ActiveTab.FilePath, targetOffset, ct)
+                .ConfigureAwait(true);
+
+            if (target is null)
+            {
+                return;
+            }
+
+            // Open the target file if needed, then move caret to definition location.
+            var tab = OpenTabs.FirstOrDefault(t =>
+                string.Equals(t.FilePath, target.FilePath, StringComparison.OrdinalIgnoreCase));
+
+            if (tab is null)
+            {
+                OpenFileByPath(target.FilePath);
+                tab = ActiveTab;
+            }
+            else if (tab != ActiveTab)
+            {
+                ActivateTab(tab);
+            }
+
+            if (tab is null)
+            {
+                return;
+            }
+
+            var clampedOffset = Math.Clamp(target.Offset, 0, _editor.Document.TextLength);
+            _editor.CaretOffset = clampedOffset;
+
+            var line = _editor.Document.GetLineByOffset(clampedOffset);
+            _editor.ScrollToLine(line.LineNumber);
+            _editor.TextArea.Focus();
+        }
+        catch (OperationCanceledException)
+        {
+            // Superseded by a newer navigation request.
+        }
+    }
+
+    private bool CanGoToDefinition()
+    {
+        return _editor is not null
+            && ActiveTab is not null
+            && RoslynWorkspaceService.IsCSharpFile(ActiveTab.FilePath);
+    }
+
+    /// <summary>
     /// Closes all open tabs, prompting to save dirty files. Returns false if the user cancels.
     /// </summary>
     private async Task<bool> CloseAllTabsAsync()
@@ -992,6 +1065,8 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
         _loadingStatusClearCts?.Dispose();
         _analysisCts?.Cancel();
         _analysisCts?.Dispose();
+        _navigationCts?.Cancel();
+        _navigationCts?.Dispose();
         _roslynService.Dispose();
     }
 }

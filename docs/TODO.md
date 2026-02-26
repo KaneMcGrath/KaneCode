@@ -38,7 +38,7 @@
 - Click row → navigate to source location
 - Files: `MainWindow.xaml`, new `Controls/ErrorListPanel.xaml`
 
-- [ ] **2.2 Go to Definition (F12 / Ctrl+Click)**
+- [~] **2.2 Go to Definition (F12 / Ctrl+Click)**
   - Use `SymbolFinder.FindSourceDeclarationsAsync` or `IGoToDefinitionService`
   - Navigate to source location in the editor
   - Files: new `Services/RoslynNavigationService.cs`, `ViewModels/MainViewModel.cs`
