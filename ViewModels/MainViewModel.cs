@@ -810,6 +810,7 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
 
     public void Dispose()
     {
+        ThemeManager.ThemeChanged -= OnThemeChanged;
         CancelPreviousLoad();
         _analysisCts?.Cancel();
         _analysisCts?.Dispose();

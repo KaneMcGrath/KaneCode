@@ -52,7 +52,7 @@
 - Ref: architecture.md §5.2 #14
 - Files: `ViewModels/MainViewModel.cs`, `Models/OpenFileTab.cs`
 
-- [ ] **1.6 Unsubscribe ThemeChanged on dispose**
+- [X] **1.6 Unsubscribe ThemeChanged on dispose**
   - `ThemeManager.ThemeChanged += OnThemeChanged` is never removed
   - Leaks the ViewModel if recreated (static event holds reference)
   - Ref: architecture.md §5.1 #7
