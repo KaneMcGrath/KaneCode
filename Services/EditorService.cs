@@ -1,9 +1,9 @@
-using System.IO;
-using System.Windows;
-using System.Windows.Media;
 using ICSharpCode.AvalonEdit.Highlighting;
 using KaneCode.Models;
 using KaneCode.Theming;
+using System.IO;
+using System.Windows;
+using System.Windows.Media;
 
 namespace KaneCode.Services;
 

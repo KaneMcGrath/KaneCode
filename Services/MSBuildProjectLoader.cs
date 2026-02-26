@@ -60,7 +60,7 @@ internal sealed class MSBuildProjectLoader
     /// Loads a .sln file, discovers all C# projects, and loads them into the workspace.
     /// </summary>
     /// <returns>Information about the loaded solution.</returns>
-    public static LoadedSolutionInfo LoadSolution(string solutionPath, RoslynWorkspaceService workspaceService)
+    public static async Task<LoadedSolutionInfo> LoadSolutionAsync(string solutionPath, RoslynWorkspaceService workspaceService, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(solutionPath);
         ArgumentNullException.ThrowIfNull(workspaceService);
@@ -71,10 +71,12 @@ internal sealed class MSBuildProjectLoader
         var projectPaths = ParseSolutionProjectPaths(solutionPath, solutionDir);
         var loadedProjects = new List<LoadedProjectInfo>();
 
-        workspaceService.ClearWorkspace();
+        await workspaceService.ClearWorkspaceAsync(cancellationToken).ConfigureAwait(false);
 
         foreach (var projectPath in projectPaths)
         {
+            cancellationToken.ThrowIfCancellationRequested();
+
             if (!File.Exists(projectPath))
             {
                 continue;
@@ -88,7 +90,7 @@ internal sealed class MSBuildProjectLoader
 
             try
             {
-                var projectInfo = LoadProjectInternal(projectPath, workspaceService);
+                var projectInfo = await LoadProjectInternalAsync(projectPath, workspaceService, cancellationToken).ConfigureAwait(false);
                 if (projectInfo is not null)
                 {
                     loadedProjects.Add(projectInfo);
@@ -99,6 +101,9 @@ internal sealed class MSBuildProjectLoader
                 System.Diagnostics.Debug.WriteLine($"Failed to load project {projectPath}: {ex.Message}");
             }
         }
+
+        // Wire up project-to-project references now that all projects are loaded
+        await ResolveProjectReferencesAsync(loadedProjects, workspaceService, cancellationToken).ConfigureAwait(false);
 
         // Clean up the global project collection to avoid stale state
         ProjectCollection.GlobalProjectCollection.UnloadAllProjects();
@@ -112,18 +117,29 @@ internal sealed class MSBuildProjectLoader
     /// <summary>
     /// Loads a single .csproj file into the workspace.
     /// </summary>
-    public static LoadedProjectInfo? LoadProject(string projectPath, RoslynWorkspaceService workspaceService)
+    public static async Task<LoadedProjectInfo?> LoadProjectAsync(string projectPath, RoslynWorkspaceService workspaceService, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(projectPath);
         ArgumentNullException.ThrowIfNull(workspaceService);
 
         EnsureMSBuildRegistered();
 
-        workspaceService.ClearWorkspace();
+        await workspaceService.ClearWorkspaceAsync(cancellationToken).ConfigureAwait(false);
 
         try
         {
-            var info = LoadProjectInternal(projectPath, workspaceService);
+            var info = await LoadProjectInternalAsync(projectPath, workspaceService, cancellationToken).ConfigureAwait(false);
+            if (info is null)
+            {
+                ProjectCollection.GlobalProjectCollection.UnloadAllProjects();
+                return null;
+            }
+
+            // Load referenced projects and wire up references
+            var allLoaded = new List<LoadedProjectInfo> { info };
+            await LoadReferencedProjectsRecursiveAsync(info, allLoaded, workspaceService, cancellationToken).ConfigureAwait(false);
+            await ResolveProjectReferencesAsync(allLoaded, workspaceService, cancellationToken).ConfigureAwait(false);
+
             ProjectCollection.GlobalProjectCollection.UnloadAllProjects();
             return info;
         }
@@ -135,7 +151,7 @@ internal sealed class MSBuildProjectLoader
         }
     }
 
-    private static LoadedProjectInfo? LoadProjectInternal(string projectPath, RoslynWorkspaceService workspaceService)
+    private static async Task<LoadedProjectInfo?> LoadProjectInternalAsync(string projectPath, RoslynWorkspaceService workspaceService, CancellationToken cancellationToken)
     {
         var project = new MSBuildProject(projectPath, null, null, ProjectCollection.GlobalProjectCollection,
             ProjectLoadSettings.IgnoreMissingImports | ProjectLoadSettings.IgnoreInvalidImports);
@@ -199,6 +215,14 @@ internal sealed class MSBuildProjectLoader
             }
         }
 
+        // Collect ProjectReference paths for cross-project resolution
+        var projectReferencePaths = new List<string>();
+        foreach (var item in project.GetItems("ProjectReference"))
+        {
+            var refPath = Path.GetFullPath(Path.Combine(projectDir, item.EvaluatedInclude));
+            projectReferencePaths.Add(refPath);
+        }
+
         // Collect metadata references from resolved assemblies
         var metadataReferences = ResolveMetadataReferences(project, projectDir, targetFramework);
 
@@ -210,18 +234,22 @@ internal sealed class MSBuildProjectLoader
             parseOptions = parseOptions.WithPreprocessorSymbols((IEnumerable<string>)symbols);
         }
 
+        cancellationToken.ThrowIfCancellationRequested();
+
         // Register the project in the workspace
-        var projectId = workspaceService.AddProject(
+        var projectId = await workspaceService.AddProjectAsync(
             assemblyName,
             compilationOptions,
             parseOptions,
-            metadataReferences);
+            metadataReferences,
+            cancellationToken).ConfigureAwait(false);
 
         // Add source files
         foreach (var sourceFile in sourceFiles)
         {
+            cancellationToken.ThrowIfCancellationRequested();
             var text = File.ReadAllText(sourceFile);
-            workspaceService.AddDocumentToProject(projectId, sourceFile, text);
+            await workspaceService.AddDocumentToProjectAsync(projectId, sourceFile, text, cancellationToken).ConfigureAwait(false);
         }
 
         return new LoadedProjectInfo(
@@ -229,7 +257,8 @@ internal sealed class MSBuildProjectLoader
             projectName,
             targetFramework,
             projectId,
-            sourceFiles.ToImmutableArray());
+            sourceFiles.ToImmutableArray(),
+            projectReferencePaths.ToImmutableArray());
     }
 
     private static List<MetadataReference> ResolveMetadataReferences(
@@ -378,6 +407,107 @@ internal sealed class MSBuildProjectLoader
     }
 
     /// <summary>
+    /// Wires up Roslyn <see cref="ProjectReference"/>s between loaded projects
+    /// by matching each project's <c>ProjectReference</c> paths to already-loaded project paths.
+    /// </summary>
+    private static async Task ResolveProjectReferencesAsync(
+        List<LoadedProjectInfo> loadedProjects,
+        RoslynWorkspaceService workspaceService,
+        CancellationToken cancellationToken)
+    {
+        // Build a lookup from absolute project path ? loaded info
+        var pathToProject = new Dictionary<string, LoadedProjectInfo>(StringComparer.OrdinalIgnoreCase);
+        foreach (var project in loadedProjects)
+        {
+            pathToProject[project.ProjectPath] = project;
+        }
+
+        foreach (var project in loadedProjects)
+        {
+            if (project.ProjectReferencePaths.IsEmpty)
+            {
+                continue;
+            }
+
+            var referencedIds = new List<ProjectId>();
+            foreach (var refPath in project.ProjectReferencePaths)
+            {
+                if (pathToProject.TryGetValue(refPath, out var referencedProject))
+                {
+                    referencedIds.Add(referencedProject.RoslynProjectId);
+                }
+                else
+                {
+                    System.Diagnostics.Debug.WriteLine(
+                        $"ProjectReference '{refPath}' from '{project.Name}' was not loaded — skipping.");
+                }
+            }
+
+            if (referencedIds.Count > 0)
+            {
+                await workspaceService.AddProjectReferencesAsync(
+                    project.RoslynProjectId, referencedIds, cancellationToken).ConfigureAwait(false);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Recursively loads projects referenced by <paramref name="project"/> that have not yet been loaded.
+    /// Used when opening a single .csproj that references other projects.
+    /// </summary>
+    private static async Task LoadReferencedProjectsRecursiveAsync(
+        LoadedProjectInfo project,
+        List<LoadedProjectInfo> allLoaded,
+        RoslynWorkspaceService workspaceService,
+        CancellationToken cancellationToken)
+    {
+        var loadedPaths = new HashSet<string>(
+            allLoaded.Select(p => p.ProjectPath), StringComparer.OrdinalIgnoreCase);
+
+        foreach (var refPath in project.ProjectReferencePaths)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            if (loadedPaths.Contains(refPath))
+            {
+                continue;
+            }
+
+            if (!File.Exists(refPath))
+            {
+                System.Diagnostics.Debug.WriteLine(
+                    $"Referenced project not found: '{refPath}' — skipping.");
+                continue;
+            }
+
+            var ext = Path.GetExtension(refPath);
+            if (!ext.Equals(".csproj", StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            try
+            {
+                var refInfo = await LoadProjectInternalAsync(refPath, workspaceService, cancellationToken).ConfigureAwait(false);
+                if (refInfo is not null)
+                {
+                    allLoaded.Add(refInfo);
+                    loadedPaths.Add(refPath);
+
+                    // Recurse into this project's references
+                    await LoadReferencedProjectsRecursiveAsync(
+                        refInfo, allLoaded, workspaceService, cancellationToken).ConfigureAwait(false);
+                }
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                System.Diagnostics.Debug.WriteLine(
+                    $"Failed to load referenced project '{refPath}': {ex.Message}");
+            }
+        }
+    }
+
+    /// <summary>
     /// Parses a .sln file to extract project file paths.
     /// </summary>
     private static List<string> ParseSolutionProjectPaths(string solutionPath, string solutionDir)
@@ -421,11 +551,12 @@ internal sealed record LoadedSolutionInfo(
     ImmutableArray<LoadedProjectInfo> Projects);
 
 /// <summary>
-/// Information about a loaded project.
+/// Information about a loaded project, including paths to referenced projects.
 /// </summary>
 internal sealed record LoadedProjectInfo(
     string ProjectPath,
     string Name,
     string TargetFramework,
     ProjectId RoslynProjectId,
-    ImmutableArray<string> SourceFiles);
+    ImmutableArray<string> SourceFiles,
+    ImmutableArray<string> ProjectReferencePaths);

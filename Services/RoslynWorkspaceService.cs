@@ -4,7 +4,6 @@ using Microsoft.CodeAnalysis.Host.Mef;
 using Microsoft.CodeAnalysis.Text;
 using System.Collections.Concurrent;
 using System.IO;
-using System.Reflection;
 
 namespace KaneCode.Services;
 
@@ -15,6 +14,7 @@ namespace KaneCode.Services;
 internal sealed class RoslynWorkspaceService : IDisposable
 {
     private readonly AdhocWorkspace _workspace;
+    private readonly SemaphoreSlim _workspaceLock = new(1, 1);
     private ProjectId _projectId;
     private readonly ConcurrentDictionary<string, DocumentId> _documentIds = new(StringComparer.OrdinalIgnoreCase);
     private readonly ConcurrentDictionary<string, ProjectId> _projectIds = new(StringComparer.OrdinalIgnoreCase);
@@ -28,6 +28,7 @@ internal sealed class RoslynWorkspaceService : IDisposable
         InitializeDefaultProject();
     }
 
+    /// <remarks>Must only be called while <see cref="_workspaceLock"/> is held, or during construction.</remarks>
     private void InitializeDefaultProject()
     {
         _projectId = ProjectId.CreateNewId("KaneCodeProject");
@@ -60,17 +61,33 @@ internal sealed class RoslynWorkspaceService : IDisposable
     /// <summary>
     /// Opens or updates a document in the workspace.
     /// </summary>
-    public DocumentId OpenOrUpdateDocument(string filePath, string text)
+    public async Task<DocumentId> OpenOrUpdateDocumentAsync(string filePath, string text, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(filePath);
         ArgumentNullException.ThrowIfNull(text);
 
+        await _workspaceLock.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            return OpenOrUpdateDocumentUnsafe(filePath, text);
+        }
+        finally
+        {
+            _workspaceLock.Release();
+        }
+    }
+
+    /// <summary>
+    /// Opens or updates a document without acquiring the lock.
+    /// The caller must already hold <see cref="_workspaceLock"/>.
+    /// </summary>
+    private DocumentId OpenOrUpdateDocumentUnsafe(string filePath, string text)
+    {
         var sourceText = SourceText.From(text);
 
         if (_documentIds.TryGetValue(filePath, out var existingId))
         {
-            var currentSolution = _workspace.CurrentSolution;
-            var updatedSolution = currentSolution.WithDocumentText(existingId, sourceText);
+            var updatedSolution = _workspace.CurrentSolution.WithDocumentText(existingId, sourceText);
             _workspace.TryApplyChanges(updatedSolution);
             return existingId;
         }
@@ -92,33 +109,50 @@ internal sealed class RoslynWorkspaceService : IDisposable
     /// <summary>
     /// Updates the text of a document already tracked in the workspace.
     /// </summary>
-    public void UpdateDocumentText(string filePath, string text)
+    public async Task UpdateDocumentTextAsync(string filePath, string text, CancellationToken cancellationToken = default)
     {
         if (!_documentIds.TryGetValue(filePath, out var documentId))
         {
             return;
         }
 
-        var sourceText = SourceText.From(text);
-        var updatedSolution = _workspace.CurrentSolution.WithDocumentText(documentId, sourceText);
-        _workspace.TryApplyChanges(updatedSolution);
+        await _workspaceLock.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            var sourceText = SourceText.From(text);
+            var updatedSolution = _workspace.CurrentSolution.WithDocumentText(documentId, sourceText);
+            _workspace.TryApplyChanges(updatedSolution);
+        }
+        finally
+        {
+            _workspaceLock.Release();
+        }
     }
 
     /// <summary>
     /// Removes a document from the workspace.
     /// </summary>
-    public void CloseDocument(string filePath)
+    public async Task CloseDocumentAsync(string filePath, CancellationToken cancellationToken = default)
     {
         if (!_documentIds.TryRemove(filePath, out var documentId))
         {
             return;
         }
 
-        _workspace.TryApplyChanges(_workspace.CurrentSolution.RemoveDocument(documentId));
+        await _workspaceLock.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            _workspace.TryApplyChanges(_workspace.CurrentSolution.RemoveDocument(documentId));
+        }
+        finally
+        {
+            _workspaceLock.Release();
+        }
     }
 
     /// <summary>
     /// Gets the Roslyn <see cref="Document"/> for the given file path.
+    /// Thread-safe: reads an immutable solution snapshot.
     /// </summary>
     public Document? GetDocument(string filePath)
     {
@@ -132,6 +166,7 @@ internal sealed class RoslynWorkspaceService : IDisposable
 
     /// <summary>
     /// Gets diagnostics for the given file.
+    /// Thread-safe: operates on an immutable solution snapshot.
     /// </summary>
     public async Task<IReadOnlyList<Diagnostic>> GetDiagnosticsAsync(string filePath, CancellationToken cancellationToken = default)
     {
@@ -158,79 +193,146 @@ internal sealed class RoslynWorkspaceService : IDisposable
     /// <summary>
     /// Removes all projects and documents from the workspace and re-creates the default project.
     /// </summary>
-    public void ClearWorkspace()
+    public async Task ClearWorkspaceAsync(CancellationToken cancellationToken = default)
     {
-        var solution = _workspace.CurrentSolution;
-        foreach (var projectId in solution.ProjectIds)
+        await _workspaceLock.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
         {
-            solution = solution.RemoveProject(projectId);
+            var solution = _workspace.CurrentSolution;
+            foreach (var projectId in solution.ProjectIds)
+            {
+                solution = solution.RemoveProject(projectId);
+            }
+
+            _workspace.TryApplyChanges(solution);
+            _documentIds.Clear();
+            _projectIds.Clear();
+
+            InitializeDefaultProject();
         }
-
-        _workspace.TryApplyChanges(solution);
-        _documentIds.Clear();
-        _projectIds.Clear();
-
-        // Re-create the default fallback project for loose files
-        InitializeDefaultProject();
+        finally
+        {
+            _workspaceLock.Release();
+        }
     }
 
     /// <summary>
     /// Adds a new project to the workspace with the given compilation settings.
     /// </summary>
-    public ProjectId AddProject(
+    public async Task<ProjectId> AddProjectAsync(
         string projectName,
         CSharpCompilationOptions compilationOptions,
         CSharpParseOptions parseOptions,
-        IEnumerable<MetadataReference> metadataReferences)
+        IEnumerable<MetadataReference> metadataReferences,
+        CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(projectName);
         ArgumentNullException.ThrowIfNull(compilationOptions);
         ArgumentNullException.ThrowIfNull(parseOptions);
 
-        var projectId = ProjectId.CreateNewId(projectName);
-        var projectInfo = ProjectInfo.Create(
-            projectId,
-            VersionStamp.Default,
-            projectName,
-            projectName,
-            LanguageNames.CSharp,
-            compilationOptions: compilationOptions,
-            parseOptions: parseOptions,
-            metadataReferences: metadataReferences.ToList());
+        await _workspaceLock.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            var projectId = ProjectId.CreateNewId(projectName);
+            var projectInfo = ProjectInfo.Create(
+                projectId,
+                VersionStamp.Default,
+                projectName,
+                projectName,
+                LanguageNames.CSharp,
+                compilationOptions: compilationOptions,
+                parseOptions: parseOptions,
+                metadataReferences: metadataReferences.ToList());
 
-        _workspace.TryApplyChanges(_workspace.CurrentSolution.AddProject(projectInfo));
-        _projectIds[projectName] = projectId;
-        return projectId;
+            _workspace.TryApplyChanges(_workspace.CurrentSolution.AddProject(projectInfo));
+            _projectIds[projectName] = projectId;
+            return projectId;
+        }
+        finally
+        {
+            _workspaceLock.Release();
+        }
     }
 
     /// <summary>
     /// Adds a source document to a specific project.
     /// </summary>
-    public DocumentId AddDocumentToProject(ProjectId projectId, string filePath, string text)
+    public async Task<DocumentId> AddDocumentToProjectAsync(ProjectId projectId, string filePath, string text, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(projectId);
         ArgumentNullException.ThrowIfNull(filePath);
         ArgumentNullException.ThrowIfNull(text);
 
-        var sourceText = SourceText.From(text);
-        var documentId = DocumentId.CreateNewId(projectId, filePath);
-        var fileName = Path.GetFileName(filePath);
+        await _workspaceLock.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            var sourceText = SourceText.From(text);
+            var documentId = DocumentId.CreateNewId(projectId, filePath);
+            var fileName = Path.GetFileName(filePath);
 
-        var documentInfo = DocumentInfo.Create(
-            documentId,
-            fileName,
-            loader: TextLoader.From(TextAndVersion.Create(sourceText, VersionStamp.Create())),
-            filePath: filePath);
+            var documentInfo = DocumentInfo.Create(
+                documentId,
+                fileName,
+                loader: TextLoader.From(TextAndVersion.Create(sourceText, VersionStamp.Create())),
+                filePath: filePath);
 
-        _workspace.TryApplyChanges(_workspace.CurrentSolution.AddDocument(documentInfo));
-        _documentIds[filePath] = documentId;
-        return documentId;
+            _workspace.TryApplyChanges(_workspace.CurrentSolution.AddDocument(documentInfo));
+            _documentIds[filePath] = documentId;
+            return documentId;
+        }
+        finally
+        {
+            _workspaceLock.Release();
+        }
+    }
+
+    /// <summary>
+    /// Adds project-to-project references so that cross-project types resolve correctly.
+    /// </summary>
+    public async Task AddProjectReferencesAsync(
+        ProjectId fromProjectId,
+        IEnumerable<ProjectId> referencedProjectIds,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(fromProjectId);
+        ArgumentNullException.ThrowIfNull(referencedProjectIds);
+
+        var refs = referencedProjectIds.ToList();
+        if (refs.Count == 0)
+        {
+            return;
+        }
+
+        await _workspaceLock.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            var solution = _workspace.CurrentSolution;
+            foreach (var referencedId in refs)
+            {
+                solution = solution.AddProjectReference(fromProjectId, new ProjectReference(referencedId));
+            }
+
+            _workspace.TryApplyChanges(solution);
+        }
+        finally
+        {
+            _workspaceLock.Release();
+        }
+    }
+
+    /// <summary>
+    /// Looks up the <see cref="ProjectId"/> for a project that was previously added via <see cref="AddProjectAsync"/>.
+    /// </summary>
+    public ProjectId? GetProjectId(string projectName)
+    {
+        return _projectIds.TryGetValue(projectName, out var id) ? id : null;
     }
 
     public void Dispose()
     {
         if (!_disposed)
         {
+            _workspaceLock.Dispose();
             _workspace.Dispose();
             _disposed = true;
         }

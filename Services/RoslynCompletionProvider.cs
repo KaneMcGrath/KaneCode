@@ -3,6 +3,7 @@ using ICSharpCode.AvalonEdit.Document;
 using ICSharpCode.AvalonEdit.Editing;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.Completion;
+using System.Diagnostics;
 using System.Windows.Media;
 
 namespace KaneCode.Services;
@@ -73,13 +74,16 @@ internal sealed class RoslynCompletionProvider
 
 /// <summary>
 /// An AvalonEdit completion data item backed by a Roslyn <see cref="CompletionItem"/>.
+/// Descriptions and completion changes are pre-fetched asynchronously to avoid blocking the UI thread.
 /// </summary>
 internal sealed class RoslynCompletionData : ICompletionData
 {
     private readonly Microsoft.CodeAnalysis.Completion.CompletionItem _roslynItem;
     private readonly Document _document;
     private readonly CompletionService _completionService;
-    private string? _descriptionText;
+
+    private readonly Task<string> _descriptionTask;
+    private readonly Task<CompletionChange?> _changeTask;
 
     public RoslynCompletionData(
         Microsoft.CodeAnalysis.Completion.CompletionItem roslynItem,
@@ -89,6 +93,10 @@ internal sealed class RoslynCompletionData : ICompletionData
         _roslynItem = roslynItem;
         _document = document;
         _completionService = completionService;
+
+        // Pre-fetch description and completion change on a background thread
+        _descriptionTask = FetchDescriptionAsync();
+        _changeTask = FetchChangeAsync();
     }
 
     public ImageSource? Image => null;
@@ -101,30 +109,12 @@ internal sealed class RoslynCompletionData : ICompletionData
     {
         get
         {
-            if (_descriptionText is not null)
+            if (_descriptionTask.IsCompletedSuccessfully)
             {
-                return _descriptionText;
+                return _descriptionTask.Result;
             }
 
-            // Fetch description synchronously for the tooltip (lazy)
-            try
-            {
-                var descriptionTask = _completionService.GetDescriptionAsync(_document, _roslynItem);
-                if (descriptionTask.Wait(TimeSpan.FromMilliseconds(500)))
-                {
-                    _descriptionText = descriptionTask.Result?.Text ?? string.Empty;
-                }
-                else
-                {
-                    _descriptionText = string.Empty;
-                }
-            }
-            catch
-            {
-                _descriptionText = string.Empty;
-            }
-
-            return _descriptionText;
+            return _roslynItem.DisplayText;
         }
     }
 
@@ -134,16 +124,20 @@ internal sealed class RoslynCompletionData : ICompletionData
     {
         try
         {
-            var change = _completionService.GetChangeAsync(_document, _roslynItem).GetAwaiter().GetResult();
+            var change = _changeTask.IsCompletedSuccessfully ? _changeTask.Result : null;
+
             if (change?.TextChange is { } textChange)
             {
                 var doc = textArea.Document;
-                // Replace the span that Roslyn suggests
                 var start = textChange.Span.Start;
                 var length = textChange.Span.Length;
 
                 // Clamp to document bounds
-                if (start < 0) start = 0;
+                if (start < 0)
+                {
+                    start = 0;
+                }
+
                 if (start + length > doc.TextLength)
                 {
                     length = doc.TextLength - start;
@@ -153,7 +147,7 @@ internal sealed class RoslynCompletionData : ICompletionData
             }
             else
             {
-                // Fallback: simple text insertion
+                // Fallback: simple text insertion (pre-fetch not ready or returned null)
                 textArea.Document.Replace(completionSegment, Text);
             }
         }
@@ -161,6 +155,33 @@ internal sealed class RoslynCompletionData : ICompletionData
         {
             // Fallback on any error
             textArea.Document.Replace(completionSegment, Text);
+        }
+    }
+
+    private async Task<string> FetchDescriptionAsync()
+    {
+        try
+        {
+            var description = await _completionService.GetDescriptionAsync(_document, _roslynItem).ConfigureAwait(false);
+            return description?.Text ?? string.Empty;
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"Failed to fetch completion description: {ex.Message}");
+            return string.Empty;
+        }
+    }
+
+    private async Task<CompletionChange?> FetchChangeAsync()
+    {
+        try
+        {
+            return await _completionService.GetChangeAsync(_document, _roslynItem).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"Failed to fetch completion change: {ex.Message}");
+            return null;
         }
     }
 }

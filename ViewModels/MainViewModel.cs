@@ -29,6 +29,8 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
     private RoslynDiagnosticRenderer? _diagnosticRenderer;
     private CompletionWindow? _completionWindow;
     private CancellationTokenSource? _analysisCts;
+    private CancellationTokenSource? _loadCts;
+    private bool _isLoadingProject;
     private readonly TimeSpan _analysisDelay = TimeSpan.FromMilliseconds(500);
 
     public MainViewModel()
@@ -39,8 +41,8 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
         NewFileCommand = new RelayCommand(_ => NewFile());
         OpenFileCommand = new RelayCommand(_ => OpenFile());
         OpenFolderCommand = new RelayCommand(_ => OpenFolder());
-        OpenProjectCommand = new RelayCommand(_ => OpenProject());
-        OpenSolutionCommand = new RelayCommand(_ => OpenSolution());
+        OpenProjectCommand = new RelayCommand(_ => OpenProject(), _ => !_isLoadingProject);
+        OpenSolutionCommand = new RelayCommand(_ => OpenSolution(), _ => !_isLoadingProject);
         SaveCommand = new RelayCommand(_ => Save(), _ => ActiveTab is not null);
         SaveAsCommand = new RelayCommand(_ => SaveAs(), _ => ActiveTab is not null);
         UndoCommand = new RelayCommand(_ => _editor?.Undo(), _ => _editor?.CanUndo == true);
@@ -184,9 +186,9 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
 
     private void NewFile()
     {
-        var tab = new OpenFileTab("Untitled") { IsDirty = false };
+        var tab = new OpenFileTab("Untitled", string.Empty);
         OpenTabs.Add(tab);
-        ActivateTab(tab, content: string.Empty, syntaxHighlighting: "C#");
+        ActivateTab(tab, syntaxHighlighting: "C#");
     }
 
     private void OpenFile()
@@ -250,13 +252,24 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
 
     private async Task LoadProjectFileAsync(string projectPath)
     {
+        CancelPreviousLoad();
+        var cts = new CancellationTokenSource();
+        _loadCts = cts;
+
         var projectDir = Path.GetDirectoryName(projectPath)!;
+        _isLoadingProject = true;
         LoadingStatus = $"Loading project: {Path.GetFileName(projectPath)}...";
+
+        // Cancel any in-flight analysis before clearing the workspace
+        _analysisCts?.Cancel();
 
         try
         {
+            var ct = cts.Token;
             var result = await Task.Run(() =>
-                MSBuildProjectLoader.LoadProject(projectPath, _roslynService)).ConfigureAwait(true);
+                MSBuildProjectLoader.LoadProjectAsync(projectPath, _roslynService, ct), ct).ConfigureAwait(true);
+
+            ct.ThrowIfCancellationRequested();
 
             if (result is null)
             {
@@ -271,23 +284,45 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
 
             LoadingStatus = $"Loaded: {result.Name} ({result.TargetFramework}) — {result.SourceFiles.Length} file(s)";
         }
-        catch (Exception ex) when (ex is not OperationCanceledException)
+        catch (OperationCanceledException)
+        {
+            LoadingStatus = null;
+        }
+        catch (Exception ex)
         {
             MessageBox.Show($"Failed to load project:\n{ex.Message}", "Error",
                 MessageBoxButton.OK, MessageBoxImage.Error);
             LoadingStatus = null;
         }
+        finally
+        {
+            if (_loadCts == cts)
+            {
+                _isLoadingProject = false;
+            }
+        }
     }
 
     private async Task LoadSolutionFileAsync(string solutionPath)
     {
+        CancelPreviousLoad();
+        var cts = new CancellationTokenSource();
+        _loadCts = cts;
+
         var solutionDir = Path.GetDirectoryName(solutionPath)!;
+        _isLoadingProject = true;
         LoadingStatus = $"Loading solution: {Path.GetFileName(solutionPath)}...";
+
+        // Cancel any in-flight analysis before clearing the workspace
+        _analysisCts?.Cancel();
 
         try
         {
+            var ct = cts.Token;
             var result = await Task.Run(() =>
-                MSBuildProjectLoader.LoadSolution(solutionPath, _roslynService)).ConfigureAwait(true);
+                MSBuildProjectLoader.LoadSolutionAsync(solutionPath, _roslynService, ct), ct).ConfigureAwait(true);
+
+            ct.ThrowIfCancellationRequested();
 
             ProjectRootPath = solutionDir;
             var root = EditorService.BuildFileTree(solutionDir);
@@ -297,11 +332,22 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
             var projectNames = string.Join(", ", result.Projects.Select(p => p.Name));
             LoadingStatus = $"Loaded: {result.Name} — {result.Projects.Length} project(s), {totalFiles} file(s) [{projectNames}]";
         }
-        catch (Exception ex) when (ex is not OperationCanceledException)
+        catch (OperationCanceledException)
+        {
+            LoadingStatus = null;
+        }
+        catch (Exception ex)
         {
             MessageBox.Show($"Failed to load solution:\n{ex.Message}", "Error",
                 MessageBoxButton.OK, MessageBoxImage.Error);
             LoadingStatus = null;
+        }
+        finally
+        {
+            if (_loadCts == cts)
+            {
+                _isLoadingProject = false;
+            }
         }
     }
 
@@ -324,9 +370,9 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
         {
             var content = EditorService.ReadFile(filePath);
             var highlighting = EditorService.GetSyntaxHighlighting(filePath);
-            var tab = new OpenFileTab(filePath);
+            var tab = new OpenFileTab(filePath, content);
             OpenTabs.Add(tab);
-            ActivateTab(tab, content, highlighting);
+            ActivateTab(tab, syntaxHighlighting: highlighting);
         }
         catch (IOException ex)
         {
@@ -390,14 +436,15 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
 
         try
         {
-            EditorService.WriteFile(dialog.FileName, _editor.Text);
+            var text = _editor.Text;
+            EditorService.WriteFile(dialog.FileName, text);
 
             if (ActiveTab is not null)
             {
                 OpenTabs.Remove(ActiveTab);
             }
 
-            var newTab = new OpenFileTab(dialog.FileName);
+            var newTab = new OpenFileTab(dialog.FileName, text);
             OpenTabs.Add(newTab);
             ActivateTab(newTab);
         }
@@ -408,7 +455,7 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
         }
     }
 
-    private void CloseTab(OpenFileTab? tab)
+    private async void CloseTab(OpenFileTab? tab)
     {
         tab ??= ActiveTab;
         if (tab is null)
@@ -435,7 +482,7 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
         }
 
         OpenTabs.Remove(tab);
-        _roslynService.CloseDocument(tab.FilePath);
+        await _roslynService.CloseDocumentAsync(tab.FilePath).ConfigureAwait(true);
 
         if (OpenTabs.Count > 0)
         {
@@ -444,7 +491,11 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
         else
         {
             ActiveTab = null;
-            _editor?.Clear();
+            if (_editor is not null)
+            {
+                _editor.Document = new ICSharpCode.AvalonEdit.Document.TextDocument();
+            }
+
             OnPropertyChanged(nameof(StatusText));
         }
     }
@@ -473,18 +524,11 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
         Application.Current.Shutdown();
     }
 
-    private readonly Dictionary<string, string> _tabContentCache = new(StringComparer.OrdinalIgnoreCase);
-
-    private void ActivateTab(OpenFileTab tab, string? content = null, string? syntaxHighlighting = null)
+    private void ActivateTab(OpenFileTab tab, string? syntaxHighlighting = null)
     {
         if (_editor is null)
         {
             return;
-        }
-
-        if (ActiveTab is not null && !_isActivating)
-        {
-            _tabContentCache[ActiveTab.FilePath] = _editor.Text;
         }
 
         _isActivating = true;
@@ -492,20 +536,8 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
         {
             ActiveTab = tab;
 
-            if (content is not null)
-            {
-                _editor.Text = content;
-                _tabContentCache[tab.FilePath] = content;
-            }
-            else if (_tabContentCache.TryGetValue(tab.FilePath, out var cached))
-            {
-                _editor.Text = cached;
-            }
-            else
-            {
-                _editor.Text = EditorService.ReadFile(tab.FilePath);
-                _tabContentCache[tab.FilePath] = _editor.Text;
-            }
+            // Swap the underlying document — this preserves each tab's undo/redo history
+            _editor.Document = tab.Document;
 
             var hlName = syntaxHighlighting ?? EditorService.GetSyntaxHighlighting(tab.FilePath);
             _editor.SyntaxHighlighting = hlName is not null
@@ -522,11 +554,11 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
                 var existingDoc = _roslynService.GetDocument(tab.FilePath);
                 if (existingDoc is not null)
                 {
-                    _roslynService.UpdateDocumentText(tab.FilePath, _editor.Text);
+                    _ = _roslynService.UpdateDocumentTextAsync(tab.FilePath, _editor.Text);
                 }
                 else
                 {
-                    _roslynService.OpenOrUpdateDocument(tab.FilePath, _editor.Text);
+                    _ = _roslynService.OpenOrUpdateDocumentAsync(tab.FilePath, _editor.Text);
                 }
 
                 if (_classificationColorizer is not null)
@@ -546,7 +578,6 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
                 }
             }
 
-            tab.IsDirty = false;
             OnPropertyChanged(nameof(WindowTitle));
             OnPropertyChanged(nameof(StatusText));
         }
@@ -712,7 +743,7 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
         {
             await Task.Delay(_analysisDelay, cancellationToken).ConfigureAwait(false);
 
-            _roslynService.UpdateDocumentText(filePath, text);
+            await _roslynService.UpdateDocumentTextAsync(filePath, text, cancellationToken).ConfigureAwait(false);
 
             // Semantic classification
             if (_classificationColorizer is not null)
@@ -764,8 +795,22 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
 
     private string? _diagnosticStatusText;
 
+    /// <summary>
+    /// Cancels any in-flight project/solution load.
+    /// </summary>
+    private void CancelPreviousLoad()
+    {
+        if (_loadCts is not null)
+        {
+            _loadCts.Cancel();
+            _loadCts.Dispose();
+            _loadCts = null;
+        }
+    }
+
     public void Dispose()
     {
+        CancelPreviousLoad();
         _analysisCts?.Cancel();
         _analysisCts?.Dispose();
         _roslynService.Dispose();
