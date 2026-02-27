@@ -151,4 +151,13 @@
         </Style.Triggers>
     </Style>
 
+    <!-- Context menu themed popup -->
+    <Style TargetType="ContextMenu">
+        <Setter Property="Background" Value="{DynamicResource MenuPopupBackground}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource MenuPopupBorder}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="Padding" Value="0,2" />
+        <Setter Property="Foreground" Value="{DynamicResource MenuForeground}" />
+    </Style>
+
 </ResourceDictionary>

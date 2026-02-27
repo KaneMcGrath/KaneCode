@@ -3,6 +3,8 @@ using KaneCode.Models;
 using KaneCode.Theming;
 using KaneCode.ViewModels;
 using ICSharpCode.AvalonEdit.Rendering;
+using System.Diagnostics;
+using System.IO;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
@@ -35,6 +37,7 @@ public partial class MainWindow : Window
         HotkeyManager.BindingsChanged += ApplyHotkeyBindings;
 
         _viewModel.PropertyChanged += OnViewModelPropertyChanged;
+        _viewModel.CodeActionsReady += OnCodeActionsReady;
 
         // Ctrl+Click triggers Go to Definition
         CodeEditor.PreviewMouseLeftButtonUp += CodeEditor_PreviewMouseLeftButtonUp;
@@ -48,6 +51,7 @@ public partial class MainWindow : Window
     private void OnClosed(object? sender, EventArgs e)
     {
         _viewModel.PropertyChanged -= OnViewModelPropertyChanged;
+        _viewModel.CodeActionsReady -= OnCodeActionsReady;
         HotkeyManager.BindingsChanged -= ApplyHotkeyBindings;
         CodeEditor.TextArea.TextView.MouseHover -= TextView_MouseHover;
         CodeEditor.TextArea.TextView.MouseHoverStopped -= TextView_MouseHoverStopped;
@@ -109,6 +113,8 @@ public partial class MainWindow : Window
             new RelayInputCommand(async () => await _viewModel.FindReferencesAsync()));
         AddEditorBinding(HotkeyAction.TriggerCompletion,
             new RelayInputCommand(async () => await _viewModel.ShowCompletionWindowAsync()));
+        AddEditorBinding(HotkeyAction.CodeActions,
+            new RelayInputCommand(async () => await _viewModel.ShowCodeActionsAsync()));
 
         // Update menu gesture text displays
         UpdateMenuGestureText();
@@ -166,6 +172,7 @@ public partial class MainWindow : Window
         ["_Paste"] = HotkeyAction.Paste,
         ["Go to _Definition"] = HotkeyAction.GoToDefinition,
         ["Find _References"] = HotkeyAction.FindReferences,
+        ["Code _Actions"] = HotkeyAction.CodeActions,
         ["_Options"] = HotkeyAction.OpenOptions,
         ["E_xit"] = HotkeyAction.Exit,
         ["_Build Project"] = HotkeyAction.BuildProject,
@@ -306,6 +313,29 @@ public partial class MainWindow : Window
         };
     }
 
+    private void OnCodeActionsReady(IReadOnlyList<Models.CodeActionItem> items)
+    {
+        if (items.Count == 0)
+        {
+            return;
+        }
+
+        // Position the popup near the caret
+        var caretPos = CodeEditor.TextArea.TextView.GetVisualPosition(
+            CodeEditor.TextArea.Caret.Position,
+            ICSharpCode.AvalonEdit.Rendering.VisualYPosition.LineBottom);
+        var screenPoint = CodeEditor.TextArea.TextView.PointToScreen(caretPos);
+        var windowPoint = PointFromScreen(screenPoint);
+
+        CodeActionPopup.Show(items, this, windowPoint.X, windowPoint.Y);
+    }
+
+    private async void CodeActionLightBulb_ActionSelected(object? sender, Models.CodeActionItem item)
+    {
+        await _viewModel.ApplyCodeActionAsync(item);
+        CodeEditor.TextArea.Focus();
+    }
+
     private void CloseQuickInfoPopup()
     {
         if (_quickInfoPopup is not null)
@@ -313,6 +343,116 @@ public partial class MainWindow : Window
             _quickInfoPopup.IsOpen = false;
             _quickInfoPopup = null;
         }
+    }
+
+    // ── Editor context menu ────────────────────────────────────────────
+
+    private void EditorContextMenu_Cut(object sender, RoutedEventArgs e) => CodeEditor.Cut();
+    private void EditorContextMenu_Copy(object sender, RoutedEventArgs e) => CodeEditor.Copy();
+    private void EditorContextMenu_Paste(object sender, RoutedEventArgs e) => CodeEditor.Paste();
+    private void EditorContextMenu_Undo(object sender, RoutedEventArgs e) => CodeEditor.Undo();
+    private void EditorContextMenu_Redo(object sender, RoutedEventArgs e) => CodeEditor.Redo();
+
+    private async void EditorContextMenu_GoToDefinition(object sender, RoutedEventArgs e)
+    {
+        await _viewModel.GoToDefinitionAsync();
+    }
+
+    private async void EditorContextMenu_FindReferences(object sender, RoutedEventArgs e)
+    {
+        await _viewModel.FindReferencesAsync();
+    }
+
+    private async void EditorContextMenu_CodeActions(object sender, RoutedEventArgs e)
+    {
+        await _viewModel.ShowCodeActionsAsync();
+    }
+
+    // ── Explorer context menu ──────────────────────────────────────────
+
+    private void ExplorerContextMenu_Open(object sender, RoutedEventArgs e)
+    {
+        if (FileTree.SelectedItem is ProjectItem item)
+        {
+            _viewModel.OnProjectItemSelected(item);
+        }
+    }
+
+    private void ExplorerContextMenu_CopyPath(object sender, RoutedEventArgs e)
+    {
+        if (FileTree.SelectedItem is ProjectItem item)
+        {
+            Clipboard.SetText(item.FullPath);
+        }
+    }
+
+    private void ExplorerContextMenu_OpenInFileExplorer(object sender, RoutedEventArgs e)
+    {
+        if (FileTree.SelectedItem is not ProjectItem item)
+        {
+            return;
+        }
+
+        var path = item.IsDirectory ? item.FullPath : Path.GetDirectoryName(item.FullPath);
+        if (!string.IsNullOrEmpty(path) && Directory.Exists(path))
+        {
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = path,
+                UseShellExecute = true
+            });
+        }
+    }
+
+    // ── Tab strip context menu ─────────────────────────────────────────
+
+    private void TabContextMenu_Close(object sender, RoutedEventArgs e)
+    {
+        if (GetTabFromContextMenu(sender) is { } tab)
+        {
+            _viewModel.CloseTabCommand.Execute(tab);
+        }
+    }
+
+    private void TabContextMenu_CloseOthers(object sender, RoutedEventArgs e)
+    {
+        if (GetTabFromContextMenu(sender) is not { } keepTab)
+        {
+            return;
+        }
+
+        foreach (var tab in _viewModel.OpenTabs.Where(t => t != keepTab).ToList())
+        {
+            _viewModel.CloseTabCommand.Execute(tab);
+        }
+    }
+
+    private void TabContextMenu_CloseAll(object sender, RoutedEventArgs e)
+    {
+        foreach (var tab in _viewModel.OpenTabs.ToList())
+        {
+            _viewModel.CloseTabCommand.Execute(tab);
+        }
+    }
+
+    private void TabContextMenu_CopyPath(object sender, RoutedEventArgs e)
+    {
+        if (GetTabFromContextMenu(sender) is { } tab && !string.IsNullOrEmpty(tab.FilePath))
+        {
+            Clipboard.SetText(tab.FilePath);
+        }
+    }
+
+    private static OpenFileTab? GetTabFromContextMenu(object sender)
+    {
+        if (sender is MenuItem menuItem
+            && menuItem.Parent is ContextMenu contextMenu
+            && contextMenu.PlacementTarget is FrameworkElement fe)
+        {
+            return fe.DataContext as OpenFileTab;
+        }
+
+        return null;
     }
 
     /// <summary>

@@ -25,6 +25,7 @@ internal enum HotkeyAction
     GoToDefinition,
     FindReferences,
     TriggerCompletion,
+    CodeActions,
     OpenOptions,
     Exit,
     BuildProject,

@@ -35,6 +35,14 @@
                   CanUserResizeColumns="True"
                   CanUserReorderColumns="False"
                   MouseDoubleClick="DiagnosticsGrid_MouseDoubleClick">
+            <DataGrid.ContextMenu>
+                <ContextMenu>
+                    <MenuItem Header="_Go to Source" Click="ContextMenu_GoToSource" />
+                    <Separator />
+                    <MenuItem Header="_Copy Error Message" Click="ContextMenu_CopyMessage" />
+                    <MenuItem Header="Copy _Line" Click="ContextMenu_CopyLine" />
+                </ContextMenu>
+            </DataGrid.ContextMenu>
             <DataGrid.ColumnHeaderStyle>
                 <Style TargetType="DataGridColumnHeader">
                     <Setter Property="Background" Value="{DynamicResource ErrorListHeaderBackground}" />

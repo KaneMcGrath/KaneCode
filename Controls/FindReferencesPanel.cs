@@ -77,4 +77,28 @@ public partial class FindReferencesPanel : UserControl
             NavigateRequested?.Invoke(this, item);
         }
     }
+
+    private void ContextMenu_GoToReference(object sender, RoutedEventArgs e)
+    {
+        if (ReferencesGrid.SelectedItem is ReferenceItem item)
+        {
+            NavigateRequested?.Invoke(this, item);
+        }
+    }
+
+    private void ContextMenu_CopyPath(object sender, RoutedEventArgs e)
+    {
+        if (ReferencesGrid.SelectedItem is ReferenceItem item)
+        {
+            Clipboard.SetText(item.FilePath);
+        }
+    }
+
+    private void ContextMenu_CopyLine(object sender, RoutedEventArgs e)
+    {
+        if (ReferencesGrid.SelectedItem is ReferenceItem item)
+        {
+            Clipboard.SetText($"{item.FileName}({item.Line},{item.Column}): {item.Preview}");
+        }
+    }
 }

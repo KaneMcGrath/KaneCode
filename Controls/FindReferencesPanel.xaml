@@ -35,6 +35,14 @@
                   CanUserResizeColumns="True"
                   CanUserReorderColumns="False"
                   MouseDoubleClick="ReferencesGrid_MouseDoubleClick">
+            <DataGrid.ContextMenu>
+                <ContextMenu>
+                    <MenuItem Header="_Go to Reference" Click="ContextMenu_GoToReference" />
+                    <Separator />
+                    <MenuItem Header="Copy _Path" Click="ContextMenu_CopyPath" />
+                    <MenuItem Header="Copy _Line" Click="ContextMenu_CopyLine" />
+                </ContextMenu>
+            </DataGrid.ContextMenu>
             <DataGrid.ColumnHeaderStyle>
                 <Style TargetType="DataGridColumnHeader">
                     <Setter Property="Background" Value="{DynamicResource ErrorListHeaderBackground}" />

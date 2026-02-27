@@ -93,4 +93,28 @@ public partial class ErrorListPanel : UserControl
             NavigateRequested?.Invoke(this, item);
         }
     }
+
+    private void ContextMenu_GoToSource(object sender, RoutedEventArgs e)
+    {
+        if (DiagnosticsGrid.SelectedItem is DiagnosticItem item)
+        {
+            NavigateRequested?.Invoke(this, item);
+        }
+    }
+
+    private void ContextMenu_CopyMessage(object sender, RoutedEventArgs e)
+    {
+        if (DiagnosticsGrid.SelectedItem is DiagnosticItem item)
+        {
+            Clipboard.SetText($"{item.Code}: {item.Message}");
+        }
+    }
+
+    private void ContextMenu_CopyLine(object sender, RoutedEventArgs e)
+    {
+        if (DiagnosticsGrid.SelectedItem is DiagnosticItem item)
+        {
+            Clipboard.SetText($"{item.SeverityIcon} {item.Code}: {item.Message} ({item.File}, line {item.Line}, col {item.Column})");
+        }
+    }
 }

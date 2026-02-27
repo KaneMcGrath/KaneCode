@@ -60,7 +60,7 @@
   - Use Roslyn `SymbolFinder.FindReferencesAsync` and call hierarchy helpers to show where a symbol is used.
   - Files: `Services/RoslynNavigationService.cs`, `Controls/ErrorListPanel.xaml`, `ViewModels/MainViewModel.cs`
 
-- [ ] **3.3 Code Actions & Lightbulb**
+- [X] **3.3 Code Actions & Lightbulb**
   - Surface Roslyn `CodeActionService`/`CodeFixService` results and let users apply fixes/refactorings from the editor.
   - Files: new `Services/RoslynCodeActionService.cs`, `Controls/CodeActionLightBulb.xaml`, `ViewModels/MainViewModel.cs`
 

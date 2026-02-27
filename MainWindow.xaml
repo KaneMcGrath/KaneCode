@@ -35,6 +35,7 @@ Icon="Icons/KaneCode.ico">
                 <Separator />
                 <MenuItem Header="Go to _Definition" Command="{Binding GoToDefinitionCommand}" />
                 <MenuItem Header="Find _References" Command="{Binding FindReferencesCommand}" />
+                <MenuItem Header="Code _Actions" Command="{Binding CodeActionsCommand}" />
                 <Separator />
                 <MenuItem Header="Cu_t" Command="{Binding CutCommand}" />
                 <MenuItem Header="_Copy" Command="{Binding CopyCommand}" />
@@ -82,6 +83,14 @@ Icon="Icons/KaneCode.ico">
                                           Background="Transparent" BorderThickness="0"
                                           Foreground="{DynamicResource PanelForeground}"
                                           MouseDoubleClick="FileTree_MouseDoubleClick">
+                                    <TreeView.ContextMenu>
+                                        <ContextMenu>
+                                            <MenuItem Header="_Open" Click="ExplorerContextMenu_Open" />
+                                            <Separator />
+                                            <MenuItem Header="Copy _Path" Click="ExplorerContextMenu_CopyPath" />
+                                            <MenuItem Header="Open in File _Explorer" Click="ExplorerContextMenu_OpenInFileExplorer" />
+                                        </ContextMenu>
+                                    </TreeView.ContextMenu>
                                     <TreeView.ItemTemplate>
                                         <HierarchicalDataTemplate DataType="{x:Type models:ProjectItem}"
                                                                    ItemsSource="{Binding Children}">
@@ -158,6 +167,15 @@ Icon="Icons/KaneCode.ico">
                                         <ListBox.ItemTemplate>
                                             <DataTemplate DataType="{x:Type models:OpenFileTab}">
                                                 <StackPanel Orientation="Horizontal">
+                                                    <StackPanel.ContextMenu>
+                                                        <ContextMenu>
+                                                            <MenuItem Header="_Close" Click="TabContextMenu_Close" />
+                                                            <MenuItem Header="Close _Others" Click="TabContextMenu_CloseOthers" />
+                                                            <MenuItem Header="Close _All" Click="TabContextMenu_CloseAll" />
+                                                            <Separator />
+                                                            <MenuItem Header="Copy _Path" Click="TabContextMenu_CopyPath" />
+                                                        </ContextMenu>
+                                                    </StackPanel.ContextMenu>
                                                     <TextBlock Text="{Binding DisplayName}" Margin="8,2,4,2" FontSize="12"
                                                                VerticalAlignment="Center" />
                                                     <Button Content="✕" FontSize="10" Padding="2,0"
@@ -181,7 +199,32 @@ Icon="Icons/KaneCode.ico">
                                                            Background="{DynamicResource EditorBackground}"
                                                            Foreground="{DynamicResource EditorForeground}"
                                                            HorizontalScrollBarVisibility="Auto"
-                                                           VerticalScrollBarVisibility="Auto" />
+                                                           VerticalScrollBarVisibility="Auto">
+                                        <avalonEdit:TextEditor.ContextMenu>
+                                            <ContextMenu>
+                                                <MenuItem Header="Cu_t" Click="EditorContextMenu_Cut"
+                                                          InputGestureText="Ctrl+X" />
+                                                <MenuItem Header="_Copy" Click="EditorContextMenu_Copy"
+                                                          InputGestureText="Ctrl+C" />
+                                                <MenuItem Header="_Paste" Click="EditorContextMenu_Paste"
+                                                          InputGestureText="Ctrl+V" />
+                                                <Separator />
+                                                <MenuItem Header="_Undo" Click="EditorContextMenu_Undo"
+                                                          InputGestureText="Ctrl+Z" />
+                                                <MenuItem Header="_Redo" Click="EditorContextMenu_Redo"
+                                                          InputGestureText="Ctrl+Y" />
+                                                <Separator />
+                                                <MenuItem Header="Go to _Definition" Click="EditorContextMenu_GoToDefinition"
+                                                          InputGestureText="F12" />
+                                                <MenuItem Header="Find _References" Click="EditorContextMenu_FindReferences"
+                                                          InputGestureText="Shift+F12" />
+                                                <MenuItem Header="Code _Actions" Click="EditorContextMenu_CodeActions"
+                                                          InputGestureText="Ctrl+." />
+                                            </ContextMenu>
+                                        </avalonEdit:TextEditor.ContextMenu>
+                                    </avalonEdit:TextEditor>
+                                    <controls:CodeActionLightBulb x:Name="CodeActionPopup"
+                                                                  ActionSelected="CodeActionLightBulb_ActionSelected" />
                                 </DockPanel>
                             </avalonDock:LayoutAnchorable>
                         </avalonDock:LayoutAnchorablePane>

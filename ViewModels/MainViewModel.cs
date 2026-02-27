@@ -29,6 +29,7 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
     private readonly RoslynNavigationService _navigationService;
     private readonly RoslynQuickInfoService _quickInfoService;
     private readonly RoslynSignatureHelpService _signatureHelpService;
+    private readonly RoslynCodeActionService _codeActionService;
     private readonly BuildService _buildService = new();
     private RoslynClassificationColorizer? _classificationColorizer;
     private RoslynDiagnosticRenderer? _diagnosticRenderer;
@@ -40,6 +41,7 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
     private CancellationTokenSource? _findReferencesCts;
     private CancellationTokenSource? _quickInfoCts;
     private CancellationTokenSource? _signatureHelpCts;
+    private CancellationTokenSource? _codeActionsCts;
     private CancellationTokenSource? _loadCts;
     private bool _isLoadingProject;
     private readonly TimeSpan _analysisDelay = TimeSpan.FromMilliseconds(500);
@@ -53,6 +55,7 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
         _navigationService = new RoslynNavigationService(_roslynService);
         _quickInfoService = new RoslynQuickInfoService(_roslynService);
         _signatureHelpService = new RoslynSignatureHelpService(_roslynService);
+        _codeActionService = new RoslynCodeActionService(_roslynService);
 
         NewFileCommand = new RelayCommand(_ => NewFile());
         OpenFileCommand = new RelayCommand(_ => OpenFile());
@@ -76,6 +79,7 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
         BuildCommand = new RelayCommand(_ => _ = BuildProjectAsync(), _ => CanBuild());
         RunCommand = new RelayCommand(_ => _ = RunProjectAsync(), _ => CanBuild());
         CancelBuildCommand = new RelayCommand(_ => CancelBuild(), _ => _buildService.IsRunning);
+        CodeActionsCommand = new RelayCommand(async _ => await ShowCodeActionsAsync(), _ => CanGoToDefinition());
 
         _buildService.OutputReceived += OnBuildOutputReceived;
         _buildService.ProcessExited += OnBuildProcessExited;
@@ -103,6 +107,7 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
     public ICommand BuildCommand { get; }
     public ICommand RunCommand { get; }
     public ICommand CancelBuildCommand { get; }
+    public ICommand CodeActionsCommand { get; }
 
     private ObservableCollection<ProjectItem> _projectItems = [];
     public ObservableCollection<ProjectItem> ProjectItems
@@ -1281,6 +1286,82 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
     }
 
     /// <summary>
+    /// Gets available code actions (fixes + refactorings) at the current caret position.
+    /// The returned items are displayed in the CodeActionLightBulb popup.
+    /// </summary>
+    public async Task ShowCodeActionsAsync()
+    {
+        if (_editor is null || ActiveTab is null || !RoslynWorkspaceService.IsCSharpFile(ActiveTab.FilePath))
+        {
+            return;
+        }
+
+        _codeActionsCts?.Cancel();
+        _codeActionsCts?.Dispose();
+        _codeActionsCts = new CancellationTokenSource();
+        var ct = _codeActionsCts.Token;
+
+        try
+        {
+            var caretOffset = _editor.CaretOffset;
+            await _roslynService.UpdateDocumentTextAsync(ActiveTab.FilePath, _editor.Text, ct).ConfigureAwait(true);
+
+            var items = await _codeActionService
+                .GetCodeActionsAsync(ActiveTab.FilePath, caretOffset, ct)
+                .ConfigureAwait(true);
+
+            if (items.Count == 0)
+            {
+                return;
+            }
+
+            CodeActionsReady?.Invoke(items);
+        }
+        catch (OperationCanceledException)
+        {
+            // Superseded by a newer request
+        }
+    }
+
+    /// <summary>
+    /// Applies a selected code action and updates the editor text.
+    /// </summary>
+    public async Task ApplyCodeActionAsync(Models.CodeActionItem item)
+    {
+        ArgumentNullException.ThrowIfNull(item);
+
+        if (_editor is null || ActiveTab is null)
+        {
+            return;
+        }
+
+        try
+        {
+            var result = await _codeActionService
+                .ApplyCodeActionAsync(ActiveTab.FilePath, item.Action)
+                .ConfigureAwait(true);
+
+            if (result is null)
+            {
+                return;
+            }
+
+            _editor.Text = result.NewText;
+            ScheduleRoslynAnalysis();
+        }
+        catch (OperationCanceledException)
+        {
+            // Ignored
+        }
+    }
+
+    /// <summary>
+    /// Raised when code actions are ready to be displayed.
+    /// The MainWindow subscribes to show the lightbulb popup.
+    /// </summary>
+    public event Action<IReadOnlyList<Models.CodeActionItem>>? CodeActionsReady;
+
+    /// <summary>
     /// Gets Quick Info (hover tooltip) text for the symbol at the given editor offset.
     /// Returns null if no info is available or the file is not a C# file.
     /// </summary>
@@ -1471,6 +1552,8 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
         _quickInfoCts?.Dispose();
         _signatureHelpCts?.Cancel();
         _signatureHelpCts?.Dispose();
+        _codeActionsCts?.Cancel();
+        _codeActionsCts?.Dispose();
         _roslynService.Dispose();
     }
 }
