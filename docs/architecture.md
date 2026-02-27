@@ -23,6 +23,12 @@ Primary capabilities currently implemented:
 - Error list panel with click-to-navigate
 - C# completion (`.` auto-trigger and `Ctrl+Space`)
 - Go to Definition (`F12`, `Ctrl+Click`)
+- Go to Implementation / Derived Types
+- Find References panel with click-to-navigate
+- Build / Run integration with output capture panel
+- Code Actions and lightbulb UI
+- Refactoring actions (rename, extract method)
+- Generate Missing Members workflow (Roslyn generate/implement actions)
 - Find / Replace (`Ctrl+F`, `Ctrl+H`) via AvalonEdit `SearchPanel`
 - Light/Dark theme switching (via Options window)
 - Configurable hotkey system with JSON persistence
@@ -102,14 +108,15 @@ Pattern used: practical MVVM without a framework. The ViewModel still directly t
 
 `MainWindow.xaml` is a 3-column shell:
 
-- Top menu (`File`, `Edit`, `View`, `Help`)
+- Top menu (`File`, `Edit`, `View`, `Build`, `Help`)
 - `View` > `Options` opens the Options dialog
+- Uses `AvalonDock` with anchorable panes
 - Left: Explorer (`TreeView`) bound to `ProjectItems`
-- Center: vertically split into:
-  - Top: tab strip + single AvalonEdit `TextEditor`
-  - Bottom: `ErrorListPanel` (`Controls/ErrorListPanel.xaml`) showing diagnostics in a `DataGrid`
-  - A `GridSplitter` between the two areas allows resizing
-- Right: placeholder panel
+- Center: tab strip + single AvalonEdit `TextEditor`
+- Bottom docked panels:
+  - `ErrorListPanel` for diagnostics
+  - `FindReferencesPanel` for references, implementations, and derived types
+  - `BuildOutputPanel` for build/run output
 - Bottom: status bar bound to `StatusText`
 
 Tab strip binds to `OpenTabs`; selecting a tab calls `SwitchToTab`. Closing a tab uses `CloseTabCommand`.
@@ -362,7 +369,9 @@ Triggers:
 
 ---
 
-## 13.1 Go to Definition behavior
+## 13. Navigation, references, code actions, and refactoring
+
+### 13.1 Go to Definition behavior
 
 `RoslynNavigationService` resolves symbol definitions via `SymbolFinder`:
 
@@ -380,6 +389,57 @@ Triggers:
 
 - Keyboard: `F12`
 - Mouse: `Ctrl+Click`
+
+### 13.2 Find References behavior
+
+`MainViewModel.FindReferencesAsync(...)` resolves symbol references via
+`RoslynNavigationService.FindReferencesAsync(...)` and populates `ReferenceItems`.
+
+- Results are shown in `FindReferencesPanel`
+- Status text (`FindReferencesStatusText`) reports search state and counts
+- Double-clicking a result navigates to the source location
+
+Trigger:
+
+- Keyboard: `Shift+F12`
+
+### 13.3 Go to Implementation / Derived Types behavior
+
+`RoslynNavigationService` also provides:
+
+- `FindImplementationsAsync(...)` using `SymbolFinder.FindImplementationsAsync`
+- `FindDerivedTypesAsync(...)` using `SymbolFinder.FindDerivedClassesAsync`
+
+`MainViewModel` routes both commands through shared related-symbol navigation:
+
+- If one result is found, navigation jumps directly
+- If multiple results are found, they are listed in `FindReferencesPanel`
+- If no results are found, panel status is updated accordingly
+
+### 13.4 Code Actions & Lightbulb behavior
+
+`RoslynCodeActionService.GetCodeActionsAsync(...)` discovers and flattens available
+Roslyn code fixes/refactorings at the caret. `MainViewModel.ShowCodeActionsAsync(...)`
+raises `CodeActionsReady`, and `MainWindow` shows `CodeActionLightBulb` near the caret.
+
+Applying an action uses `ApplyCodeActionMultiFileAsync(...)` and updates all changed files
+in open tabs plus Roslyn workspace state.
+
+Trigger:
+
+- Keyboard: `Ctrl+.`
+
+### 13.5 Refactoring and generation behavior
+
+Implemented refactoring/generation flows in `MainViewModel` include:
+
+- `RenameSymbolAsync(...)` (solution-wide symbol rename)
+- `ExtractMethodAsync(...)` (finds/apply extract-method code action)
+- `GenerateMissingMembersAsync(...)` (filters to generation/implementation actions,
+  auto-applies when there is a single candidate)
+
+`GenerateMissingMembersAsync(...)` relies on
+`RoslynCodeActionService.GetGenerateMissingMembersActionsAsync(...)`.
 
 ---
 
