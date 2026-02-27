@@ -300,9 +300,41 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
 
     private void NewFile()
     {
-        var tab = new OpenFileTab("Untitled", string.Empty);
-        OpenTabs.Add(tab);
-        ActivateTab(tab, syntaxHighlighting: "C#");
+        var dialog = new SaveFileDialog
+        {
+            Title = "New File",
+            Filter = "C# Files (*.cs)|*.cs|All Files (*.*)|*.*|XAML Files (*.xaml)|*.xaml|XML Files (*.xml)|*.xml|JSON Files (*.json)|*.json|Text Files (*.txt)|*.txt",
+            DefaultExt = ".cs",
+            AddExtension = true,
+            FileName = "NewFile.cs"
+        };
+
+        if (!string.IsNullOrWhiteSpace(ProjectRootPath) && Directory.Exists(ProjectRootPath))
+        {
+            dialog.InitialDirectory = ProjectRootPath;
+        }
+
+        if (dialog.ShowDialog() != true)
+        {
+            return;
+        }
+
+        try
+        {
+            EditorService.WriteFile(dialog.FileName, string.Empty);
+            OpenFileByPath(dialog.FileName);
+
+            if (!string.IsNullOrWhiteSpace(ProjectRootPath) && Directory.Exists(ProjectRootPath))
+            {
+                var root = EditorService.BuildFileTree(ProjectRootPath);
+                ProjectItems = new ObservableCollection<ProjectItem>(root.Children);
+            }
+        }
+        catch (IOException ex)
+        {
+            MessageBox.Show($"Could not create file:\n{ex.Message}", "Error",
+                MessageBoxButton.OK, MessageBoxImage.Error);
+        }
     }
 
     private void OpenFile()

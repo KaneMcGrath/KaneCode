@@ -8,6 +8,9 @@
 > Mark `[~]` when starting work, `[O]` when complete and awaiting review, 
 > Under the item give a few brief runtime testing items, for a QA team to verify.
 > The QA team will mark `[x]` when it is tested.
+>
+> There may be some TODO items that already have an implementation in the program
+> If there is already an implementation, mark the item as `[O]` and add testing items for QA to verify correctness and completeness of the implementation.
 
 
 ## Status Key
@@ -80,7 +83,7 @@
 
 > Improve the new-file workflow, add C# templates, and overhaul the explorer panel.
 
-- [ ] **4.1 Project-aware New File dialog**
+- [X] **4.1 Project-aware New File dialog**
   - When a project/folder is loaded, `File > New` opens a Save File dialog rooted at the project directory
   - Default filter to `.cs`; allow switching to other extensions
   - When no project is loaded, fall back to a save dialog with no preset directory
@@ -104,6 +107,11 @@
   - Show the loaded `.csproj` or `.sln` as a top-level node in the explorer tree
   - When a solution is loaded, show the solution node with project children; when a project is loaded, show the project as root
   - Add `ItemType` enum to `ProjectItem` (Solution, Project, Folder, File) for icon and behavior differentiation
+  - Add context menu commands for files/folders/projects
+	- new
+	- delete
+	- rename
+	- open in Explorer
   - Files: `Models/ProjectItem.cs`, `Services/EditorService.cs`, `ViewModels/MainViewModel.cs`
 
 - [ ] **4.5 Explorer — placeholder icons**
