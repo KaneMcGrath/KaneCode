@@ -8,7 +8,7 @@ xmlns:controls="clr-namespace:KaneCode.Controls"
 xmlns:avalonEdit="http://icsharpcode.net/sharpdevelop/avalonedit"
 xmlns:avalonDock="https://github.com/Dirkster99/AvalonDock"
 mc:Ignorable="d"
-Title="{Binding WindowTitle}" Height="450" Width="800"
+Title="{Binding WindowTitle}" Height="450" Width="800" WindowState="Maximized"
 Background="{DynamicResource WindowBackground}"
 Icon="Icons/KaneCode.ico">
     <DockPanel>
@@ -62,7 +62,8 @@ Icon="Icons/KaneCode.ico">
                 <avalonDock:LayoutPanel Orientation="Horizontal">
 
                     <!-- Left: Explorer panel -->
-                    <avalonDock:LayoutAnchorablePane DockWidth="200">
+                    <!-- Default to ~1/6 of the window width -->
+                    <avalonDock:LayoutAnchorablePane DockWidth="1*">
                         <avalonDock:LayoutAnchorable Title="Explorer"
                                                      CanClose="False"
                                                      CanHide="True"
@@ -95,10 +96,12 @@ Icon="Icons/KaneCode.ico">
                     </avalonDock:LayoutAnchorablePane>
 
                     <!-- Center: Document + Error List (vertical split) -->
-                    <avalonDock:LayoutPanel Orientation="Vertical">
+                    <!-- Default to ~5/6 of the window width -->
+                    <avalonDock:LayoutPanel Orientation="Vertical" DockWidth="5*">
 
                         <!-- Editor panel -->
-                        <avalonDock:LayoutAnchorablePane>
+                        <!-- Default to ~5/6 of the right-side height -->
+                        <avalonDock:LayoutAnchorablePane DockHeight="5*">
                             <avalonDock:LayoutAnchorable Title="Editor"
                                                          CanClose="False"
                                                          CanHide="False"
@@ -177,7 +180,8 @@ Icon="Icons/KaneCode.ico">
                         </avalonDock:LayoutAnchorablePane>
 
                         <!-- Bottom: Error List panel -->
-                        <avalonDock:LayoutAnchorablePane DockHeight="150">
+                        <!-- Default to ~1/6 of the right-side height -->
+                        <avalonDock:LayoutAnchorablePane DockHeight="1*">
                             <avalonDock:LayoutAnchorable Title="Error List"
                                                          CanClose="False"
                                                          CanHide="True"
