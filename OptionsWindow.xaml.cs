@@ -1,6 +1,8 @@
 using KaneCode.Theming;
+using KaneCode.ViewModels;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Input;
 
 namespace KaneCode;
 
@@ -10,6 +12,7 @@ namespace KaneCode;
 public partial class OptionsWindow : Window
 {
     private bool _isInitializing = true;
+    private readonly HotkeySettingsViewModel _hotkeyViewModel = new();
 
     public OptionsWindow()
     {
@@ -25,6 +28,9 @@ public partial class OptionsWindow : Window
             AppTheme.Light => 1,
             _ => 0
         };
+
+        // Bind the hotkeys page to its view model
+        HotkeysPageBorder.DataContext = _hotkeyViewModel;
 
         _isInitializing = false;
     }
@@ -73,5 +79,44 @@ public partial class OptionsWindow : Window
         };
 
         ThemeManager.ApplyTheme(theme);
+    }
+
+    private void AssignKey_Click(object sender, RoutedEventArgs e)
+    {
+        _hotkeyViewModel.StartRecording();
+        UpdateRecordingIndicator();
+        HotkeyListView.Focus();
+    }
+
+    private void HotkeyList_MouseDoubleClick(object sender, MouseButtonEventArgs e)
+    {
+        _hotkeyViewModel.StartRecording();
+        UpdateRecordingIndicator();
+    }
+
+    private void HotkeyList_PreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        if (!_hotkeyViewModel.IsRecording)
+        {
+            return;
+        }
+
+        // Prevent default list view key handling while recording
+        e.Handled = true;
+
+        var key = e.Key == Key.System ? e.SystemKey : e.Key;
+        var modifiers = Keyboard.Modifiers;
+
+        if (_hotkeyViewModel.ApplyRecordedGesture(key, modifiers))
+        {
+            UpdateRecordingIndicator();
+        }
+    }
+
+    private void UpdateRecordingIndicator()
+    {
+        RecordingIndicator.Visibility = _hotkeyViewModel.IsRecording
+            ? Visibility.Visible
+            : Visibility.Collapsed;
     }
 }

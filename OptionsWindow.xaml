@@ -110,15 +110,64 @@
                 Background="{DynamicResource WindowBackground}"
                 Padding="20,16"
                 Visibility="Collapsed">
-            <StackPanel>
-                <TextBlock Text="Hotkeys"
+            <DockPanel>
+                <TextBlock DockPanel.Dock="Top"
+                           Text="Hotkeys"
                            FontSize="18" FontWeight="SemiBold"
                            Foreground="{DynamicResource WindowForeground}"
-                           Margin="0,0,0,16" />
-                <TextBlock Text="No configurable hotkeys yet."
-                           Foreground="{DynamicResource PanelForeground}"
-                           FontSize="13" />
-            </StackPanel>
+                           Margin="0,0,0,12" />
+
+                <!-- Toolbar -->
+                <StackPanel DockPanel.Dock="Bottom"
+                            Orientation="Horizontal"
+                            Margin="0,10,0,0">
+                    <Button Content="Assign Key"
+                            x:Name="AssignKeyButton"
+                            Click="AssignKey_Click"
+                            Padding="10,4" Margin="0,0,6,0" />
+                    <Button Content="Clear"
+                            Command="{Binding ClearSelectedCommand}"
+                            Padding="10,4" Margin="0,0,6,0" />
+                    <Button Content="Reset Selected"
+                            Command="{Binding ResetSelectedCommand}"
+                            Padding="10,4" Margin="0,0,6,0" />
+                    <Button Content="Reset All"
+                            Command="{Binding ResetAllCommand}"
+                            Padding="10,4" Margin="0,0,6,0" />
+                </StackPanel>
+
+                <!-- Recording indicator -->
+                <TextBlock DockPanel.Dock="Bottom"
+                           x:Name="RecordingIndicator"
+                           Text="{Binding RecordingText}"
+                           Foreground="Orange"
+                           FontSize="13" FontWeight="SemiBold"
+                           Margin="0,6,0,0"
+                           Visibility="Collapsed" />
+
+                <!-- Hotkey list -->
+                <ListView x:Name="HotkeyListView"
+                          ItemsSource="{Binding Bindings}"
+                          SelectedItem="{Binding SelectedBinding, Mode=TwoWay}"
+                          Background="{DynamicResource PanelBackground}"
+                          Foreground="{DynamicResource PanelForeground}"
+                          BorderThickness="1"
+                          BorderBrush="{DynamicResource SplitterBackground}"
+                          SelectionMode="Single"
+                          MouseDoubleClick="HotkeyList_MouseDoubleClick"
+                          PreviewKeyDown="HotkeyList_PreviewKeyDown">
+                    <ListView.View>
+                        <GridView>
+                            <GridViewColumn Header="Action" Width="200"
+                                            DisplayMemberBinding="{Binding DisplayName}" />
+                            <GridViewColumn Header="Shortcut" Width="160"
+                                            DisplayMemberBinding="{Binding GestureText}" />
+                            <GridViewColumn Header="Default" Width="160"
+                                            DisplayMemberBinding="{Binding DefaultGestureText}" />
+                        </GridView>
+                    </ListView.View>
+                </ListView>
+            </DockPanel>
         </Border>
     </Grid>
 </Window>

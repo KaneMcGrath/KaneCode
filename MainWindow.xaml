@@ -16,28 +16,28 @@ Icon="Icons/KaneCode.ico">
         <Menu DockPanel.Dock="Top"
               Background="{DynamicResource MenuBackground}">
             <MenuItem Header="_File">
-                <MenuItem Header="_New" Command="{Binding NewFileCommand}" InputGestureText="Ctrl+N" />
-                <MenuItem Header="_Open File" Command="{Binding OpenFileCommand}" InputGestureText="Ctrl+O" />
+                <MenuItem Header="_New" Command="{Binding NewFileCommand}" />
+                <MenuItem Header="_Open File" Command="{Binding OpenFileCommand}" />
                 <MenuItem Header="Open _Folder" Command="{Binding OpenFolderCommand}" />
                 <MenuItem Header="Open _Project..." Command="{Binding OpenProjectCommand}" />
                 <MenuItem Header="Open _Solution..." Command="{Binding OpenSolutionCommand}" />
                 <Separator />
-                <MenuItem Header="_Save" Command="{Binding SaveCommand}" InputGestureText="Ctrl+S" />
-                <MenuItem Header="Save _As..." Command="{Binding SaveAsCommand}" InputGestureText="Ctrl+Shift+S" />
+                <MenuItem Header="_Save" Command="{Binding SaveCommand}" />
+                <MenuItem Header="Save _As..." Command="{Binding SaveAsCommand}" />
                 <Separator />
-                <MenuItem Header="_Close Tab" Command="{Binding CloseTabCommand}" InputGestureText="Ctrl+W" />
+                <MenuItem Header="_Close Tab" Command="{Binding CloseTabCommand}" />
                 <Separator />
                 <MenuItem Header="E_xit" Command="{Binding ExitCommand}" />
             </MenuItem>
             <MenuItem Header="_Edit">
-                <MenuItem Header="_Undo" Command="{Binding UndoCommand}" InputGestureText="Ctrl+Z" />
-                <MenuItem Header="_Redo" Command="{Binding RedoCommand}" InputGestureText="Ctrl+Y" />
+                <MenuItem Header="_Undo" Command="{Binding UndoCommand}" />
+                <MenuItem Header="_Redo" Command="{Binding RedoCommand}" />
                 <Separator />
-                <MenuItem Header="Go to _Definition" Command="{Binding GoToDefinitionCommand}" InputGestureText="F12" />
+                <MenuItem Header="Go to _Definition" Command="{Binding GoToDefinitionCommand}" />
                 <Separator />
-                <MenuItem Header="Cu_t" Command="{Binding CutCommand}" InputGestureText="Ctrl+X" />
-                <MenuItem Header="_Copy" Command="{Binding CopyCommand}" InputGestureText="Ctrl+C" />
-                <MenuItem Header="_Paste" Command="{Binding PasteCommand}" InputGestureText="Ctrl+V" />
+                <MenuItem Header="Cu_t" Command="{Binding CutCommand}" />
+                <MenuItem Header="_Copy" Command="{Binding CopyCommand}" />
+                <MenuItem Header="_Paste" Command="{Binding PasteCommand}" />
             </MenuItem>
             <MenuItem Header="_View">
                 <MenuItem Header="_Options" Command="{Binding OpenOptionsCommand}" />

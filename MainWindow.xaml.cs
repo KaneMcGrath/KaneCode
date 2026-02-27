@@ -1,4 +1,5 @@
-﻿using KaneCode.Models;
+﻿using KaneCode.Infrastructure;
+using KaneCode.Models;
 using KaneCode.Theming;
 using KaneCode.ViewModels;
 using ICSharpCode.AvalonEdit.Rendering;
@@ -30,27 +31,8 @@ public partial class MainWindow : Window
     {
         _viewModel.AttachEditor(CodeEditor);
 
-        // Ctrl+Space triggers code completion
-        CodeEditor.InputBindings.Add(new KeyBinding(
-            new RelayInputCommand(async () => await _viewModel.ShowCompletionWindowAsync()),
-            Key.Space,
-            ModifierKeys.Control));
-
-        CodeEditor.InputBindings.Add(new KeyBinding(
-            _viewModel.FindCommand,
-            Key.F,
-            ModifierKeys.Control));
-
-        CodeEditor.InputBindings.Add(new KeyBinding(
-            _viewModel.ReplaceCommand,
-            Key.H,
-            ModifierKeys.Control));
-
-        // F12 triggers Go to Definition
-        CodeEditor.InputBindings.Add(new KeyBinding(
-            new RelayInputCommand(async () => await _viewModel.GoToDefinitionAsync()),
-            Key.F12,
-            ModifierKeys.None));
+        ApplyHotkeyBindings();
+        HotkeyManager.BindingsChanged += ApplyHotkeyBindings;
 
         // Ctrl+Click triggers Go to Definition
         CodeEditor.PreviewMouseLeftButtonUp += CodeEditor_PreviewMouseLeftButtonUp;
@@ -63,12 +45,120 @@ public partial class MainWindow : Window
 
     private void OnClosed(object? sender, EventArgs e)
     {
+        HotkeyManager.BindingsChanged -= ApplyHotkeyBindings;
         CodeEditor.TextArea.TextView.MouseHover -= TextView_MouseHover;
         CodeEditor.TextArea.TextView.MouseHoverStopped -= TextView_MouseHoverStopped;
         CodeEditor.TextArea.TextView.VisualLinesChanged -= TextView_VisualLinesChanged;
         CodeEditor.PreviewMouseLeftButtonUp -= CodeEditor_PreviewMouseLeftButtonUp;
         CloseQuickInfoPopup();
         _viewModel.Dispose();
+    }
+
+    /// <summary>
+    /// Applies all hotkey bindings from HotkeyManager to window and editor input bindings.
+    /// Called on startup and whenever bindings change.
+    /// </summary>
+    private void ApplyHotkeyBindings()
+    {
+        // Clear previous dynamic bindings
+        InputBindings.Clear();
+        CodeEditor.InputBindings.Clear();
+
+        // Window-level bindings (menu commands)
+        AddWindowBinding(HotkeyAction.NewFile, _viewModel.NewFileCommand);
+        AddWindowBinding(HotkeyAction.OpenFile, _viewModel.OpenFileCommand);
+        AddWindowBinding(HotkeyAction.OpenFolder, _viewModel.OpenFolderCommand);
+        AddWindowBinding(HotkeyAction.OpenProject, _viewModel.OpenProjectCommand);
+        AddWindowBinding(HotkeyAction.OpenSolution, _viewModel.OpenSolutionCommand);
+        AddWindowBinding(HotkeyAction.Save, _viewModel.SaveCommand);
+        AddWindowBinding(HotkeyAction.SaveAs, _viewModel.SaveAsCommand);
+        AddWindowBinding(HotkeyAction.CloseTab, _viewModel.CloseTabCommand);
+        AddWindowBinding(HotkeyAction.Undo, _viewModel.UndoCommand);
+        AddWindowBinding(HotkeyAction.Redo, _viewModel.RedoCommand);
+        AddWindowBinding(HotkeyAction.Cut, _viewModel.CutCommand);
+        AddWindowBinding(HotkeyAction.Copy, _viewModel.CopyCommand);
+        AddWindowBinding(HotkeyAction.Paste, _viewModel.PasteCommand);
+        AddWindowBinding(HotkeyAction.OpenOptions, _viewModel.OpenOptionsCommand);
+        AddWindowBinding(HotkeyAction.Exit, _viewModel.ExitCommand);
+
+        // Editor-level bindings (need to go on the editor to intercept before AvalonEdit)
+        AddEditorBinding(HotkeyAction.Find, _viewModel.FindCommand);
+        AddEditorBinding(HotkeyAction.Replace, _viewModel.ReplaceCommand);
+        AddEditorBinding(HotkeyAction.GoToDefinition,
+            new RelayInputCommand(async () => await _viewModel.GoToDefinitionAsync()));
+        AddEditorBinding(HotkeyAction.TriggerCompletion,
+            new RelayInputCommand(async () => await _viewModel.ShowCompletionWindowAsync()));
+
+        // Update menu gesture text displays
+        UpdateMenuGestureText();
+    }
+
+    private void AddWindowBinding(HotkeyAction action, ICommand command)
+    {
+        var binding = HotkeyManager.Get(action);
+        if (binding.Key == Key.None)
+        {
+            return;
+        }
+
+        InputBindings.Add(new KeyBinding(command, binding.Key, binding.Modifiers));
+    }
+
+    private void AddEditorBinding(HotkeyAction action, ICommand command)
+    {
+        var binding = HotkeyManager.Get(action);
+        if (binding.Key == Key.None)
+        {
+            return;
+        }
+
+        CodeEditor.InputBindings.Add(new KeyBinding(command, binding.Key, binding.Modifiers));
+    }
+
+    /// <summary>
+    /// Walks the menu tree and updates InputGestureText for items whose Header
+    /// matches a known hotkey action.
+    /// </summary>
+    private void UpdateMenuGestureText()
+    {
+        var menuBar = (Menu)((DockPanel)Content).Children[0];
+        foreach (var topItem in menuBar.Items.OfType<MenuItem>())
+        {
+            UpdateMenuItemGestures(topItem);
+        }
+    }
+
+    private static readonly Dictionary<string, HotkeyAction> s_menuHeaderToAction = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["_New"] = HotkeyAction.NewFile,
+        ["_Open File"] = HotkeyAction.OpenFile,
+        ["Open _Folder"] = HotkeyAction.OpenFolder,
+        ["Open _Project..."] = HotkeyAction.OpenProject,
+        ["Open _Solution..."] = HotkeyAction.OpenSolution,
+        ["_Save"] = HotkeyAction.Save,
+        ["Save _As..."] = HotkeyAction.SaveAs,
+        ["_Close Tab"] = HotkeyAction.CloseTab,
+        ["_Undo"] = HotkeyAction.Undo,
+        ["_Redo"] = HotkeyAction.Redo,
+        ["Cu_t"] = HotkeyAction.Cut,
+        ["_Copy"] = HotkeyAction.Copy,
+        ["_Paste"] = HotkeyAction.Paste,
+        ["Go to _Definition"] = HotkeyAction.GoToDefinition,
+        ["_Options"] = HotkeyAction.OpenOptions,
+        ["E_xit"] = HotkeyAction.Exit,
+    };
+
+    private static void UpdateMenuItemGestures(MenuItem menuItem)
+    {
+        if (menuItem.Header is string header && s_menuHeaderToAction.TryGetValue(header, out var action))
+        {
+            menuItem.InputGestureText = HotkeyManager.GetGestureText(action);
+        }
+
+        foreach (var child in menuItem.Items.OfType<MenuItem>())
+        {
+            UpdateMenuItemGestures(child);
+        }
     }
 
     private async void CodeEditor_PreviewMouseLeftButtonUp(object sender, MouseButtonEventArgs e)

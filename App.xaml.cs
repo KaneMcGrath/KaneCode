@@ -1,4 +1,5 @@
-﻿using KaneCode.Services;
+﻿using KaneCode.Infrastructure;
+using KaneCode.Services;
 using KaneCode.Theming;
 using System.Windows;
 
@@ -16,6 +17,7 @@ public partial class App : Application
         // Must register MSBuild before any MSBuild types are loaded
         MSBuildProjectLoader.EnsureMSBuildRegistered();
 
+        HotkeyManager.Initialize();
         ThemeManager.ApplyTheme(AppTheme.Dark);
     }
 }
