@@ -30,6 +30,7 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
     private readonly RoslynQuickInfoService _quickInfoService;
     private readonly RoslynSignatureHelpService _signatureHelpService;
     private readonly RoslynCodeActionService _codeActionService;
+    private readonly RoslynRefactoringService _refactoringService;
     private readonly BuildService _buildService = new();
     private RoslynClassificationColorizer? _classificationColorizer;
     private RoslynDiagnosticRenderer? _diagnosticRenderer;
@@ -42,6 +43,7 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
     private CancellationTokenSource? _quickInfoCts;
     private CancellationTokenSource? _signatureHelpCts;
     private CancellationTokenSource? _codeActionsCts;
+    private CancellationTokenSource? _renameCts;
     private CancellationTokenSource? _loadCts;
     private bool _isLoadingProject;
     private readonly TimeSpan _analysisDelay = TimeSpan.FromMilliseconds(500);
@@ -56,6 +58,7 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
         _quickInfoService = new RoslynQuickInfoService(_roslynService);
         _signatureHelpService = new RoslynSignatureHelpService(_roslynService);
         _codeActionService = new RoslynCodeActionService(_roslynService);
+        _refactoringService = new RoslynRefactoringService(_roslynService);
 
         NewFileCommand = new RelayCommand(_ => NewFile());
         OpenFileCommand = new RelayCommand(_ => OpenFile());
@@ -80,6 +83,8 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
         RunCommand = new RelayCommand(_ => _ = RunProjectAsync(), _ => CanBuild());
         CancelBuildCommand = new RelayCommand(_ => CancelBuild(), _ => _buildService.IsRunning);
         CodeActionsCommand = new RelayCommand(async _ => await ShowCodeActionsAsync(), _ => CanGoToDefinition());
+        RenameCommand = new RelayCommand(async _ => await RenameSymbolAsync(), _ => CanGoToDefinition());
+        ExtractMethodCommand = new RelayCommand(async _ => await ExtractMethodAsync(), _ => CanExtractMethod());
 
         _buildService.OutputReceived += OnBuildOutputReceived;
         _buildService.ProcessExited += OnBuildProcessExited;
@@ -108,6 +113,8 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
     public ICommand RunCommand { get; }
     public ICommand CancelBuildCommand { get; }
     public ICommand CodeActionsCommand { get; }
+    public ICommand RenameCommand { get; }
+    public ICommand ExtractMethodCommand { get; }
 
     private ObservableCollection<ProjectItem> _projectItems = [];
     public ObservableCollection<ProjectItem> ProjectItems
@@ -1325,6 +1332,8 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
 
     /// <summary>
     /// Applies a selected code action and updates the editor text.
+    /// For multi-file code actions, updates all affected open tabs and writes
+    /// changes to files not currently open.
     /// </summary>
     public async Task ApplyCodeActionAsync(Models.CodeActionItem item)
     {
@@ -1337,17 +1346,16 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
 
         try
         {
-            var result = await _codeActionService
-                .ApplyCodeActionAsync(ActiveTab.FilePath, item.Action)
+            var multiResult = await _codeActionService
+                .ApplyCodeActionMultiFileAsync(ActiveTab.FilePath, item.Action)
                 .ConfigureAwait(true);
 
-            if (result is null)
+            if (multiResult is null)
             {
                 return;
             }
 
-            _editor.Text = result.NewText;
-            ScheduleRoslynAnalysis();
+            ApplyMultiFileChanges(multiResult.ChangedFiles);
         }
         catch (OperationCanceledException)
         {
@@ -1360,6 +1368,217 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
     /// The MainWindow subscribes to show the lightbulb popup.
     /// </summary>
     public event Action<IReadOnlyList<Models.CodeActionItem>>? CodeActionsReady;
+
+    /// <summary>
+    /// Prompts the user for a new name and renames the symbol at the caret across the solution.
+    /// </summary>
+    public async Task RenameSymbolAsync()
+    {
+        if (_editor is null || ActiveTab is null || !RoslynWorkspaceService.IsCSharpFile(ActiveTab.FilePath))
+        {
+            return;
+        }
+
+        _renameCts?.Cancel();
+        _renameCts?.Dispose();
+        _renameCts = new CancellationTokenSource();
+        var ct = _renameCts.Token;
+
+        try
+        {
+            var caretOffset = _editor.CaretOffset;
+            await _roslynService.UpdateDocumentTextAsync(ActiveTab.FilePath, _editor.Text, ct).ConfigureAwait(true);
+
+            var symbolInfo = await _refactoringService
+                .GetSymbolNameAtPositionAsync(ActiveTab.FilePath, caretOffset, ct)
+                .ConfigureAwait(true);
+
+            if (symbolInfo is null)
+            {
+                return;
+            }
+
+            var newName = PromptForNewName(symbolInfo.Name);
+            if (string.IsNullOrWhiteSpace(newName) || newName == symbolInfo.Name)
+            {
+                return;
+            }
+
+            var result = await _refactoringService
+                .RenameSymbolAsync(ActiveTab.FilePath, caretOffset, newName, ct)
+                .ConfigureAwait(true);
+
+            if (result is null)
+            {
+                return;
+            }
+
+            ApplyMultiFileChanges(result.ChangedFiles);
+        }
+        catch (OperationCanceledException)
+        {
+            // Superseded by a newer request
+        }
+    }
+
+    /// <summary>
+    /// Triggers the Extract Method refactoring on the current text selection.
+    /// This works by finding the "Extract method" code action and applying it.
+    /// </summary>
+    public async Task ExtractMethodAsync()
+    {
+        if (_editor is null || ActiveTab is null || !RoslynWorkspaceService.IsCSharpFile(ActiveTab.FilePath))
+        {
+            return;
+        }
+
+        _codeActionsCts?.Cancel();
+        _codeActionsCts?.Dispose();
+        _codeActionsCts = new CancellationTokenSource();
+        var ct = _codeActionsCts.Token;
+
+        try
+        {
+            var selection = _editor.TextArea.Selection;
+            if (selection.IsEmpty)
+            {
+                return;
+            }
+
+            var startOffset = _editor.Document.GetOffset(selection.StartPosition.Location);
+            var endOffset = _editor.Document.GetOffset(selection.EndPosition.Location);
+            var midpoint = (startOffset + endOffset) / 2;
+
+            await _roslynService.UpdateDocumentTextAsync(ActiveTab.FilePath, _editor.Text, ct).ConfigureAwait(true);
+
+            var items = await _codeActionService
+                .GetCodeActionsAsync(ActiveTab.FilePath, midpoint, ct)
+                .ConfigureAwait(true);
+
+            // Find the extract method action
+            var extractAction = items.FirstOrDefault(a =>
+                a.Title.Contains("Extract method", StringComparison.OrdinalIgnoreCase)
+                || a.Title.Contains("Extract local function", StringComparison.OrdinalIgnoreCase));
+
+            if (extractAction is null)
+            {
+                // Fall back to showing all available actions so the user can pick
+                if (items.Count > 0)
+                {
+                    CodeActionsReady?.Invoke(items);
+                }
+                return;
+            }
+
+            await ApplyCodeActionAsync(extractAction);
+        }
+        catch (OperationCanceledException)
+        {
+            // Superseded by a newer request
+        }
+    }
+
+    /// <summary>
+    /// Applies multi-file changes: updates open tabs in-memory and writes changes
+    /// for files not currently open back to the workspace.
+    /// </summary>
+    private void ApplyMultiFileChanges(IReadOnlyDictionary<string, string> changedFiles)
+    {
+        foreach (var (filePath, newText) in changedFiles)
+        {
+            var tab = OpenTabs.FirstOrDefault(t =>
+                string.Equals(t.FilePath, filePath, StringComparison.OrdinalIgnoreCase));
+
+            if (tab is not null && tab == ActiveTab && _editor is not null)
+            {
+                _editor.Text = newText;
+            }
+            else if (tab is not null)
+            {
+                tab.Document.Text = newText;
+            }
+
+            // Update the Roslyn workspace with the new text
+            _ = _roslynService.UpdateDocumentTextAsync(filePath, newText);
+        }
+
+        ScheduleRoslynAnalysis();
+    }
+
+    private static string? PromptForNewName(string currentName)
+    {
+        var inputWindow = new System.Windows.Window
+        {
+            Title = "Rename Symbol",
+            Width = 350,
+            Height = 150,
+            WindowStartupLocation = System.Windows.WindowStartupLocation.CenterOwner,
+            ResizeMode = System.Windows.ResizeMode.NoResize,
+            Owner = System.Windows.Application.Current.MainWindow
+        };
+
+        string? result = null;
+        var panel = new System.Windows.Controls.StackPanel { Margin = new System.Windows.Thickness(12) };
+
+        var label = new System.Windows.Controls.TextBlock
+        {
+            Text = "New name:",
+            Margin = new System.Windows.Thickness(0, 0, 0, 6)
+        };
+        panel.Children.Add(label);
+
+        var textBox = new System.Windows.Controls.TextBox
+        {
+            Text = currentName,
+            Margin = new System.Windows.Thickness(0, 0, 0, 12)
+        };
+        textBox.SelectAll();
+        panel.Children.Add(textBox);
+
+        var buttonPanel = new System.Windows.Controls.StackPanel
+        {
+            Orientation = System.Windows.Controls.Orientation.Horizontal,
+            HorizontalAlignment = System.Windows.HorizontalAlignment.Right
+        };
+
+        var okButton = new System.Windows.Controls.Button
+        {
+            Content = "OK",
+            Width = 75,
+            Margin = new System.Windows.Thickness(0, 0, 8, 0),
+            IsDefault = true
+        };
+        okButton.Click += (_, _) =>
+        {
+            result = textBox.Text;
+            inputWindow.DialogResult = true;
+        };
+        buttonPanel.Children.Add(okButton);
+
+        var cancelButton = new System.Windows.Controls.Button
+        {
+            Content = "Cancel",
+            Width = 75,
+            IsCancel = true
+        };
+        buttonPanel.Children.Add(cancelButton);
+
+        panel.Children.Add(buttonPanel);
+        inputWindow.Content = panel;
+
+        textBox.Loaded += (_, _) => textBox.Focus();
+
+        inputWindow.ShowDialog();
+        return result;
+    }
+
+    private bool CanExtractMethod()
+    {
+        return _editor is not null
+            && ActiveTab is not null
+            && RoslynWorkspaceService.IsCSharpFile(ActiveTab.FilePath)
+            && _editor.TextArea.Selection is { IsEmpty: false };
+    }
 
     /// <summary>
     /// Gets Quick Info (hover tooltip) text for the symbol at the given editor offset.
@@ -1554,6 +1773,8 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
         _signatureHelpCts?.Dispose();
         _codeActionsCts?.Cancel();
         _codeActionsCts?.Dispose();
+        _renameCts?.Cancel();
+        _renameCts?.Dispose();
         _roslynService.Dispose();
     }
 }

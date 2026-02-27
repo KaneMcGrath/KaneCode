@@ -74,6 +74,37 @@ internal sealed class RoslynCodeActionService
         ArgumentException.ThrowIfNullOrWhiteSpace(filePath);
         ArgumentNullException.ThrowIfNull(codeAction);
 
+        var multiResult = await ApplyCodeActionMultiFileAsync(filePath, codeAction, cancellationToken)
+            .ConfigureAwait(false);
+
+        if (multiResult is null)
+        {
+            return null;
+        }
+
+        // Return the text for the originating document (backward-compatible).
+        if (multiResult.ChangedFiles.TryGetValue(filePath, out var newText))
+        {
+            return new ApplyResult(newText);
+        }
+
+        // Fallback: return the first changed file's text.
+        var first = multiResult.ChangedFiles.Values.FirstOrDefault();
+        return first is not null ? new ApplyResult(first) : null;
+    }
+
+    /// <summary>
+    /// Applies a code action and returns all changed files.
+    /// Returns null if the action could not be applied.
+    /// </summary>
+    public async Task<ApplyMultiFileResult?> ApplyCodeActionMultiFileAsync(
+        string filePath,
+        CodeAction codeAction,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(filePath);
+        ArgumentNullException.ThrowIfNull(codeAction);
+
         var document = _roslynService.GetDocument(filePath);
         if (document is null)
         {
@@ -87,14 +118,31 @@ internal sealed class RoslynCodeActionService
             if (operation is ApplyChangesOperation applyChanges)
             {
                 var changedSolution = applyChanges.ChangedSolution;
-                var changedDocument = changedSolution.GetDocument(document.Id);
-                if (changedDocument is null)
+                var originalSolution = document.Project.Solution;
+
+                var changes = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+                foreach (var projectChanges in changedSolution.GetChanges(originalSolution).GetProjectChanges())
                 {
-                    continue;
+                    foreach (var docId in projectChanges.GetChangedDocuments())
+                    {
+                        cancellationToken.ThrowIfCancellationRequested();
+
+                        var changedDoc = changedSolution.GetDocument(docId);
+                        if (changedDoc?.FilePath is null)
+                        {
+                            continue;
+                        }
+
+                        var text = await changedDoc.GetTextAsync(cancellationToken).ConfigureAwait(false);
+                        changes[changedDoc.FilePath] = text.ToString();
+                    }
                 }
 
-                var newText = await changedDocument.GetTextAsync(cancellationToken).ConfigureAwait(false);
-                return new ApplyResult(newText.ToString());
+                if (changes.Count > 0)
+                {
+                    return new ApplyMultiFileResult(changes);
+                }
             }
         }
 
@@ -305,4 +353,9 @@ internal sealed class RoslynCodeActionService
     /// Result of applying a code action.
     /// </summary>
     public sealed record ApplyResult(string NewText);
+
+    /// <summary>
+    /// Result of applying a code action that may affect multiple files.
+    /// </summary>
+    public sealed record ApplyMultiFileResult(IReadOnlyDictionary<string, string> ChangedFiles);
 }

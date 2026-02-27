@@ -115,6 +115,10 @@ public partial class MainWindow : Window
             new RelayInputCommand(async () => await _viewModel.ShowCompletionWindowAsync()));
         AddEditorBinding(HotkeyAction.CodeActions,
             new RelayInputCommand(async () => await _viewModel.ShowCodeActionsAsync()));
+        AddEditorBinding(HotkeyAction.Rename,
+            new RelayInputCommand(async () => await _viewModel.RenameSymbolAsync()));
+        AddEditorBinding(HotkeyAction.ExtractMethod,
+            new RelayInputCommand(async () => await _viewModel.ExtractMethodAsync()));
 
         // Update menu gesture text displays
         UpdateMenuGestureText();
@@ -173,6 +177,8 @@ public partial class MainWindow : Window
         ["Go to _Definition"] = HotkeyAction.GoToDefinition,
         ["Find _References"] = HotkeyAction.FindReferences,
         ["Code _Actions"] = HotkeyAction.CodeActions,
+        ["_Rename"] = HotkeyAction.Rename,
+        ["_Extract Method"] = HotkeyAction.ExtractMethod,
         ["_Options"] = HotkeyAction.OpenOptions,
         ["E_xit"] = HotkeyAction.Exit,
         ["_Build Project"] = HotkeyAction.BuildProject,
@@ -366,6 +372,16 @@ public partial class MainWindow : Window
     private async void EditorContextMenu_CodeActions(object sender, RoutedEventArgs e)
     {
         await _viewModel.ShowCodeActionsAsync();
+    }
+
+    private async void EditorContextMenu_Rename(object sender, RoutedEventArgs e)
+    {
+        await _viewModel.RenameSymbolAsync();
+    }
+
+    private async void EditorContextMenu_ExtractMethod(object sender, RoutedEventArgs e)
+    {
+        await _viewModel.ExtractMethodAsync();
     }
 
     // ── Explorer context menu ──────────────────────────────────────────

@@ -64,7 +64,7 @@
   - Surface Roslyn `CodeActionService`/`CodeFixService` results and let users apply fixes/refactorings from the editor.
   - Files: new `Services/RoslynCodeActionService.cs`, `Controls/CodeActionLightBulb.xaml`, `ViewModels/MainViewModel.cs`
 
-- [ ] **3.4 Refactoring Suite**
+- [X] **3.4 Refactoring Suite**
   - Inline rename, extract method/property, move type, and other transformations via Roslyn's `Renamer`/`CodeRefactoringService`.
   - Files: new `Services/RoslynRefactoringService.cs`, `ViewModels/MainViewModel.cs`
 

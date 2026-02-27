@@ -183,6 +183,8 @@ internal static class HotkeyManager
         Register(HotkeyAction.FindReferences, "Find References", Key.F12, ModifierKeys.Shift);
         Register(HotkeyAction.TriggerCompletion, "Trigger Completion", Key.Space, ModifierKeys.Control);
         Register(HotkeyAction.CodeActions, "Code Actions", Key.OemPeriod, ModifierKeys.Control);
+        Register(HotkeyAction.Rename, "Rename", Key.F2, ModifierKeys.None);
+        Register(HotkeyAction.ExtractMethod, "Extract Method", Key.M, ModifierKeys.Control | ModifierKeys.Shift);
         Register(HotkeyAction.OpenOptions, "Options", Key.None, ModifierKeys.None);
         Register(HotkeyAction.Exit, "Exit", Key.None, ModifierKeys.None);
         Register(HotkeyAction.BuildProject, "Build Project", Key.B, ModifierKeys.Control | ModifierKeys.Shift);

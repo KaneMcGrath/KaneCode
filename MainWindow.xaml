@@ -36,6 +36,8 @@ Icon="Icons/KaneCode.ico">
                 <MenuItem Header="Go to _Definition" Command="{Binding GoToDefinitionCommand}" />
                 <MenuItem Header="Find _References" Command="{Binding FindReferencesCommand}" />
                 <MenuItem Header="Code _Actions" Command="{Binding CodeActionsCommand}" />
+                <MenuItem Header="_Rename" Command="{Binding RenameCommand}" />
+                <MenuItem Header="_Extract Method" Command="{Binding ExtractMethodCommand}" />
                 <Separator />
                 <MenuItem Header="Cu_t" Command="{Binding CutCommand}" />
                 <MenuItem Header="_Copy" Command="{Binding CopyCommand}" />
@@ -224,6 +226,10 @@ Icon="Icons/KaneCode.ico">
                                                           InputGestureText="Shift+F12" />
                                                 <MenuItem Header="Code _Actions" Click="EditorContextMenu_CodeActions"
                                                           InputGestureText="Ctrl+." />
+                                                <MenuItem Header="_Rename" Click="EditorContextMenu_Rename"
+                                                          InputGestureText="F2" />
+                                                <MenuItem Header="_Extract Method" Click="EditorContextMenu_ExtractMethod"
+                                                          InputGestureText="Ctrl+Shift+M" />
                                             </ContextMenu>
                                         </avalonEdit:TextEditor.ContextMenu>
                                     </avalonEdit:TextEditor>
