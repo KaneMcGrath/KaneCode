@@ -34,6 +34,8 @@ public partial class MainWindow : Window
         ApplyHotkeyBindings();
         HotkeyManager.BindingsChanged += ApplyHotkeyBindings;
 
+        _viewModel.PropertyChanged += OnViewModelPropertyChanged;
+
         // Ctrl+Click triggers Go to Definition
         CodeEditor.PreviewMouseLeftButtonUp += CodeEditor_PreviewMouseLeftButtonUp;
 
@@ -45,6 +47,7 @@ public partial class MainWindow : Window
 
     private void OnClosed(object? sender, EventArgs e)
     {
+        _viewModel.PropertyChanged -= OnViewModelPropertyChanged;
         HotkeyManager.BindingsChanged -= ApplyHotkeyBindings;
         CodeEditor.TextArea.TextView.MouseHover -= TextView_MouseHover;
         CodeEditor.TextArea.TextView.MouseHoverStopped -= TextView_MouseHoverStopped;
@@ -52,6 +55,19 @@ public partial class MainWindow : Window
         CodeEditor.PreviewMouseLeftButtonUp -= CodeEditor_PreviewMouseLeftButtonUp;
         CloseQuickInfoPopup();
         _viewModel.Dispose();
+    }
+
+    /// <summary>
+    /// Brings the Find References panel to the front whenever a search is triggered.
+    /// FindReferencesStatusText is set synchronously at the start of every search,
+    /// so this fires for both the hotkey path and the menu-binding path.
+    /// </summary>
+    private void OnViewModelPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(MainViewModel.FindReferencesStatusText))
+        {
+            DockManager.ActiveContent = FindReferencesPanel;
+        }
     }
 
     /// <summary>
@@ -89,6 +105,8 @@ public partial class MainWindow : Window
         AddEditorBinding(HotkeyAction.Replace, _viewModel.ReplaceCommand);
         AddEditorBinding(HotkeyAction.GoToDefinition,
             new RelayInputCommand(async () => await _viewModel.GoToDefinitionAsync()));
+        AddEditorBinding(HotkeyAction.FindReferences,
+            new RelayInputCommand(async () => await _viewModel.FindReferencesAsync()));
         AddEditorBinding(HotkeyAction.TriggerCompletion,
             new RelayInputCommand(async () => await _viewModel.ShowCompletionWindowAsync()));
 
@@ -147,6 +165,7 @@ public partial class MainWindow : Window
         ["_Copy"] = HotkeyAction.Copy,
         ["_Paste"] = HotkeyAction.Paste,
         ["Go to _Definition"] = HotkeyAction.GoToDefinition,
+        ["Find _References"] = HotkeyAction.FindReferences,
         ["_Options"] = HotkeyAction.OpenOptions,
         ["E_xit"] = HotkeyAction.Exit,
         ["_Build Project"] = HotkeyAction.BuildProject,
@@ -198,6 +217,11 @@ public partial class MainWindow : Window
     private void ErrorList_NavigateRequested(object? sender, DiagnosticItem item)
     {
         _viewModel.NavigateToDiagnostic(item);
+    }
+
+    private void FindReferencesPanel_NavigateRequested(object? sender, ReferenceItem item)
+    {
+        _viewModel.NavigateToReference(item);
     }
 
     private async void TextView_MouseHover(object? sender, MouseEventArgs e)

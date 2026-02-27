@@ -23,6 +23,7 @@ internal enum HotkeyAction
     Find,
     Replace,
     GoToDefinition,
+    FindReferences,
     TriggerCompletion,
     OpenOptions,
     Exit,

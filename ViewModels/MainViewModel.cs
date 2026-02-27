@@ -37,6 +37,7 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
     private OverloadInsightWindow? _insightWindow;
     private CancellationTokenSource? _analysisCts;
     private CancellationTokenSource? _navigationCts;
+    private CancellationTokenSource? _findReferencesCts;
     private CancellationTokenSource? _quickInfoCts;
     private CancellationTokenSource? _signatureHelpCts;
     private CancellationTokenSource? _loadCts;
@@ -68,6 +69,7 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
         FindCommand = new RelayCommand(_ => ShowFindPanel(), _ => _editor is not null);
         ReplaceCommand = new RelayCommand(_ => ShowReplacePanel(), _ => _editor is not null);
         GoToDefinitionCommand = new RelayCommand(async _ => await GoToDefinitionAsync(), _ => CanGoToDefinition());
+        FindReferencesCommand = new RelayCommand(async _ => await FindReferencesAsync(), _ => CanGoToDefinition());
         CloseTabCommand = new RelayCommand(param => CloseTab(param as OpenFileTab), _ => ActiveTab is not null);
         ExitCommand = new RelayCommand(_ => ExitApplication());
         OpenOptionsCommand = new RelayCommand(_ => OpenOptions());
@@ -94,6 +96,7 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
     public ICommand FindCommand { get; }
     public ICommand ReplaceCommand { get; }
     public ICommand GoToDefinitionCommand { get; }
+    public ICommand FindReferencesCommand { get; }
     public ICommand CloseTabCommand { get; }
     public ICommand ExitCommand { get; }
     public ICommand OpenOptionsCommand { get; }
@@ -154,6 +157,19 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
     /// Diagnostics shown in the error list panel, updated after each analysis pass.
     /// </summary>
     public ObservableCollection<DiagnosticItem> DiagnosticItems { get; } = [];
+
+    /// <summary>
+    /// References shown in the Find References panel.
+    /// </summary>
+    public ObservableCollection<ReferenceItem> ReferenceItems { get; } = [];
+
+    private string _findReferencesStatusText = string.Empty;
+    /// <summary>Status text shown in the Find References panel header.</summary>
+    public string FindReferencesStatusText
+    {
+        get => _findReferencesStatusText;
+        private set => SetProperty(ref _findReferencesStatusText, value);
+    }
 
     private OpenFileTab? _activeTab;
     public OpenFileTab? ActiveTab
@@ -1113,6 +1129,46 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
     }
 
     /// <summary>
+    /// Navigates the editor to the source location of a reference result.
+    /// Opens the file if it is not already open.
+    /// </summary>
+    public void NavigateToReference(ReferenceItem item)
+    {
+        ArgumentNullException.ThrowIfNull(item);
+
+        if (_editor is null)
+        {
+            return;
+        }
+
+        var tab = OpenTabs.FirstOrDefault(t =>
+            string.Equals(t.FilePath, item.FilePath, StringComparison.OrdinalIgnoreCase));
+
+        if (tab is null)
+        {
+            OpenFileByPath(item.FilePath);
+            tab = ActiveTab;
+        }
+        else if (tab != ActiveTab)
+        {
+            ActivateTab(tab);
+        }
+
+        if (tab is null)
+        {
+            return;
+        }
+
+        var offset = Math.Min(item.StartOffset, _editor.Document.TextLength);
+        if (offset >= 0)
+        {
+            _editor.CaretOffset = offset;
+            _editor.ScrollToLine(item.Line);
+            _editor.TextArea.Focus();
+        }
+    }
+
+    /// <summary>
     /// Navigates to the source definition for the symbol at the caret (or provided offset).
     /// </summary>
     public async Task GoToDefinitionAsync(int? offset = null)
@@ -1178,6 +1234,50 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
         return _editor is not null
             && ActiveTab is not null
             && RoslynWorkspaceService.IsCSharpFile(ActiveTab.FilePath);
+    }
+
+    /// <summary>
+    /// Finds all references to the symbol at the caret across the solution and populates the Find References panel.
+    /// </summary>
+    public async Task FindReferencesAsync()
+    {
+        if (_editor is null || ActiveTab is null || !RoslynWorkspaceService.IsCSharpFile(ActiveTab.FilePath))
+        {
+            return;
+        }
+
+        _findReferencesCts?.Cancel();
+        _findReferencesCts?.Dispose();
+        _findReferencesCts = new CancellationTokenSource();
+        var ct = _findReferencesCts.Token;
+
+        FindReferencesStatusText = "Searching...";
+        ReferenceItems.Clear();
+
+        try
+        {
+            var caretOffset = _editor.CaretOffset;
+            await _roslynService.UpdateDocumentTextAsync(ActiveTab.FilePath, _editor.Text, ct).ConfigureAwait(true);
+
+            var results = await _navigationService
+                .FindReferencesAsync(ActiveTab.FilePath, caretOffset, ct)
+                .ConfigureAwait(true);
+
+            ReferenceItems.Clear();
+            foreach (var item in results)
+            {
+                ReferenceItems.Add(item);
+            }
+
+            var symbolName = results.Count > 0 ? results[0].SymbolName : string.Empty;
+            FindReferencesStatusText = results.Count > 0
+                ? $"{symbolName} — {results.Count} reference(s)"
+                : "No references found";
+        }
+        catch (OperationCanceledException)
+        {
+            // Superseded by a newer request
+        }
     }
 
     /// <summary>
@@ -1365,6 +1465,8 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
         _analysisCts?.Dispose();
         _navigationCts?.Cancel();
         _navigationCts?.Dispose();
+        _findReferencesCts?.Cancel();
+        _findReferencesCts?.Dispose();
         _quickInfoCts?.Cancel();
         _quickInfoCts?.Dispose();
         _signatureHelpCts?.Cancel();

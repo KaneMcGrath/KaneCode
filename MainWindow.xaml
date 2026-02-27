@@ -34,6 +34,7 @@ Icon="Icons/KaneCode.ico">
                 <MenuItem Header="_Redo" Command="{Binding RedoCommand}" />
                 <Separator />
                 <MenuItem Header="Go to _Definition" Command="{Binding GoToDefinitionCommand}" />
+                <MenuItem Header="Find _References" Command="{Binding FindReferencesCommand}" />
                 <Separator />
                 <MenuItem Header="Cu_t" Command="{Binding CutCommand}" />
                 <MenuItem Header="_Copy" Command="{Binding CopyCommand}" />
@@ -205,6 +206,16 @@ Icon="Icons/KaneCode.ico">
                                 <controls:BuildOutputPanel x:Name="BuildOutput"
                                                            OutputLines="{Binding BuildOutputLines}"
                                                            BuildSummary="{Binding BuildSummary}" />
+                            </avalonDock:LayoutAnchorable>
+                            <avalonDock:LayoutAnchorable Title="Find References"
+                                                         CanClose="False"
+                                                         CanHide="True"
+                                                         CanAutoHide="True"
+                                                         ContentId="FindReferencesPane">
+                                <controls:FindReferencesPanel x:Name="FindReferencesPanel"
+                                                              References="{Binding ReferenceItems}"
+                                                              PanelStatusText="{Binding FindReferencesStatusText}"
+                                                              NavigateRequested="FindReferencesPanel_NavigateRequested" />
                             </avalonDock:LayoutAnchorable>
                         </avalonDock:LayoutAnchorablePane>
 

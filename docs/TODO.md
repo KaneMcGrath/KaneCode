@@ -56,7 +56,7 @@
   - Show build output in a panel
   - Files: new `Services/BuildService.cs`, `Controls/BuildOutputPanel.xaml`, `MainWindow.xaml`
 
-- [ ] **3.2 Find References & Call Hierarchy**
+- [X] **3.2 Find References & Call Hierarchy**
   - Use Roslyn `SymbolFinder.FindReferencesAsync` and call hierarchy helpers to show where a symbol is used.
   - Files: `Services/RoslynNavigationService.cs`, `Controls/ErrorListPanel.xaml`, `ViewModels/MainViewModel.cs`
 

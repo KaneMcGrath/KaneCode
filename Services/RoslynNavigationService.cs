@@ -1,10 +1,13 @@
+using KaneCode.Models;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.FindSymbols;
+using Microsoft.CodeAnalysis.Text;
+using System.IO;
 
 namespace KaneCode.Services;
 
 /// <summary>
-/// Provides Roslyn-powered symbol navigation (Go to Definition).
+/// Provides Roslyn-powered symbol navigation (Go to Definition, Find References).
 /// </summary>
 internal sealed class RoslynNavigationService
 {
@@ -71,6 +74,131 @@ internal sealed class RoslynNavigationService
         }
 
         return new NavigationTarget(targetFilePath, location.SourceSpan.Start);
+    }
+
+    /// <summary>
+    /// Finds all references to the symbol at the given position across the solution.
+    /// Returns an empty list when no symbol is found at the position.
+    /// </summary>
+    public async Task<IReadOnlyList<ReferenceItem>> FindReferencesAsync(
+        string filePath,
+        int position,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(filePath);
+
+        if (!RoslynWorkspaceService.IsCSharpFile(filePath))
+        {
+            return [];
+        }
+
+        var document = _roslynService.GetDocument(filePath);
+        if (document is null)
+        {
+            return [];
+        }
+
+        var symbol = await SymbolFinder.FindSymbolAtPositionAsync(
+            document, position, cancellationToken).ConfigureAwait(false);
+
+        if (symbol is null)
+        {
+            return [];
+        }
+
+        if (symbol is IAliasSymbol aliasSymbol)
+        {
+            symbol = aliasSymbol.Target;
+        }
+
+        var symbolName = symbol.Name;
+        var referencedSymbols = await SymbolFinder.FindReferencesAsync(
+            symbol, document.Project.Solution, cancellationToken).ConfigureAwait(false);
+
+        var results = new List<ReferenceItem>();
+
+        foreach (var referencedSymbol in referencedSymbols)
+        {
+            // Include the definition itself
+            foreach (var loc in referencedSymbol.Definition.Locations)
+            {
+                if (!loc.IsInSource || loc.SourceTree is null)
+                {
+                    continue;
+                }
+
+                var refFilePath = loc.SourceTree.FilePath;
+                var item = await BuildReferenceItemAsync(
+                    symbolName, refFilePath, loc.SourceSpan, loc.SourceTree, cancellationToken)
+                    .ConfigureAwait(false);
+
+                if (item is not null)
+                {
+                    results.Add(item);
+                }
+            }
+
+            // Include all usage references
+            foreach (var location in referencedSymbol.Locations)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+
+                var loc = location.Location;
+                if (!loc.IsInSource || loc.SourceTree is null)
+                {
+                    continue;
+                }
+
+                var refFilePath = loc.SourceTree.FilePath;
+                var item = await BuildReferenceItemAsync(
+                    symbolName, refFilePath, loc.SourceSpan, loc.SourceTree, cancellationToken)
+                    .ConfigureAwait(false);
+
+                if (item is not null)
+                {
+                    results.Add(item);
+                }
+            }
+        }
+
+        return results
+            .OrderBy(r => r.FileName, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(r => r.Line)
+            .ThenBy(r => r.Column)
+            .ToList();
+    }
+
+    private static async Task<ReferenceItem?> BuildReferenceItemAsync(
+        string symbolName,
+        string refFilePath,
+        TextSpan span,
+        Microsoft.CodeAnalysis.SyntaxTree syntaxTree,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(refFilePath))
+        {
+            return null;
+        }
+
+        var sourceText = await syntaxTree.GetTextAsync(cancellationToken).ConfigureAwait(false);
+        var linePosition = sourceText.Lines.GetLinePosition(span.Start);
+        var line = linePosition.Line + 1;
+        var column = linePosition.Character + 1;
+
+        var preview = string.Empty;
+        if (linePosition.Line >= 0 && linePosition.Line < sourceText.Lines.Count)
+        {
+            preview = sourceText.Lines[linePosition.Line].ToString().Trim();
+        }
+
+        return new ReferenceItem(
+            symbolName,
+            refFilePath,
+            Path.GetFileName(refFilePath),
+            line,
+            column,
+            span.Start,
+            preview);
     }
 }
 

@@ -180,6 +180,7 @@ internal static class HotkeyManager
         Register(HotkeyAction.Find, "Find", Key.F, ModifierKeys.Control);
         Register(HotkeyAction.Replace, "Replace", Key.H, ModifierKeys.Control);
         Register(HotkeyAction.GoToDefinition, "Go to Definition", Key.F12, ModifierKeys.None);
+        Register(HotkeyAction.FindReferences, "Find References", Key.F12, ModifierKeys.Shift);
         Register(HotkeyAction.TriggerCompletion, "Trigger Completion", Key.Space, ModifierKeys.Control);
         Register(HotkeyAction.OpenOptions, "Options", Key.None, ModifierKeys.None);
         Register(HotkeyAction.Exit, "Exit", Key.None, ModifierKeys.None);
