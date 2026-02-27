@@ -168,6 +168,138 @@ internal sealed class RoslynNavigationService
             .ToList();
     }
 
+    /// <summary>
+    /// Finds source implementations for the symbol at the given position.
+    /// </summary>
+    public async Task<IReadOnlyList<ReferenceItem>> FindImplementationsAsync(
+        string filePath,
+        int position,
+        CancellationToken cancellationToken = default)
+    {
+        var (document, symbol) = await GetDocumentAndSymbolAsync(filePath, position, cancellationToken).ConfigureAwait(false);
+        if (document is null || symbol is null)
+        {
+            return [];
+        }
+
+        var implementations = await SymbolFinder.FindImplementationsAsync(
+            symbol,
+            document.Project.Solution,
+            cancellationToken: cancellationToken).ConfigureAwait(false);
+
+        return await BuildSymbolReferenceItemsAsync(
+            symbol.Name,
+            implementations,
+            cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Finds derived classes for the type symbol at the given position.
+    /// </summary>
+    public async Task<IReadOnlyList<ReferenceItem>> FindDerivedTypesAsync(
+        string filePath,
+        int position,
+        CancellationToken cancellationToken = default)
+    {
+        var (document, symbol) = await GetDocumentAndSymbolAsync(filePath, position, cancellationToken).ConfigureAwait(false);
+        if (document is null || symbol is not INamedTypeSymbol typeSymbol)
+        {
+            return [];
+        }
+
+        var derivedClasses = await SymbolFinder.FindDerivedClassesAsync(
+            typeSymbol,
+            document.Project.Solution,
+            cancellationToken: cancellationToken).ConfigureAwait(false);
+
+        return await BuildSymbolReferenceItemsAsync(
+            typeSymbol.Name,
+            derivedClasses,
+            cancellationToken).ConfigureAwait(false);
+    }
+
+    private async Task<(Document? Document, ISymbol? Symbol)> GetDocumentAndSymbolAsync(
+        string filePath,
+        int position,
+        CancellationToken cancellationToken)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(filePath);
+
+        if (!RoslynWorkspaceService.IsCSharpFile(filePath))
+        {
+            return (null, null);
+        }
+
+        var document = _roslynService.GetDocument(filePath);
+        if (document is null)
+        {
+            return (null, null);
+        }
+
+        var symbol = await SymbolFinder.FindSymbolAtPositionAsync(
+            document,
+            position,
+            cancellationToken).ConfigureAwait(false);
+
+        if (symbol is IAliasSymbol aliasSymbol)
+        {
+            symbol = aliasSymbol.Target;
+        }
+
+        return (document, symbol);
+    }
+
+    private static async Task<IReadOnlyList<ReferenceItem>> BuildSymbolReferenceItemsAsync(
+        string symbolName,
+        IEnumerable<ISymbol> symbols,
+        CancellationToken cancellationToken)
+    {
+        var seen = new HashSet<(string FilePath, int Start)>();
+        var results = new List<ReferenceItem>();
+
+        foreach (var symbol in symbols)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            foreach (var loc in symbol.Locations)
+            {
+                if (!loc.IsInSource || loc.SourceTree is null)
+                {
+                    continue;
+                }
+
+                var refFilePath = loc.SourceTree.FilePath;
+                if (string.IsNullOrWhiteSpace(refFilePath))
+                {
+                    continue;
+                }
+
+                if (!seen.Add((refFilePath, loc.SourceSpan.Start)))
+                {
+                    continue;
+                }
+
+                var item = await BuildReferenceItemAsync(
+                    symbolName,
+                    refFilePath,
+                    loc.SourceSpan,
+                    loc.SourceTree,
+                    cancellationToken).ConfigureAwait(false);
+
+                if (item is not null)
+                {
+                    results.Add(item);
+                }
+            }
+        }
+
+        return results
+            .OrderBy(r => r.FileName, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(r => r.Line)
+            .ThenBy(r => r.Column)
+            .ToList();
+    }
+
     private static async Task<ReferenceItem?> BuildReferenceItemAsync(
         string symbolName,
         string refFilePath,

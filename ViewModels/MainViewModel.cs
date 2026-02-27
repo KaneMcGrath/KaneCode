@@ -75,6 +75,8 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
         FindCommand = new RelayCommand(_ => ShowFindPanel(), _ => _editor is not null);
         ReplaceCommand = new RelayCommand(_ => ShowReplacePanel(), _ => _editor is not null);
         GoToDefinitionCommand = new RelayCommand(async _ => await GoToDefinitionAsync(), _ => CanGoToDefinition());
+        GoToImplementationCommand = new RelayCommand(async _ => await GoToImplementationAsync(), _ => CanGoToDefinition());
+        GoToDerivedTypesCommand = new RelayCommand(async _ => await GoToDerivedTypesAsync(), _ => CanGoToDefinition());
         FindReferencesCommand = new RelayCommand(async _ => await FindReferencesAsync(), _ => CanGoToDefinition());
         CloseTabCommand = new RelayCommand(param => CloseTab(param as OpenFileTab), _ => ActiveTab is not null);
         ExitCommand = new RelayCommand(_ => ExitApplication());
@@ -105,6 +107,8 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
     public ICommand FindCommand { get; }
     public ICommand ReplaceCommand { get; }
     public ICommand GoToDefinitionCommand { get; }
+    public ICommand GoToImplementationCommand { get; }
+    public ICommand GoToDerivedTypesCommand { get; }
     public ICommand FindReferencesCommand { get; }
     public ICommand CloseTabCommand { get; }
     public ICommand ExitCommand { get; }
@@ -1249,6 +1253,50 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
     }
 
     /// <summary>
+    /// Navigates to symbol implementations for the symbol at the caret.
+    /// When multiple implementations are found, populates the Find References panel.
+    /// </summary>
+    public async Task GoToImplementationAsync()
+    {
+        if (_editor is null || ActiveTab is null || !RoslynWorkspaceService.IsCSharpFile(ActiveTab.FilePath))
+        {
+            return;
+        }
+
+        var filePath = ActiveTab.FilePath;
+        var caretOffset = _editor.CaretOffset;
+
+        await NavigateToRelatedSymbolsAsync(
+            "Searching implementations...",
+            "implementation(s)",
+            "No implementations found",
+            ct => _navigationService.FindImplementationsAsync(filePath, caretOffset, ct))
+            .ConfigureAwait(true);
+    }
+
+    /// <summary>
+    /// Navigates to derived classes for the type symbol at the caret.
+    /// When multiple derived classes are found, populates the Find References panel.
+    /// </summary>
+    public async Task GoToDerivedTypesAsync()
+    {
+        if (_editor is null || ActiveTab is null || !RoslynWorkspaceService.IsCSharpFile(ActiveTab.FilePath))
+        {
+            return;
+        }
+
+        var filePath = ActiveTab.FilePath;
+        var caretOffset = _editor.CaretOffset;
+
+        await NavigateToRelatedSymbolsAsync(
+            "Searching derived types...",
+            "derived type(s)",
+            "No derived types found",
+            ct => _navigationService.FindDerivedTypesAsync(filePath, caretOffset, ct))
+            .ConfigureAwait(true);
+    }
+
+    /// <summary>
     /// Finds all references to the symbol at the caret across the solution and populates the Find References panel.
     /// </summary>
     public async Task FindReferencesAsync()
@@ -1285,6 +1333,55 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
             FindReferencesStatusText = results.Count > 0
                 ? $"{symbolName} — {results.Count} reference(s)"
                 : "No references found";
+        }
+        catch (OperationCanceledException)
+        {
+            // Superseded by a newer request
+        }
+    }
+
+    private async Task NavigateToRelatedSymbolsAsync(
+        string searchingText,
+        string successSuffix,
+        string notFoundText,
+        Func<CancellationToken, Task<IReadOnlyList<ReferenceItem>>> searchAsync)
+    {
+        if (_editor is null || ActiveTab is null || !RoslynWorkspaceService.IsCSharpFile(ActiveTab.FilePath))
+        {
+            return;
+        }
+
+        _findReferencesCts?.Cancel();
+        _findReferencesCts?.Dispose();
+        _findReferencesCts = new CancellationTokenSource();
+        var ct = _findReferencesCts.Token;
+
+        FindReferencesStatusText = searchingText;
+        ReferenceItems.Clear();
+
+        try
+        {
+            await _roslynService.UpdateDocumentTextAsync(ActiveTab.FilePath, _editor.Text, ct).ConfigureAwait(true);
+
+            var results = await searchAsync(ct).ConfigureAwait(true);
+            if (results.Count == 0)
+            {
+                FindReferencesStatusText = notFoundText;
+                return;
+            }
+
+            foreach (var item in results)
+            {
+                ReferenceItems.Add(item);
+            }
+
+            var symbolName = results[0].SymbolName;
+            FindReferencesStatusText = $"{symbolName} — {results.Count} {successSuffix}";
+
+            if (results.Count == 1)
+            {
+                NavigateToReference(results[0]);
+            }
         }
         catch (OperationCanceledException)
         {

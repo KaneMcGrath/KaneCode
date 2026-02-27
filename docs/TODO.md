@@ -68,7 +68,7 @@
   - Inline rename, extract method/property, move type, and other transformations via Roslyn's `Renamer`/`CodeRefactoringService`.
   - Files: new `Services/RoslynRefactoringService.cs`, `ViewModels/MainViewModel.cs`
 
-- [ ] **3.5 Go To Implementation / Derived Types**
+- [X] **3.5 Go To Implementation / Derived Types**
   - Add commands that use Roslyn `SymbolFinder.FindImplementationsAsync`/`SymbolFinder.FindDerivedClassesAsync` to jump to related symbols.
   - Files: `Services/RoslynNavigationService.cs`, `ViewModels/MainViewModel.cs`
 
