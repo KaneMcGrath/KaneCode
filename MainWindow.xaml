@@ -44,6 +44,19 @@ Icon="Icons/KaneCode.ico">
                 <MenuItem Header="_Paste" Command="{Binding PasteCommand}" />
             </MenuItem>
             <MenuItem Header="_View">
+                <MenuItem Header="_Explorer"
+                          Tag="{Binding ElementName=ExplorerAnchorable}"
+                          Click="ViewMenuPanel_Click" />
+                <MenuItem Header="_Error List"
+                          Tag="{Binding ElementName=ErrorListAnchorable}"
+                          Click="ViewMenuPanel_Click" />
+                <MenuItem Header="B_uild Output"
+                          Tag="{Binding ElementName=BuildOutputAnchorable}"
+                          Click="ViewMenuPanel_Click" />
+                <MenuItem Header="Fi_nd References"
+                          Tag="{Binding ElementName=FindReferencesAnchorable}"
+                          Click="ViewMenuPanel_Click" />
+                <Separator />
                 <MenuItem Header="_Options" Command="{Binding OpenOptionsCommand}" />
             </MenuItem>
             <MenuItem Header="_Build">
@@ -74,7 +87,7 @@ Icon="Icons/KaneCode.ico">
                     <!-- Left: Explorer panel -->
                     <!-- Default to ~1/6 of the window width -->
                     <avalonDock:LayoutAnchorablePane DockWidth="1*">
-                        <avalonDock:LayoutAnchorable Title="Explorer"
+                        <avalonDock:LayoutAnchorable x:Name="ExplorerAnchorable" Title="Explorer"
                                                      CanClose="False"
                                                      CanHide="True"
                                                      CanAutoHide="True"
@@ -120,7 +133,7 @@ Icon="Icons/KaneCode.ico">
                         <!-- Editor panel -->
                         <!-- Default to ~5/6 of the right-side height -->
                         <avalonDock:LayoutAnchorablePane DockHeight="5*">
-                            <avalonDock:LayoutAnchorable Title="Editor"
+                            <avalonDock:LayoutAnchorable x:Name="EditorAnchorable" Title="Editor"
                                                          CanClose="False"
                                                          CanHide="False"
                                                          CanAutoHide="False"
@@ -240,7 +253,7 @@ Icon="Icons/KaneCode.ico">
                         <!-- Bottom: Error List and Build Output panels -->
                         <!-- Default to ~1/6 of the right-side height -->
                         <avalonDock:LayoutAnchorablePane DockHeight="1*">
-                            <avalonDock:LayoutAnchorable Title="Error List"
+                            <avalonDock:LayoutAnchorable x:Name="ErrorListAnchorable" Title="Error List"
                                                          CanClose="False"
                                                          CanHide="True"
                                                          CanAutoHide="True"
@@ -249,7 +262,7 @@ Icon="Icons/KaneCode.ico">
                                                          Diagnostics="{Binding DiagnosticItems}"
                                                          NavigateRequested="ErrorList_NavigateRequested" />
                             </avalonDock:LayoutAnchorable>
-                            <avalonDock:LayoutAnchorable Title="Build Output"
+                            <avalonDock:LayoutAnchorable x:Name="BuildOutputAnchorable" Title="Build Output"
                                                          CanClose="False"
                                                          CanHide="True"
                                                          CanAutoHide="True"
@@ -258,7 +271,7 @@ Icon="Icons/KaneCode.ico">
                                                            OutputLines="{Binding BuildOutputLines}"
                                                            BuildSummary="{Binding BuildSummary}" />
                             </avalonDock:LayoutAnchorable>
-                            <avalonDock:LayoutAnchorable Title="Find References"
+                            <avalonDock:LayoutAnchorable x:Name="FindReferencesAnchorable" Title="Find References"
                                                          CanClose="False"
                                                          CanHide="True"
                                                          CanAutoHide="True"

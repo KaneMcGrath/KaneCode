@@ -10,6 +10,7 @@ using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Media;
+using AvalonDock.Layout;
 
 namespace KaneCode;
 
@@ -72,6 +73,33 @@ public partial class MainWindow : Window
         {
             DockManager.ActiveContent = FindReferencesPanel;
         }
+    }
+
+    private void ViewMenuPanel_Click(object? sender, RoutedEventArgs e)
+    {
+        if (sender is not MenuItem menuItem)
+        {
+            return;
+        }
+
+        if (menuItem.Tag is not LayoutAnchorable anchorable)
+        {
+            return;
+        }
+
+        ShowLayoutAnchorable(anchorable);
+    }
+
+    private void ShowLayoutAnchorable(LayoutAnchorable anchorable)
+    {
+        if (!anchorable.IsVisible)
+        {
+            anchorable.Show();
+        }
+
+        anchorable.IsActive = true;
+        anchorable.IsSelected = true;
+        DockManager.ActiveContent = anchorable.Content ?? anchorable;
     }
 
     /// <summary>
