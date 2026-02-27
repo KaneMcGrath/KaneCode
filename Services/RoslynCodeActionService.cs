@@ -63,6 +63,21 @@ internal sealed class RoslynCodeActionService
     }
 
     /// <summary>
+    /// Gets code actions focused on generating missing members at the specified position.
+    /// </summary>
+    public async Task<IReadOnlyList<CodeActionItem>> GetGenerateMissingMembersActionsAsync(
+        string filePath,
+        int position,
+        CancellationToken cancellationToken = default)
+    {
+        var actions = await GetCodeActionsAsync(filePath, position, cancellationToken).ConfigureAwait(false);
+
+        return actions
+            .Where(static action => IsGenerateMissingMembersAction(action.Title))
+            .ToList();
+    }
+
+    /// <summary>
     /// Applies a code action and returns the new text for the affected document.
     /// Returns null if the action could not be applied.
     /// </summary>
@@ -275,6 +290,23 @@ internal sealed class RoslynCodeActionService
         {
             results.Add(new CodeActionItem(action.Title, action));
         }
+    }
+
+    private static bool IsGenerateMissingMembersAction(string title)
+    {
+        if (string.IsNullOrWhiteSpace(title))
+        {
+            return false;
+        }
+
+        return title.Contains("Generate method", StringComparison.OrdinalIgnoreCase)
+            || title.Contains("Generate constructor", StringComparison.OrdinalIgnoreCase)
+            || title.Contains("Generate property", StringComparison.OrdinalIgnoreCase)
+            || title.Contains("Generate field", StringComparison.OrdinalIgnoreCase)
+            || title.Contains("Generate class", StringComparison.OrdinalIgnoreCase)
+            || title.Contains("Generate type", StringComparison.OrdinalIgnoreCase)
+            || title.Contains("Implement interface", StringComparison.OrdinalIgnoreCase)
+            || title.Contains("Implement abstract class", StringComparison.OrdinalIgnoreCase);
     }
 
     private static IReadOnlyList<CodeFixProvider> DiscoverCodeFixProviders()

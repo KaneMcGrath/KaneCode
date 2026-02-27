@@ -85,6 +85,7 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
         RunCommand = new RelayCommand(_ => _ = RunProjectAsync(), _ => CanBuild());
         CancelBuildCommand = new RelayCommand(_ => CancelBuild(), _ => _buildService.IsRunning);
         CodeActionsCommand = new RelayCommand(async _ => await ShowCodeActionsAsync(), _ => CanGoToDefinition());
+        GenerateMissingMembersCommand = new RelayCommand(async _ => await GenerateMissingMembersAsync(), _ => CanGoToDefinition());
         RenameCommand = new RelayCommand(async _ => await RenameSymbolAsync(), _ => CanGoToDefinition());
         ExtractMethodCommand = new RelayCommand(async _ => await ExtractMethodAsync(), _ => CanExtractMethod());
 
@@ -117,6 +118,7 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
     public ICommand RunCommand { get; }
     public ICommand CancelBuildCommand { get; }
     public ICommand CodeActionsCommand { get; }
+    public ICommand GenerateMissingMembersCommand { get; }
     public ICommand RenameCommand { get; }
     public ICommand ExtractMethodCommand { get; }
 
@@ -1416,6 +1418,50 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
 
             if (items.Count == 0)
             {
+                return;
+            }
+
+            CodeActionsReady?.Invoke(items);
+        }
+        catch (OperationCanceledException)
+        {
+            // Superseded by a newer request
+        }
+    }
+
+    /// <summary>
+    /// Triggers Roslyn member generation actions at the current caret position.
+    /// Applies a single matching action automatically, or shows choices when multiple are available.
+    /// </summary>
+    public async Task GenerateMissingMembersAsync()
+    {
+        if (_editor is null || ActiveTab is null || !RoslynWorkspaceService.IsCSharpFile(ActiveTab.FilePath))
+        {
+            return;
+        }
+
+        _codeActionsCts?.Cancel();
+        _codeActionsCts?.Dispose();
+        _codeActionsCts = new CancellationTokenSource();
+        var ct = _codeActionsCts.Token;
+
+        try
+        {
+            var caretOffset = _editor.CaretOffset;
+            await _roslynService.UpdateDocumentTextAsync(ActiveTab.FilePath, _editor.Text, ct).ConfigureAwait(true);
+
+            var items = await _codeActionService
+                .GetGenerateMissingMembersActionsAsync(ActiveTab.FilePath, caretOffset, ct)
+                .ConfigureAwait(true);
+
+            if (items.Count == 0)
+            {
+                return;
+            }
+
+            if (items.Count == 1)
+            {
+                await ApplyCodeActionAsync(items[0]).ConfigureAwait(true);
                 return;
             }
 

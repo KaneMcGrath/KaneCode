@@ -72,7 +72,7 @@
   - Add commands that use Roslyn `SymbolFinder.FindImplementationsAsync`/`SymbolFinder.FindDerivedClassesAsync` to jump to related symbols.
   - Files: `Services/RoslynNavigationService.cs`, `ViewModels/MainViewModel.cs`
 
-- [ ] **3.6 Generate Missing Members**
+- [X] **3.6 Generate Missing Members**
   - Drive Roslyn code generation (e.g., add missing methods/properties from usage) using `SyntaxGenerator` and `CodeRefactoringService` helpers.
   - Files: `Services/RoslynCodeActionService.cs`, `ViewModels/MainViewModel.cs`
 
@@ -113,7 +113,11 @@
   - Structure supports future replacement with real icons
   - Files: `Models/ProjectItem.cs`, `MainWindow.xaml`
 
-- [ ] **4.6 Template editor in Options window**
+- [ ] **4.6 New project dialogue**
+  - Create a new solution or `.csproj` project based on the templates
+  - Files: `MainWindow.xaml`, `MainWindow.xaml.cs`, `Services/TemplateService.cs`
+
+- [ ] **4.7 Template editor in Options window**
   - Add a "Templates" category to the Options window
   - Display template list with name, and a text editor for the template body
   - Allow adding, removing, renaming, and editing templates
