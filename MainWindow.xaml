@@ -42,6 +42,12 @@ Icon="Icons/KaneCode.ico">
             <MenuItem Header="_View">
                 <MenuItem Header="_Options" Command="{Binding OpenOptionsCommand}" />
             </MenuItem>
+            <MenuItem Header="_Build">
+                <MenuItem Header="_Build Project" Command="{Binding BuildCommand}" />
+                <MenuItem Header="_Run Project" Command="{Binding RunCommand}" />
+                <Separator />
+                <MenuItem Header="_Cancel" Command="{Binding CancelBuildCommand}" />
+            </MenuItem>
             <MenuItem Header="_Help">
                 <MenuItem Header="_About" />
             </MenuItem>
@@ -179,7 +185,7 @@ Icon="Icons/KaneCode.ico">
                             </avalonDock:LayoutAnchorable>
                         </avalonDock:LayoutAnchorablePane>
 
-                        <!-- Bottom: Error List panel -->
+                        <!-- Bottom: Error List and Build Output panels -->
                         <!-- Default to ~1/6 of the right-side height -->
                         <avalonDock:LayoutAnchorablePane DockHeight="1*">
                             <avalonDock:LayoutAnchorable Title="Error List"
@@ -190,6 +196,15 @@ Icon="Icons/KaneCode.ico">
                                 <controls:ErrorListPanel x:Name="ErrorList"
                                                          Diagnostics="{Binding DiagnosticItems}"
                                                          NavigateRequested="ErrorList_NavigateRequested" />
+                            </avalonDock:LayoutAnchorable>
+                            <avalonDock:LayoutAnchorable Title="Build Output"
+                                                         CanClose="False"
+                                                         CanHide="True"
+                                                         CanAutoHide="True"
+                                                         ContentId="BuildOutputPane">
+                                <controls:BuildOutputPanel x:Name="BuildOutput"
+                                                           OutputLines="{Binding BuildOutputLines}"
+                                                           BuildSummary="{Binding BuildSummary}" />
                             </avalonDock:LayoutAnchorable>
                         </avalonDock:LayoutAnchorablePane>
 

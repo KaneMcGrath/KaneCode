@@ -80,6 +80,9 @@ public partial class MainWindow : Window
         AddWindowBinding(HotkeyAction.Paste, _viewModel.PasteCommand);
         AddWindowBinding(HotkeyAction.OpenOptions, _viewModel.OpenOptionsCommand);
         AddWindowBinding(HotkeyAction.Exit, _viewModel.ExitCommand);
+        AddWindowBinding(HotkeyAction.BuildProject, _viewModel.BuildCommand);
+        AddWindowBinding(HotkeyAction.RunProject, _viewModel.RunCommand);
+        AddWindowBinding(HotkeyAction.CancelBuild, _viewModel.CancelBuildCommand);
 
         // Editor-level bindings (need to go on the editor to intercept before AvalonEdit)
         AddEditorBinding(HotkeyAction.Find, _viewModel.FindCommand);
@@ -146,6 +149,9 @@ public partial class MainWindow : Window
         ["Go to _Definition"] = HotkeyAction.GoToDefinition,
         ["_Options"] = HotkeyAction.OpenOptions,
         ["E_xit"] = HotkeyAction.Exit,
+        ["_Build Project"] = HotkeyAction.BuildProject,
+        ["_Run Project"] = HotkeyAction.RunProject,
+        ["_Cancel"] = HotkeyAction.CancelBuild,
     };
 
     private static void UpdateMenuItemGestures(MenuItem menuItem)

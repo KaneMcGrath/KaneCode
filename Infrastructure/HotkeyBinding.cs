@@ -25,7 +25,10 @@ internal enum HotkeyAction
     GoToDefinition,
     TriggerCompletion,
     OpenOptions,
-    Exit
+    Exit,
+    BuildProject,
+    RunProject,
+    CancelBuild
 }
 
 /// <summary>

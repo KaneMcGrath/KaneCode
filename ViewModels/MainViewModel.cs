@@ -29,6 +29,7 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
     private readonly RoslynNavigationService _navigationService;
     private readonly RoslynQuickInfoService _quickInfoService;
     private readonly RoslynSignatureHelpService _signatureHelpService;
+    private readonly BuildService _buildService = new();
     private RoslynClassificationColorizer? _classificationColorizer;
     private RoslynDiagnosticRenderer? _diagnosticRenderer;
     private SearchPanel? _searchPanel;
@@ -42,6 +43,7 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
     private bool _isLoadingProject;
     private readonly TimeSpan _analysisDelay = TimeSpan.FromMilliseconds(500);
     private CancellationTokenSource? _loadingStatusClearCts;
+    private string? _loadedProjectOrSolutionPath;
 
     public MainViewModel()
     {
@@ -69,6 +71,12 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
         CloseTabCommand = new RelayCommand(param => CloseTab(param as OpenFileTab), _ => ActiveTab is not null);
         ExitCommand = new RelayCommand(_ => ExitApplication());
         OpenOptionsCommand = new RelayCommand(_ => OpenOptions());
+        BuildCommand = new RelayCommand(_ => _ = BuildProjectAsync(), _ => CanBuild());
+        RunCommand = new RelayCommand(_ => _ = RunProjectAsync(), _ => CanBuild());
+        CancelBuildCommand = new RelayCommand(_ => CancelBuild(), _ => _buildService.IsRunning);
+
+        _buildService.OutputReceived += OnBuildOutputReceived;
+        _buildService.ProcessExited += OnBuildProcessExited;
     }
 
     public ICommand NewFileCommand { get; }
@@ -89,6 +97,9 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
     public ICommand CloseTabCommand { get; }
     public ICommand ExitCommand { get; }
     public ICommand OpenOptionsCommand { get; }
+    public ICommand BuildCommand { get; }
+    public ICommand RunCommand { get; }
+    public ICommand CancelBuildCommand { get; }
 
     private ObservableCollection<ProjectItem> _projectItems = [];
     public ObservableCollection<ProjectItem> ProjectItems
@@ -125,6 +136,19 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
     }
 
     public ObservableCollection<OpenFileTab> OpenTabs { get; } = [];
+
+    /// <summary>
+    /// Output lines from build/run processes, displayed in the Build Output panel.
+    /// </summary>
+    public ObservableCollection<string> BuildOutputLines { get; } = [];
+
+    private string _buildSummary = string.Empty;
+    /// <summary>Summary text shown in the Build Output panel header.</summary>
+    public string BuildSummary
+    {
+        get => _buildSummary;
+        private set => SetProperty(ref _buildSummary, value);
+    }
 
     /// <summary>
     /// Diagnostics shown in the error list panel, updated after each analysis pass.
@@ -340,6 +364,7 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
             }
 
             ProjectRootPath = projectDir;
+            _loadedProjectOrSolutionPath = projectPath;
             var root = EditorService.BuildFileTree(projectDir);
             ProjectItems = new ObservableCollection<ProjectItem>(root.Children);
 
@@ -392,6 +417,7 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
             ct.ThrowIfCancellationRequested();
 
             ProjectRootPath = solutionDir;
+            _loadedProjectOrSolutionPath = solutionPath;
             var root = EditorService.BuildFileTree(solutionDir);
             ProjectItems = new ObservableCollection<ProjectItem>(root.Children);
 
@@ -1265,9 +1291,73 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
         }
     }
 
+    private bool CanBuild() => !string.IsNullOrEmpty(_loadedProjectOrSolutionPath) && !_buildService.IsRunning;
+
+    /// <summary>
+    /// Builds the currently loaded project or solution.
+    /// </summary>
+    private async Task BuildProjectAsync()
+    {
+        if (string.IsNullOrEmpty(_loadedProjectOrSolutionPath))
+        {
+            return;
+        }
+
+        BuildOutputLines.Clear();
+        BuildSummary = "Building...";
+        BuildOutputLines.Add($"> dotnet build \"{_loadedProjectOrSolutionPath}\"");
+        BuildOutputLines.Add(string.Empty);
+
+        await _buildService.BuildAsync(_loadedProjectOrSolutionPath).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Runs the currently loaded project.
+    /// </summary>
+    private async Task RunProjectAsync()
+    {
+        if (string.IsNullOrEmpty(_loadedProjectOrSolutionPath))
+        {
+            return;
+        }
+
+        BuildOutputLines.Clear();
+        BuildSummary = "Running...";
+        BuildOutputLines.Add($"> dotnet run --project \"{_loadedProjectOrSolutionPath}\"");
+        BuildOutputLines.Add(string.Empty);
+
+        await _buildService.RunAsync(_loadedProjectOrSolutionPath).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Cancels the currently running build/run process.
+    /// </summary>
+    private void CancelBuild()
+    {
+        _buildService.Cancel();
+    }
+
+    private void OnBuildOutputReceived(string line)
+    {
+        Application.Current.Dispatcher.BeginInvoke(() => BuildOutputLines.Add(line));
+    }
+
+    private void OnBuildProcessExited(int exitCode)
+    {
+        Application.Current.Dispatcher.BeginInvoke(() =>
+        {
+            BuildOutputLines.Add(string.Empty);
+            BuildOutputLines.Add($"Process exited with code {exitCode}.");
+            BuildSummary = exitCode == 0 ? "Build succeeded" : $"Build failed (exit code {exitCode})";
+        });
+    }
+
     public void Dispose()
     {
         ThemeManager.ThemeChanged -= OnThemeChanged;
+        _buildService.OutputReceived -= OnBuildOutputReceived;
+        _buildService.ProcessExited -= OnBuildProcessExited;
+        _buildService.Dispose();
         CancelPreviousLoad();
         _loadingStatusClearCts?.Cancel();
         _loadingStatusClearCts?.Dispose();

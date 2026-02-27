@@ -50,10 +50,17 @@
 
 > Features that round out the experience.
 
-- [ ] **3.1 Build / Run integration**
+- [~] **3.1 Build / Run integration**
   - Shell out to `dotnet build` / `dotnet run` with output capture
   - Show build output in a panel
-  - Files: new `Services/BuildService.cs`, `MainWindow.xaml`
+  - Files: new `Services/BuildService.cs`, `Controls/BuildOutputPanel.xaml`, `MainWindow.xaml`
+  - **QA verification items:**
+    - Load a .csproj or .sln, press Ctrl+Shift+B — verify `dotnet build` output appears in the Build Output panel
+    - Press F5 — verify `dotnet run` output streams in real-time
+    - Click Cancel while a build/run is in progress — verify the process stops
+    - Verify Build menu items are enabled only when a project/solution is loaded
+    - Verify Build Output panel is visible as a tab alongside Error List
+    - Switch themes — verify Build Output panel colors update correctly
 
 - [ ] **3.2 Settings / Preferences system**
   - Persist font family, font size, theme, tab size, word wrap, recent files

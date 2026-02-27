@@ -183,6 +183,9 @@ internal static class HotkeyManager
         Register(HotkeyAction.TriggerCompletion, "Trigger Completion", Key.Space, ModifierKeys.Control);
         Register(HotkeyAction.OpenOptions, "Options", Key.None, ModifierKeys.None);
         Register(HotkeyAction.Exit, "Exit", Key.None, ModifierKeys.None);
+        Register(HotkeyAction.BuildProject, "Build Project", Key.B, ModifierKeys.Control | ModifierKeys.Shift);
+        Register(HotkeyAction.RunProject, "Run Project", Key.F5, ModifierKeys.None);
+        Register(HotkeyAction.CancelBuild, "Cancel Build", Key.None, ModifierKeys.None);
     }
 
     private static void Register(HotkeyAction action, string displayName, Key key, ModifierKeys modifiers)
