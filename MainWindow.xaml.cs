@@ -5,6 +5,7 @@ using KaneCode.ViewModels;
 using ICSharpCode.AvalonEdit.Rendering;
 using System.Diagnostics;
 using System.IO;
+using System.Text.Json;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
@@ -420,6 +421,65 @@ public partial class MainWindow : Window
         {
             _viewModel.OnProjectItemSelected(item);
         }
+    }
+
+    private void ExplorerContextMenu_NewFile_SubmenuOpened(object sender, RoutedEventArgs e)
+    {
+        if (sender is not MenuItem templateMenu)
+        {
+            return;
+        }
+
+        templateMenu.Items.Clear();
+
+        IReadOnlyList<FileTemplate> templates;
+        try
+        {
+            templates = _viewModel.GetExplorerFileTemplates();
+        }
+        catch (IOException ex)
+        {
+            MessageBox.Show($"Could not load templates:\n{ex.Message}", "Template Error",
+                MessageBoxButton.OK, MessageBoxImage.Error);
+            return;
+        }
+        catch (JsonException ex)
+        {
+            MessageBox.Show($"Template file is invalid JSON:\n{ex.Message}", "Template Error",
+                MessageBoxButton.OK, MessageBoxImage.Error);
+            return;
+        }
+
+        foreach (var template in templates)
+        {
+            var item = new MenuItem
+            {
+                Header = template.Name,
+                Tag = template.Name
+            };
+
+            item.Click += ExplorerContextMenu_NewFileFromTemplate;
+            templateMenu.Items.Add(item);
+        }
+
+        if (templateMenu.Items.Count == 0)
+        {
+            templateMenu.Items.Add(new MenuItem
+            {
+                Header = "(No templates)",
+                IsEnabled = false
+            });
+        }
+    }
+
+    private void ExplorerContextMenu_NewFileFromTemplate(object sender, RoutedEventArgs e)
+    {
+        if (sender is not MenuItem { Tag: string templateName })
+        {
+            return;
+        }
+
+        _viewModel.CreateFileFromTemplate(templateName, FileTree.SelectedItem as ProjectItem);
     }
 
     private void ExplorerContextMenu_CopyPath(object sender, RoutedEventArgs e)

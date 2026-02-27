@@ -32,6 +32,7 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
     private readonly RoslynCodeActionService _codeActionService;
     private readonly RoslynRefactoringService _refactoringService;
     private readonly BuildService _buildService = new();
+    private readonly TemplateService _templateService = new();
     private RoslynClassificationColorizer? _classificationColorizer;
     private RoslynDiagnosticRenderer? _diagnosticRenderer;
     private SearchPanel? _searchPanel;
@@ -323,18 +324,180 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
         {
             EditorService.WriteFile(dialog.FileName, string.Empty);
             OpenFileByPath(dialog.FileName);
-
-            if (!string.IsNullOrWhiteSpace(ProjectRootPath) && Directory.Exists(ProjectRootPath))
-            {
-                var root = EditorService.BuildFileTree(ProjectRootPath);
-                ProjectItems = new ObservableCollection<ProjectItem>(root.Children);
-            }
+            RefreshProjectItems();
         }
         catch (IOException ex)
         {
             MessageBox.Show($"Could not create file:\n{ex.Message}", "Error",
                 MessageBoxButton.OK, MessageBoxImage.Error);
         }
+    }
+
+    internal IReadOnlyList<FileTemplate> GetExplorerFileTemplates()
+    {
+        return _templateService.GetTemplates();
+    }
+
+    internal void CreateFileFromTemplate(string templateName, ProjectItem? selectedItem)
+    {
+        if (string.IsNullOrWhiteSpace(ProjectRootPath) || !Directory.Exists(ProjectRootPath))
+        {
+            MessageBox.Show("Load a project or folder before creating a file from template.", "New File",
+                MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        var targetFolder = ResolveTemplateTargetFolder(selectedItem, ProjectRootPath);
+        var suggestedFileName = $"New{SanitizeTemplateName(templateName)}.cs";
+        var fileName = PromptForFileName(suggestedFileName);
+        if (string.IsNullOrWhiteSpace(fileName))
+        {
+            return;
+        }
+
+        if (string.IsNullOrEmpty(Path.GetExtension(fileName)))
+        {
+            fileName += ".cs";
+        }
+
+        var fullPath = Path.Combine(targetFolder, fileName);
+        if (File.Exists(fullPath))
+        {
+            MessageBox.Show($"File already exists:\n{fullPath}", "New File",
+                MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        try
+        {
+            var content = _templateService.GenerateFromTemplate(templateName, fileName, targetFolder, ProjectRootPath);
+            EditorService.WriteFile(fullPath, content);
+            RefreshProjectItems();
+            OpenFileByPath(fullPath);
+        }
+        catch (IOException ex)
+        {
+            MessageBox.Show($"Could not create file:\n{ex.Message}", "Error",
+                MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+        catch (ArgumentException ex)
+        {
+            MessageBox.Show(ex.Message, "Template Error",
+                MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+        catch (InvalidOperationException ex)
+        {
+            MessageBox.Show(ex.Message, "Template Error",
+                MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+    }
+
+    private static string ResolveTemplateTargetFolder(ProjectItem? selectedItem, string projectRootPath)
+    {
+        if (selectedItem is null)
+        {
+            return projectRootPath;
+        }
+
+        if (selectedItem.IsDirectory)
+        {
+            return selectedItem.FullPath;
+        }
+
+        var directory = Path.GetDirectoryName(selectedItem.FullPath);
+        return string.IsNullOrWhiteSpace(directory)
+            ? projectRootPath
+            : directory;
+    }
+
+    private static string SanitizeTemplateName(string templateName)
+    {
+        var chars = templateName
+            .Select(ch => char.IsLetterOrDigit(ch) ? ch : '_')
+            .ToArray();
+
+        var normalized = new string(chars).Trim('_');
+        return string.IsNullOrWhiteSpace(normalized)
+            ? "File"
+            : normalized;
+    }
+
+    private static string? PromptForFileName(string suggestedFileName)
+    {
+        var inputWindow = new System.Windows.Window
+        {
+            Title = "New File",
+            Width = 380,
+            Height = 150,
+            WindowStartupLocation = System.Windows.WindowStartupLocation.CenterOwner,
+            ResizeMode = System.Windows.ResizeMode.NoResize,
+            Owner = System.Windows.Application.Current.MainWindow
+        };
+
+        string? result = null;
+        var panel = new System.Windows.Controls.StackPanel { Margin = new System.Windows.Thickness(12) };
+
+        var label = new System.Windows.Controls.TextBlock
+        {
+            Text = "File name:",
+            Margin = new System.Windows.Thickness(0, 0, 0, 6)
+        };
+        panel.Children.Add(label);
+
+        var textBox = new System.Windows.Controls.TextBox
+        {
+            Text = suggestedFileName,
+            Margin = new System.Windows.Thickness(0, 0, 0, 12)
+        };
+        textBox.SelectAll();
+        panel.Children.Add(textBox);
+
+        var buttonPanel = new System.Windows.Controls.StackPanel
+        {
+            Orientation = System.Windows.Controls.Orientation.Horizontal,
+            HorizontalAlignment = System.Windows.HorizontalAlignment.Right
+        };
+
+        var okButton = new System.Windows.Controls.Button
+        {
+            Content = "OK",
+            Width = 75,
+            Margin = new System.Windows.Thickness(0, 0, 8, 0),
+            IsDefault = true
+        };
+        okButton.Click += (_, _) =>
+        {
+            result = textBox.Text.Trim();
+            inputWindow.DialogResult = true;
+        };
+        buttonPanel.Children.Add(okButton);
+
+        var cancelButton = new System.Windows.Controls.Button
+        {
+            Content = "Cancel",
+            Width = 75,
+            IsCancel = true
+        };
+        buttonPanel.Children.Add(cancelButton);
+
+        panel.Children.Add(buttonPanel);
+        inputWindow.Content = panel;
+
+        textBox.Loaded += (_, _) => textBox.Focus();
+
+        inputWindow.ShowDialog();
+        return result;
+    }
+
+    private void RefreshProjectItems()
+    {
+        if (string.IsNullOrWhiteSpace(ProjectRootPath) || !Directory.Exists(ProjectRootPath))
+        {
+            return;
+        }
+
+        var root = EditorService.BuildFileTree(ProjectRootPath);
+        ProjectItems = new ObservableCollection<ProjectItem>(root.Children);
     }
 
     private void OpenFile()

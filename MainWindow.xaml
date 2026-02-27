@@ -100,6 +100,14 @@ Icon="Icons/KaneCode.ico">
                                           MouseDoubleClick="FileTree_MouseDoubleClick">
                                     <TreeView.ContextMenu>
                                         <ContextMenu>
+                                            <MenuItem Header="_New File">
+                                                <MenuItem x:Name="ExplorerContextMenuNewFileTemplates"
+                                                          Header="_From Template"
+                                                          SubmenuOpened="ExplorerContextMenu_NewFile_SubmenuOpened">
+                                                    <MenuItem Header="Loading..." IsEnabled="False" />
+                                                </MenuItem>
+                                            </MenuItem>
+                                            <Separator />
                                             <MenuItem Header="_Open" Click="ExplorerContextMenu_Open" />
                                             <Separator />
                                             <MenuItem Header="Copy _Path" Click="ExplorerContextMenu_CopyPath" />

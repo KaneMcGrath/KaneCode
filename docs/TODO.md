@@ -89,14 +89,14 @@
   - When no project is loaded, fall back to a save dialog with no preset directory
   - Files: `ViewModels/MainViewModel.cs`
 
-- [ ] **4.2 C# file template service**
+- [X] **4.2 C# file template service**
   - Create a `TemplateService` that ships default templates (Class, Interface, Enum, Record, Struct, Empty)
   - Each template is a named snippet with a `{NAMESPACE}` and `{NAME}` placeholder
   - Templates stored as user-editable JSON in `%AppData%/KaneCode/templates.json`
   - Provide `GenerateFromTemplate(templateName, fileName, targetFolder, projectRootPath)` that resolves the namespace from the folder path relative to the project root and the project's root namespace
   - Files: new `Services/TemplateService.cs`, new `Models/FileTemplate.cs`
 
-- [ ] **4.3 Explorer context menu — New File from template**
+- [X] **4.3 Explorer context menu — New File from template**
   - Add a "New File" submenu to the explorer right-click context menu (on folders and background)
   - Submenu lists available templates (Class, Interface, etc.) from `TemplateService`
   - On selection, prompt for a file name, create the file with the template content, add it to the tree, and open it
