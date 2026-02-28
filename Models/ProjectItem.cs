@@ -5,15 +5,31 @@ using System.IO;
 namespace KaneCode.Models;
 
 /// <summary>
+/// Classifies what kind of node a <see cref="ProjectItem"/> represents.
+/// </summary>
+public enum ProjectItemType
+{
+    File,
+    Folder,
+    Project,
+    Solution
+}
+
+/// <summary>
 /// Represents a file or directory node in the project explorer tree.
 /// </summary>
 public sealed class ProjectItem : ObservableObject
 {
     public ProjectItem(string fullPath, bool isDirectory)
+        : this(fullPath, isDirectory ? ProjectItemType.Folder : ProjectItemType.File)
+    {
+    }
+
+    public ProjectItem(string fullPath, ProjectItemType itemType)
     {
         FullPath = fullPath;
         Name = Path.GetFileName(fullPath);
-        IsDirectory = isDirectory;
+        ItemType = itemType;
     }
 
     /// <summary>Absolute path to the file or directory.</summary>
@@ -22,8 +38,13 @@ public sealed class ProjectItem : ObservableObject
     /// <summary>Display name (file/folder name only).</summary>
     public string Name { get; }
 
-    /// <summary>True when this node represents a directory.</summary>
-    public bool IsDirectory { get; }
+    /// <summary>The kind of node (Solution, Project, Folder, File).</summary>
+    public ProjectItemType ItemType { get; }
+
+    /// <summary>True when this node represents a directory, project, or solution.</summary>
+    public bool IsDirectory => ItemType is ProjectItemType.Folder
+                            or ProjectItemType.Project
+                            or ProjectItemType.Solution;
 
     /// <summary>Child items (populated for directories).</summary>
     public ObservableCollection<ProjectItem> Children { get; } = [];
@@ -40,5 +61,28 @@ public sealed class ProjectItem : ObservableObject
     {
         get => _isSelected;
         set => SetProperty(ref _isSelected, value);
+    }
+
+    /// <summary>Emoji icon derived from <see cref="ItemType"/> and file extension.</summary>
+    public string Icon => ItemType switch
+    {
+        ProjectItemType.Solution => "🗂️",
+        ProjectItemType.Project => "📦",
+        ProjectItemType.Folder => "📁",
+        ProjectItemType.File => GetFileIcon(),
+        _ => "📄"
+    };
+
+    private string GetFileIcon()
+    {
+        var ext = Path.GetExtension(FullPath);
+        return ext.ToLowerInvariant() switch
+        {
+            ".cs" => "🔷",
+            ".xaml" => "🖼️",
+            ".csproj" => "📦",
+            ".sln" => "🗂️",
+            _ => "📄"
+        };
     }
 }

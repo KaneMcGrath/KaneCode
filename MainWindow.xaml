@@ -107,8 +107,11 @@ Icon="Icons/KaneCode.ico">
                                                     <MenuItem Header="Loading..." IsEnabled="False" />
                                                 </MenuItem>
                                             </MenuItem>
+                                            <MenuItem Header="New F_older" Click="ExplorerContextMenu_NewFolder" />
                                             <Separator />
                                             <MenuItem Header="_Open" Click="ExplorerContextMenu_Open" />
+                                            <MenuItem Header="_Rename" Click="ExplorerContextMenu_Rename" />
+                                            <MenuItem Header="_Delete" Click="ExplorerContextMenu_Delete" />
                                             <Separator />
                                             <MenuItem Header="Copy _Path" Click="ExplorerContextMenu_CopyPath" />
                                             <MenuItem Header="Open in File _Explorer" Click="ExplorerContextMenu_OpenInFileExplorer" />
@@ -118,7 +121,21 @@ Icon="Icons/KaneCode.ico">
                                         <HierarchicalDataTemplate DataType="{x:Type models:ProjectItem}"
                                                                    ItemsSource="{Binding Children}">
                                             <StackPanel Orientation="Horizontal" Margin="2">
-                                                <TextBlock Text="{Binding Name}" />
+                                                <TextBlock Text="{Binding Icon}" Margin="0,0,4,0" />
+                                                <TextBlock Text="{Binding Name}">
+                                                    <TextBlock.Style>
+                                                        <Style TargetType="TextBlock">
+                                                            <Style.Triggers>
+                                                                <DataTrigger Binding="{Binding ItemType}" Value="Project">
+                                                                    <Setter Property="FontWeight" Value="SemiBold" />
+                                                                </DataTrigger>
+                                                                <DataTrigger Binding="{Binding ItemType}" Value="Solution">
+                                                                    <Setter Property="FontWeight" Value="Bold" />
+                                                                </DataTrigger>
+                                                            </Style.Triggers>
+                                                        </Style>
+                                                    </TextBlock.Style>
+                                                </TextBlock>
                                             </StackPanel>
                                         </HierarchicalDataTemplate>
                                     </TreeView.ItemTemplate>

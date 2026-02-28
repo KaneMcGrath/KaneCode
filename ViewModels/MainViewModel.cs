@@ -89,6 +89,9 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
         GenerateMissingMembersCommand = new RelayCommand(async _ => await GenerateMissingMembersAsync(), _ => CanGoToDefinition());
         RenameCommand = new RelayCommand(async _ => await RenameSymbolAsync(), _ => CanGoToDefinition());
         ExtractMethodCommand = new RelayCommand(async _ => await ExtractMethodAsync(), _ => CanExtractMethod());
+        DeleteExplorerItemCommand = new RelayCommand(param => DeleteExplorerItem(param as ProjectItem));
+        RenameExplorerItemCommand = new RelayCommand(param => RenameExplorerItem(param as ProjectItem));
+        NewFolderCommand = new RelayCommand(param => CreateNewFolder(param as ProjectItem));
 
         _buildService.OutputReceived += OnBuildOutputReceived;
         _buildService.ProcessExited += OnBuildProcessExited;
@@ -122,6 +125,9 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
     public ICommand GenerateMissingMembersCommand { get; }
     public ICommand RenameCommand { get; }
     public ICommand ExtractMethodCommand { get; }
+    public ICommand DeleteExplorerItemCommand { get; }
+    public ICommand RenameExplorerItemCommand { get; }
+    public ICommand NewFolderCommand { get; }
 
     private ObservableCollection<ProjectItem> _projectItems = [];
     public ObservableCollection<ProjectItem> ProjectItems
@@ -399,6 +405,12 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
             return projectRootPath;
         }
 
+        // Project/Solution nodes point to a file (.csproj/.sln); resolve to their directory
+        if (selectedItem.ItemType is ProjectItemType.Project or ProjectItemType.Solution)
+        {
+            return Path.GetDirectoryName(selectedItem.FullPath) ?? projectRootPath;
+        }
+
         if (selectedItem.IsDirectory)
         {
             return selectedItem.FullPath;
@@ -496,8 +508,94 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
             return;
         }
 
-        var root = EditorService.BuildFileTree(ProjectRootPath);
-        ProjectItems = new ObservableCollection<ProjectItem>(root.Children);
+        // Collect expanded paths before rebuilding the tree
+        var expandedPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        CollectExpandedPaths(ProjectItems, expandedPaths);
+
+        // Rebuild tree based on what was originally loaded
+        if (!string.IsNullOrEmpty(_loadedProjectOrSolutionPath))
+        {
+            var ext = Path.GetExtension(_loadedProjectOrSolutionPath);
+            if (ext.Equals(".sln", StringComparison.OrdinalIgnoreCase))
+            {
+                // Re-discover project paths from the loaded solution result
+                var projectPaths = DiscoverProjectPaths(_loadedProjectOrSolutionPath);
+                var root = EditorService.BuildSolutionTree(_loadedProjectOrSolutionPath, projectPaths);
+                RestoreExpandedPaths(root, expandedPaths);
+                ProjectItems = new ObservableCollection<ProjectItem> { root };
+                return;
+            }
+
+            if (ext.Equals(".csproj", StringComparison.OrdinalIgnoreCase))
+            {
+                var root = EditorService.BuildProjectTree(_loadedProjectOrSolutionPath);
+                RestoreExpandedPaths(root, expandedPaths);
+                ProjectItems = new ObservableCollection<ProjectItem> { root };
+                return;
+            }
+        }
+
+        // Fallback: folder-only view
+        var folderRoot = EditorService.BuildFileTree(ProjectRootPath);
+        RestoreExpandedPaths(folderRoot, expandedPaths);
+        ProjectItems = new ObservableCollection<ProjectItem>(folderRoot.Children);
+    }
+
+    /// <summary>
+    /// Discovers .csproj paths referenced in a .sln file by parsing Project lines.
+    /// </summary>
+    private static List<string> DiscoverProjectPaths(string solutionPath)
+    {
+        var solutionDir = Path.GetDirectoryName(solutionPath)!;
+        var projectPaths = new List<string>();
+        var lines = File.ReadAllLines(solutionPath);
+
+        foreach (var line in lines)
+        {
+            if (!line.StartsWith("Project(", StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            var parts = line.Split('"');
+            if (parts.Length >= 6)
+            {
+                var relativePath = parts[5].Replace('\\', Path.DirectorySeparatorChar);
+                var fullPath = Path.GetFullPath(Path.Combine(solutionDir, relativePath));
+                if (fullPath.EndsWith(".csproj", StringComparison.OrdinalIgnoreCase))
+                {
+                    projectPaths.Add(fullPath);
+                }
+            }
+        }
+
+        return projectPaths;
+    }
+
+    private static void CollectExpandedPaths(IEnumerable<ProjectItem> items, HashSet<string> expandedPaths)
+    {
+        foreach (var item in items)
+        {
+            if (item.IsExpanded)
+            {
+                expandedPaths.Add(item.FullPath);
+            }
+
+            CollectExpandedPaths(item.Children, expandedPaths);
+        }
+    }
+
+    private static void RestoreExpandedPaths(ProjectItem root, HashSet<string> expandedPaths)
+    {
+        if (expandedPaths.Contains(root.FullPath))
+        {
+            root.IsExpanded = true;
+        }
+
+        foreach (var child in root.Children)
+        {
+            RestoreExpandedPaths(child, expandedPaths);
+        }
     }
 
     private void OpenFile()
@@ -594,8 +692,8 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
 
             ProjectRootPath = projectDir;
             _loadedProjectOrSolutionPath = projectPath;
-            var root = EditorService.BuildFileTree(projectDir);
-            ProjectItems = new ObservableCollection<ProjectItem>(root.Children);
+            var root = EditorService.BuildProjectTree(projectPath);
+            ProjectItems = new ObservableCollection<ProjectItem> { root };
 
             LoadingStatus = $"Loaded: {result.Name} ({result.TargetFramework}) — {result.SourceFiles.Length} file(s)";
             ScheduleLoadingStatusClear();
@@ -647,8 +745,9 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
 
             ProjectRootPath = solutionDir;
             _loadedProjectOrSolutionPath = solutionPath;
-            var root = EditorService.BuildFileTree(solutionDir);
-            ProjectItems = new ObservableCollection<ProjectItem>(root.Children);
+            var projectPaths = result.Projects.Select(p => p.ProjectPath).ToList();
+            var root = EditorService.BuildSolutionTree(solutionPath, projectPaths);
+            ProjectItems = new ObservableCollection<ProjectItem> { root };
 
             var totalFiles = result.Projects.Sum(p => p.SourceFiles.Length);
             var projectNames = string.Join(", ", result.Projects.Select(p => p.Name));
@@ -957,10 +1056,291 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
     {
         ArgumentNullException.ThrowIfNull(item);
 
+        // Double-clicking a project/solution node toggles expansion
+        if (item.ItemType is ProjectItemType.Project or ProjectItemType.Solution)
+        {
+            item.IsExpanded = !item.IsExpanded;
+            return;
+        }
+
         if (!item.IsDirectory)
         {
             OpenFileByPath(item.FullPath);
         }
+    }
+
+    /// <summary>
+    /// Deletes a file or empty folder from disk and refreshes the explorer tree.
+    /// Closes any open tab for a deleted file.
+    /// </summary>
+    internal void DeleteExplorerItem(ProjectItem? item)
+    {
+        if (item is null)
+        {
+            return;
+        }
+
+        // Don't allow deleting project/solution root nodes
+        if (item.ItemType is ProjectItemType.Project or ProjectItemType.Solution)
+        {
+            MessageBox.Show("Cannot delete a project or solution node from the explorer.",
+                "Delete", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        var displayName = item.Name;
+        var isDir = item.IsDirectory;
+        var prompt = isDir
+            ? $"Delete folder \"{displayName}\" and all its contents?"
+            : $"Delete file \"{displayName}\"?";
+
+        var result = MessageBox.Show(prompt, "Confirm Delete",
+            MessageBoxButton.YesNo, MessageBoxImage.Warning);
+
+        if (result != MessageBoxResult.Yes)
+        {
+            return;
+        }
+
+        try
+        {
+            if (isDir)
+            {
+                // Close any tabs for files inside this directory
+                var dirPath = item.FullPath + Path.DirectorySeparatorChar;
+                var affectedTabs = OpenTabs
+                    .Where(t => t.FilePath.StartsWith(dirPath, StringComparison.OrdinalIgnoreCase))
+                    .ToList();
+
+                foreach (var tab in affectedTabs)
+                {
+                    CloseTabCommand.Execute(tab);
+                }
+
+                Directory.Delete(item.FullPath, recursive: true);
+            }
+            else
+            {
+                // Close the tab if the file is open
+                var tab = OpenTabs.FirstOrDefault(t =>
+                    string.Equals(t.FilePath, item.FullPath, StringComparison.OrdinalIgnoreCase));
+
+                if (tab is not null)
+                {
+                    CloseTabCommand.Execute(tab);
+                }
+
+                File.Delete(item.FullPath);
+            }
+
+            RefreshProjectItems();
+        }
+        catch (IOException ex)
+        {
+            MessageBox.Show($"Could not delete:\n{ex.Message}", "Error",
+                MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            MessageBox.Show($"Access denied:\n{ex.Message}", "Error",
+                MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
+
+    /// <summary>
+    /// Prompts the user for a new name and renames the file or folder on disk.
+    /// Updates any open tabs and the Roslyn workspace for renamed .cs files.
+    /// </summary>
+    internal void RenameExplorerItem(ProjectItem? item)
+    {
+        if (item is null)
+        {
+            return;
+        }
+
+        // Don't allow renaming project/solution root nodes
+        if (item.ItemType is ProjectItemType.Project or ProjectItemType.Solution)
+        {
+            MessageBox.Show("Cannot rename a project or solution node from the explorer.",
+                "Rename", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        var newName = PromptForInput("Rename", "New name:", item.Name);
+        if (string.IsNullOrWhiteSpace(newName) || newName == item.Name)
+        {
+            return;
+        }
+
+        var parentDir = Path.GetDirectoryName(item.FullPath);
+        if (string.IsNullOrEmpty(parentDir))
+        {
+            return;
+        }
+
+        var newPath = Path.Combine(parentDir, newName);
+        if (File.Exists(newPath) || Directory.Exists(newPath))
+        {
+            MessageBox.Show($"An item named \"{newName}\" already exists.", "Rename",
+                MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        try
+        {
+            if (item.IsDirectory)
+            {
+                Directory.Move(item.FullPath, newPath);
+            }
+            else
+            {
+                File.Move(item.FullPath, newPath);
+
+                // If the file is open in a tab, close and reopen at the new path
+                var tab = OpenTabs.FirstOrDefault(t =>
+                    string.Equals(t.FilePath, item.FullPath, StringComparison.OrdinalIgnoreCase));
+
+                if (tab is not null)
+                {
+                    var wasDirty = tab.IsDirty;
+                    var text = tab == ActiveTab && _editor is not null ? _editor.Text : tab.Document.Text;
+
+                    OpenTabs.Remove(tab);
+                    _ = _roslynService.CloseDocumentAsync(tab.FilePath);
+
+                    var newTab = new OpenFileTab(newPath, text);
+                    if (wasDirty)
+                    {
+                        newTab.IsDirty = true;
+                    }
+
+                    OpenTabs.Add(newTab);
+                    ActivateTab(newTab);
+                }
+            }
+
+            RefreshProjectItems();
+        }
+        catch (IOException ex)
+        {
+            MessageBox.Show($"Could not rename:\n{ex.Message}", "Error",
+                MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            MessageBox.Show($"Access denied:\n{ex.Message}", "Error",
+                MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
+
+    /// <summary>
+    /// Creates a new subfolder under the selected item (or project root) and refreshes the tree.
+    /// </summary>
+    internal void CreateNewFolder(ProjectItem? selectedItem)
+    {
+        if (string.IsNullOrWhiteSpace(ProjectRootPath) || !Directory.Exists(ProjectRootPath))
+        {
+            MessageBox.Show("Load a project or folder first.", "New Folder",
+                MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        var targetFolder = ResolveTemplateTargetFolder(selectedItem, ProjectRootPath);
+
+        var folderName = PromptForInput("New Folder", "Folder name:", "NewFolder");
+        if (string.IsNullOrWhiteSpace(folderName))
+        {
+            return;
+        }
+
+        var fullPath = Path.Combine(targetFolder, folderName);
+        if (Directory.Exists(fullPath))
+        {
+            MessageBox.Show($"Folder already exists:\n{fullPath}", "New Folder",
+                MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        try
+        {
+            Directory.CreateDirectory(fullPath);
+            RefreshProjectItems();
+        }
+        catch (IOException ex)
+        {
+            MessageBox.Show($"Could not create folder:\n{ex.Message}", "Error",
+                MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
+
+    /// <summary>
+    /// Shows a simple input dialog with the given title, label, and default text.
+    /// </summary>
+    private static string? PromptForInput(string title, string labelText, string defaultText)
+    {
+        var inputWindow = new System.Windows.Window
+        {
+            Title = title,
+            Width = 380,
+            Height = 150,
+            WindowStartupLocation = System.Windows.WindowStartupLocation.CenterOwner,
+            ResizeMode = System.Windows.ResizeMode.NoResize,
+            Owner = System.Windows.Application.Current.MainWindow
+        };
+
+        string? result = null;
+        var panel = new System.Windows.Controls.StackPanel { Margin = new System.Windows.Thickness(12) };
+
+        var label = new System.Windows.Controls.TextBlock
+        {
+            Text = labelText,
+            Margin = new System.Windows.Thickness(0, 0, 0, 6)
+        };
+        panel.Children.Add(label);
+
+        var textBox = new System.Windows.Controls.TextBox
+        {
+            Text = defaultText,
+            Margin = new System.Windows.Thickness(0, 0, 0, 12)
+        };
+        textBox.SelectAll();
+        panel.Children.Add(textBox);
+
+        var buttonPanel = new System.Windows.Controls.StackPanel
+        {
+            Orientation = System.Windows.Controls.Orientation.Horizontal,
+            HorizontalAlignment = System.Windows.HorizontalAlignment.Right
+        };
+
+        var okButton = new System.Windows.Controls.Button
+        {
+            Content = "OK",
+            Width = 75,
+            Margin = new System.Windows.Thickness(0, 0, 8, 0),
+            IsDefault = true
+        };
+        okButton.Click += (_, _) =>
+        {
+            result = textBox.Text.Trim();
+            inputWindow.DialogResult = true;
+        };
+        buttonPanel.Children.Add(okButton);
+
+        var cancelButton = new System.Windows.Controls.Button
+        {
+            Content = "Cancel",
+            Width = 75,
+            IsCancel = true
+        };
+        buttonPanel.Children.Add(cancelButton);
+
+        panel.Children.Add(buttonPanel);
+        inputWindow.Content = panel;
+
+        textBox.Loaded += (_, _) => textBox.Focus();
+
+        inputWindow.ShowDialog();
+        return result;
     }
 
     private void OnThemeChanged(AppTheme _)

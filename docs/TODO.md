@@ -103,7 +103,7 @@
   - Namespace is auto-scoped based on the target folder's path relative to the project root
   - Files: `MainWindow.xaml`, `MainWindow.xaml.cs`, `ViewModels/MainViewModel.cs`, `Services/TemplateService.cs`
 
-- [ ] **4.4 Explorer panel overhaul — project/solution root node**
+- [X] **4.4 Explorer panel overhaul — project/solution root node**
   - Show the loaded `.csproj` or `.sln` as a top-level node in the explorer tree
   - When a solution is loaded, show the solution node with project children; when a project is loaded, show the project as root
   - Add `ItemType` enum to `ProjectItem` (Solution, Project, Folder, File) for icon and behavior differentiation
@@ -112,9 +112,12 @@
 	- delete
 	- rename
 	- open in Explorer
-  - Files: `Models/ProjectItem.cs`, `Services/EditorService.cs`, `ViewModels/MainViewModel.cs`
+  - Expanded state preserved across tree refresh
+  - Bold styling for project/solution root names
+  - Files: `Models/ProjectItem.cs`, `Services/EditorService.cs`, `ViewModels/MainViewModel.cs`, `MainWindow.xaml`, `MainWindow.xaml.cs`
 
-- [ ] **4.5 Explorer — placeholder icons**
+
+- [X] **4.5 Explorer — placeholder icons**
   - Add an icon column to the tree item template (before the name)
   - Use emoji placeholders: 📁 folder, 📄 file, 🔷 `.cs`, 🖼️ `.xaml`, 📦 `.csproj`, 🗂️ `.sln`
   - `ProjectItem` exposes an `Icon` property derived from `ItemType` / file extension

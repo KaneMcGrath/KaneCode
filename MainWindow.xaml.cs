@@ -497,7 +497,14 @@ public partial class MainWindow : Window
             return;
         }
 
-        var path = item.IsDirectory ? item.FullPath : Path.GetDirectoryName(item.FullPath);
+        // Project/Solution nodes point to a file; resolve to directory
+        var path = item.ItemType switch
+        {
+            ProjectItemType.Project or ProjectItemType.Solution => Path.GetDirectoryName(item.FullPath),
+            _ when item.IsDirectory => item.FullPath,
+            _ => Path.GetDirectoryName(item.FullPath)
+        };
+
         if (!string.IsNullOrEmpty(path) && Directory.Exists(path))
         {
             Process.Start(new ProcessStartInfo
@@ -506,6 +513,21 @@ public partial class MainWindow : Window
                 UseShellExecute = true
             });
         }
+    }
+
+    private void ExplorerContextMenu_Delete(object sender, RoutedEventArgs e)
+    {
+        _viewModel.DeleteExplorerItem(FileTree.SelectedItem as ProjectItem);
+    }
+
+    private void ExplorerContextMenu_Rename(object sender, RoutedEventArgs e)
+    {
+        _viewModel.RenameExplorerItem(FileTree.SelectedItem as ProjectItem);
+    }
+
+    private void ExplorerContextMenu_NewFolder(object sender, RoutedEventArgs e)
+    {
+        _viewModel.CreateNewFolder(FileTree.SelectedItem as ProjectItem);
     }
 
     // ── Tab strip context menu ─────────────────────────────────────────

@@ -151,6 +151,74 @@ internal static class EditorService
         return root;
     }
 
+    /// <summary>
+    /// Builds a tree rooted at a .csproj file. The project file becomes the root node
+    /// with its directory contents as children.
+    /// </summary>
+    public static ProjectItem BuildProjectTree(string projectPath)
+    {
+        ArgumentNullException.ThrowIfNull(projectPath);
+
+        var projectDir = Path.GetDirectoryName(projectPath)!;
+        var root = new ProjectItem(projectPath, ProjectItemType.Project) { IsExpanded = true };
+        PopulateChildren(root, new DirectoryInfo(projectDir));
+        return root;
+    }
+
+    /// <summary>
+    /// Builds a tree rooted at a .sln file. The solution node contains a project child
+    /// for each .csproj found in the solution, each with its own file subtree.
+    /// </summary>
+    public static ProjectItem BuildSolutionTree(string solutionPath, IReadOnlyList<string> projectPaths)
+    {
+        ArgumentNullException.ThrowIfNull(solutionPath);
+        ArgumentNullException.ThrowIfNull(projectPaths);
+
+        var solutionDir = Path.GetDirectoryName(solutionPath)!;
+        var root = new ProjectItem(solutionPath, ProjectItemType.Solution) { IsExpanded = true };
+
+        // Add project nodes sorted by name
+        foreach (var projectPath in projectPaths.OrderBy(p => Path.GetFileNameWithoutExtension(p), StringComparer.OrdinalIgnoreCase))
+        {
+            if (!File.Exists(projectPath))
+            {
+                continue;
+            }
+
+            var projectDir = Path.GetDirectoryName(projectPath)!;
+            var projectNode = new ProjectItem(projectPath, ProjectItemType.Project) { IsExpanded = false };
+            PopulateChildren(projectNode, new DirectoryInfo(projectDir));
+            root.Children.Add(projectNode);
+        }
+
+        // Add solution-level files that aren't inside any project directory
+        var projectDirs = projectPaths
+            .Where(File.Exists)
+            .Select(p => Path.GetDirectoryName(p)!)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        try
+        {
+            foreach (var file in new DirectoryInfo(solutionDir).EnumerateFiles()
+                .OrderBy(f => f.Name, StringComparer.OrdinalIgnoreCase))
+            {
+                if (ExcludedExtensions.Contains(file.Extension))
+                {
+                    continue;
+                }
+
+                // Only include files directly in the solution directory (not in project subdirs)
+                root.Children.Add(new ProjectItem(file.FullName, isDirectory: false));
+            }
+        }
+        catch (UnauthorizedAccessException)
+        {
+            // Skip files we can't access
+        }
+
+        return root;
+    }
+
     private static void PopulateChildren(ProjectItem parent, DirectoryInfo dirInfo)
     {
         try
