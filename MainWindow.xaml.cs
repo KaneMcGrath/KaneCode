@@ -1,8 +1,10 @@
 ﻿using KaneCode.Infrastructure;
 using KaneCode.Models;
+using KaneCode.Services;
 using KaneCode.Theming;
 using KaneCode.ViewModels;
 using ICSharpCode.AvalonEdit.Rendering;
+using Microsoft.Win32;
 using System.Diagnostics;
 using System.IO;
 using System.Text.Json;
@@ -21,6 +23,7 @@ namespace KaneCode;
 public partial class MainWindow : Window
 {
     private readonly MainViewModel _viewModel = new();
+    private readonly DotnetCliService _dotnetCli = new();
     private Popup? _quickInfoPopup;
 
     public MainWindow()
@@ -380,6 +383,294 @@ public partial class MainWindow : Window
         }
     }
 
+    private async void FileMenu_NewProject_Click(object sender, RoutedEventArgs e)
+    {
+        IReadOnlyList<DotnetTemplate> templates;
+        try
+        {
+            templates = await _dotnetCli.GetProjectTemplatesAsync();
+        }
+        catch (InvalidOperationException ex)
+        {
+            MessageBox.Show($"Could not discover SDK templates:\n{ex.Message}", "New Project",
+                MessageBoxButton.OK, MessageBoxImage.Error);
+            return;
+        }
+
+        var dialogState = ShowNewProjectDialog(templates);
+        if (dialogState is null)
+        {
+            return;
+        }
+
+        try
+        {
+            var projectDir = Path.Combine(dialogState.DestinationDirectory, dialogState.ProjectName);
+
+            if (dialogState.CreateSolution)
+            {
+                // Create project in projectDir (like: cd projectDir && dotnet new template)
+                await _dotnetCli.CreateProjectAsync(
+                    dialogState.TemplateShortName,
+                    dialogState.ProjectName,
+                    projectDir,
+                    dialogState.TargetFramework);
+
+                // Create sln in the same directory and add the project
+                var solutionPath = await _dotnetCli.CreateSolutionAsync(
+                    dialogState.ProjectName,
+                    projectDir);
+
+                await _viewModel.OpenSolutionByPathAsync(solutionPath);
+                OpenFirstSourceFile(projectDir);
+            }
+            else
+            {
+                await _dotnetCli.CreateProjectAsync(
+                    dialogState.TemplateShortName,
+                    dialogState.ProjectName,
+                    projectDir,
+                    dialogState.TargetFramework);
+
+                var csprojPath = Directory.EnumerateFiles(projectDir, "*.csproj").FirstOrDefault();
+                if (!string.IsNullOrEmpty(csprojPath))
+                {
+                    await _viewModel.OpenProjectByPathAsync(csprojPath);
+                }
+
+                OpenFirstSourceFile(projectDir);
+            }
+        }
+        catch (InvalidOperationException ex)
+        {
+            MessageBox.Show(ex.Message, "New Project", MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+        catch (IOException ex)
+        {
+            MessageBox.Show($"Could not create project:\n{ex.Message}", "New Project",
+                MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
+
+    private NewProjectDialogState? ShowNewProjectDialog(IReadOnlyList<DotnetTemplate> templates)
+    {
+        if (templates.Count == 0)
+        {
+            MessageBox.Show("No project templates are available.\nEnsure the .NET SDK is installed.", "New Project",
+                MessageBoxButton.OK, MessageBoxImage.Information);
+            return null;
+        }
+
+        var dialog = new Window
+        {
+            Title = "New Project",
+            Width = 520,
+            Height = 300,
+            WindowStartupLocation = WindowStartupLocation.CenterOwner,
+            ResizeMode = ResizeMode.NoResize,
+            Owner = this
+        };
+
+        var rootPanel = new Grid { Margin = new Thickness(12) };
+        rootPanel.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        rootPanel.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        rootPanel.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        rootPanel.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        rootPanel.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        rootPanel.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+        rootPanel.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        rootPanel.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(130) });
+        rootPanel.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        rootPanel.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+        AddLabel(rootPanel, "Name:", 0);
+        var nameTextBox = new TextBox { Text = "MyProject", Margin = new Thickness(0, 0, 0, 8) };
+        Grid.SetRow(nameTextBox, 0);
+        Grid.SetColumn(nameTextBox, 1);
+        Grid.SetColumnSpan(nameTextBox, 2);
+        rootPanel.Children.Add(nameTextBox);
+
+        AddLabel(rootPanel, "Template:", 1);
+        var templateCombo = new ComboBox
+        {
+            ItemsSource = templates,
+            SelectedIndex = 0,
+            Margin = new Thickness(0, 0, 0, 8)
+        };
+        Grid.SetRow(templateCombo, 1);
+        Grid.SetColumn(templateCombo, 1);
+        Grid.SetColumnSpan(templateCombo, 2);
+        rootPanel.Children.Add(templateCombo);
+
+        AddLabel(rootPanel, "Framework:", 2);
+        var frameworkTextBox = new TextBox
+        {
+            Text = "net8.0",
+            Margin = new Thickness(0, 0, 0, 8)
+        };
+        Grid.SetRow(frameworkTextBox, 2);
+        Grid.SetColumn(frameworkTextBox, 1);
+        Grid.SetColumnSpan(frameworkTextBox, 2);
+        rootPanel.Children.Add(frameworkTextBox);
+
+        AddLabel(rootPanel, "Location:", 3);
+        var destinationTextBox = new TextBox
+        {
+            Text = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
+            Margin = new Thickness(0, 0, 8, 8)
+        };
+        Grid.SetRow(destinationTextBox, 3);
+        Grid.SetColumn(destinationTextBox, 1);
+        rootPanel.Children.Add(destinationTextBox);
+
+        var browseButton = new Button
+        {
+            Content = "Browse...",
+            Width = 90,
+            Margin = new Thickness(0, 0, 0, 8)
+        };
+        browseButton.Click += (_, _) =>
+        {
+            var folderDialog = new OpenFolderDialog
+            {
+                Title = "Select Project Location",
+                InitialDirectory = destinationTextBox.Text
+            };
+
+            if (folderDialog.ShowDialog() == true)
+            {
+                destinationTextBox.Text = folderDialog.FolderName;
+            }
+        };
+        Grid.SetRow(browseButton, 3);
+        Grid.SetColumn(browseButton, 2);
+        rootPanel.Children.Add(browseButton);
+
+        var createSolutionCheckBox = new CheckBox
+        {
+            Content = "Create solution (.sln)",
+            IsChecked = true,
+            Margin = new Thickness(0, 0, 0, 12)
+        };
+        Grid.SetRow(createSolutionCheckBox, 4);
+        Grid.SetColumn(createSolutionCheckBox, 1);
+        Grid.SetColumnSpan(createSolutionCheckBox, 2);
+        rootPanel.Children.Add(createSolutionCheckBox);
+
+        var buttonPanel = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            HorizontalAlignment = HorizontalAlignment.Right
+        };
+
+        NewProjectDialogState? result = null;
+        var createButton = new Button
+        {
+            Content = "Create",
+            Width = 90,
+            Margin = new Thickness(0, 0, 8, 0),
+            IsDefault = true
+        };
+        createButton.Click += (_, _) =>
+        {
+            var name = nameTextBox.Text.Trim();
+            var location = destinationTextBox.Text.Trim();
+            if (string.IsNullOrWhiteSpace(name))
+            {
+                MessageBox.Show("Project name is required.", "New Project",
+                    MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
+            if (string.IsNullOrWhiteSpace(location))
+            {
+                MessageBox.Show("Project location is required.", "New Project",
+                    MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
+            if (!Directory.Exists(location))
+            {
+                MessageBox.Show("Project location does not exist.", "New Project",
+                    MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
+            if (templateCombo.SelectedItem is not DotnetTemplate selectedTemplate)
+            {
+                MessageBox.Show("Select a template.", "New Project",
+                    MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
+            result = new NewProjectDialogState(
+                name,
+                selectedTemplate.ShortName,
+                location,
+                string.IsNullOrWhiteSpace(frameworkTextBox.Text) ? null : frameworkTextBox.Text.Trim(),
+                createSolutionCheckBox.IsChecked == true);
+            dialog.DialogResult = true;
+        };
+        buttonPanel.Children.Add(createButton);
+
+        var cancelButton = new Button
+        {
+            Content = "Cancel",
+            Width = 90,
+            IsCancel = true
+        };
+        buttonPanel.Children.Add(cancelButton);
+
+        Grid.SetRow(buttonPanel, 6);
+        Grid.SetColumn(buttonPanel, 1);
+        Grid.SetColumnSpan(buttonPanel, 2);
+        rootPanel.Children.Add(buttonPanel);
+
+        dialog.Content = rootPanel;
+        nameTextBox.Loaded += (_, _) =>
+        {
+            nameTextBox.Focus();
+            nameTextBox.SelectAll();
+        };
+
+        return dialog.ShowDialog() == true ? result : null;
+    }
+
+    private static void AddLabel(Grid rootPanel, string text, int row)
+    {
+        var label = new TextBlock
+        {
+            Text = text,
+            VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(0, 0, 8, 8)
+        };
+
+        Grid.SetRow(label, row);
+        Grid.SetColumn(label, 0);
+        rootPanel.Children.Add(label);
+    }
+
+    /// <summary>
+    /// Opens the first <c>.cs</c> source file found in the given directory
+    /// so the user lands in the editor immediately after project creation.
+    /// </summary>
+    private void OpenFirstSourceFile(string projectDirectory)
+    {
+        if (!Directory.Exists(projectDirectory))
+        {
+            return;
+        }
+
+        var firstSource = Directory.EnumerateFiles(projectDirectory, "*.cs", SearchOption.TopDirectoryOnly)
+            .OrderBy(f => f, StringComparer.OrdinalIgnoreCase)
+            .FirstOrDefault();
+
+        if (!string.IsNullOrEmpty(firstSource))
+        {
+            _viewModel.OpenFileByPath(firstSource);
+        }
+    }
+
     // ── Editor context menu ────────────────────────────────────────────
 
     private void EditorContextMenu_Cut(object sender, RoutedEventArgs e) => CodeEditor.Cut();
@@ -597,4 +888,11 @@ public partial class MainWindow : Window
         public bool CanExecute(object? parameter) => true;
         public async void Execute(object? parameter) => await _execute();
     }
+
+    private sealed record NewProjectDialogState(
+        string ProjectName,
+        string TemplateShortName,
+        string DestinationDirectory,
+        string? TargetFramework,
+        bool CreateSolution);
 }

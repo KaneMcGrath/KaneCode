@@ -248,4 +248,5 @@ namespace {NAMESPACE};
 
         return normalized;
     }
-}
+
+    }

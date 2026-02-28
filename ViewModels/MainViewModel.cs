@@ -657,6 +657,26 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
         _ = LoadSolutionFileAsync(dialog.FileName);
     }
 
+    internal Task OpenProjectByPathAsync(string projectPath)
+    {
+        if (string.IsNullOrWhiteSpace(projectPath))
+        {
+            throw new ArgumentException("Project path is required.", nameof(projectPath));
+        }
+
+        return LoadProjectFileAsync(projectPath);
+    }
+
+    internal Task OpenSolutionByPathAsync(string solutionPath)
+    {
+        if (string.IsNullOrWhiteSpace(solutionPath))
+        {
+            throw new ArgumentException("Solution path is required.", nameof(solutionPath));
+        }
+
+        return LoadSolutionFileAsync(solutionPath);
+    }
+
     private async Task LoadProjectFileAsync(string projectPath)
     {
         if (!await CloseAllTabsAsync().ConfigureAwait(true))

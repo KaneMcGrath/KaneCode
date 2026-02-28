@@ -124,16 +124,16 @@
   - Structure supports future replacement with real icons
   - Files: `Models/ProjectItem.cs`, `MainWindow.xaml`
 
-- [ ] **4.6 New project dialogue**
-  - Create a new solution or `.csproj` project based on the templates
-  - Files: `MainWindow.xaml`, `MainWindow.xaml.cs`, `Services/TemplateService.cs`
+- [X] **4.6 New project dialogue**
+  - Uses `dotnet new` CLI to scaffold projects from installed SDK templates
+  - Template list discovered via `dotnet new list --type project`; solution created via `dotnet new sln` + `dotnet sln add`
+  - Files: `MainWindow.xaml`, `MainWindow.xaml.cs`, `Services/DotnetCliService.cs`
 
-- [ ] **4.7 Template editor in Options window**
-  - Add a "Templates" category to the Options window
-  - Display template list with name, and a text editor for the template body
-  - Allow adding, removing, renaming, and editing templates
-  - Changes persist to `templates.json` via `TemplateService`
-  - Files: `OptionsWindow.xaml`, `OptionsWindow.xaml.cs`, `Services/TemplateService.cs`
+- [ ] **4.7 Rebuild New Project System with Microsoft.TemplateEngine**
+  - The previous implementation of the new project dialog was a quick prototype using `dotnet new` CLI commands, which had limitations in terms of template discovery, customization, and extensibility.
+  - Rebuild the new project system using the `Microsoft.TemplateEngine` NuGet package, which provides a programmatic API for discovering and instantiating templates from the installed .NET SDK.
+
+
 
 ---
 
