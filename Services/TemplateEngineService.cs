@@ -56,6 +56,25 @@ internal sealed class TemplateEngineService : IDisposable
     }
 
     /// <summary>
+    /// Returns the valid target framework monikers for the given template's
+    /// <c>Framework</c> choice parameter, sorted newest-first.
+    /// Returns an empty list when the template has no <c>Framework</c> parameter.
+    /// </summary>
+    internal static IReadOnlyList<FrameworkChoice> GetFrameworkChoices(ITemplateInfo template)
+    {
+        var param = template.GetChoiceParameter("Framework");
+        if (param?.Choices is null || param.Choices.Count == 0)
+        {
+            return [];
+        }
+
+        return param.Choices
+            .Select(kv => new FrameworkChoice(kv.Key, kv.Value.DisplayName))
+            .OrderByDescending(f => f.Moniker, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
+    /// <summary>
     /// Creates a new project from the specified template.
     /// </summary>
     /// <returns>The output directory where files were created.</returns>
@@ -170,7 +189,7 @@ internal sealed class TemplateEngineService : IDisposable
             var host = new EdgeHost(HostIdentifier, HostVersion);
             _bootstrapper = new Bootstrapper(
                 host,
-                virtualizeConfiguration: true,
+                virtualizeConfiguration: false,
                 loadDefaultComponents: true,
                 hostSettingsLocation: null);
 
@@ -189,7 +208,7 @@ internal sealed class TemplateEngineService : IDisposable
     // ── SDK template discovery ─────────────────────────────────────────
 
     /// <summary>
-    /// Finds the installed .NET SDK's <c>Templates</c> directory and installs
+    /// Finds the installed .NET SDK's template directories and installs
     /// the template <c>.nupkg</c> packages into the engine.
     /// </summary>
     private static async Task InstallSdkTemplatePackagesAsync(
@@ -199,21 +218,44 @@ internal sealed class TemplateEngineService : IDisposable
         var packagePaths = FindSdkTemplatePackages();
         if (packagePaths.Count == 0)
         {
+            Debug.WriteLine("[TemplateEngine] No SDK template packages found.");
+            Debug.WriteLine($"[TemplateEngine] DOTNET_ROOT={Environment.GetEnvironmentVariable("DOTNET_ROOT")}");
+            Debug.WriteLine($"[TemplateEngine] Resolved root={FindDotnetRoot()}");
             return;
         }
+
+        Debug.WriteLine($"[TemplateEngine] Installing {packagePaths.Count} template package(s)...");
 
         var requests = packagePaths
             .Select(path => new InstallRequest(path))
             .ToList();
 
-        await bootstrapper.InstallTemplatePackagesAsync(
+        var results = await bootstrapper.InstallTemplatePackagesAsync(
             requests,
             InstallationScope.Global,
             cancellationToken).ConfigureAwait(false);
+
+        foreach (var result in results)
+        {
+            if (result.Success)
+            {
+                Debug.WriteLine($"[TemplateEngine]   OK: {result.InstallRequest.PackageIdentifier}");
+            }
+            else
+            {
+                Debug.WriteLine($"[TemplateEngine]   FAIL: {result.InstallRequest.PackageIdentifier} — {result.ErrorMessage}");
+            }
+        }
     }
 
     /// <summary>
     /// Locates the <c>.nupkg</c> template packages shipped with the installed .NET SDK.
+    /// Scans three locations in order of preference:
+    /// <list type="number">
+    ///   <item><c>&lt;dotnetRoot&gt;/templates/&lt;version&gt;/</c> — modern layout (.NET 8+)</item>
+    ///   <item><c>&lt;dotnetRoot&gt;/template-packs/</c> — workload/extra template packs</item>
+    ///   <item><c>&lt;dotnetRoot&gt;/sdk/&lt;version&gt;/Templates/</c> — legacy layout</item>
+    /// </list>
     /// </summary>
     private static List<string> FindSdkTemplatePackages()
     {
@@ -223,31 +265,62 @@ internal sealed class TemplateEngineService : IDisposable
             return [];
         }
 
-        var sdkDir = Path.Combine(dotnetRoot, "sdk");
-        if (!Directory.Exists(sdkDir))
-        {
-            return [];
-        }
+        var packages = new List<string>();
 
-        // Pick the latest SDK version directory (directories starting with a digit)
-        var latestSdk = Directory.EnumerateDirectories(sdkDir)
-            .Where(d =>
+        // Modern layout: <dotnetRoot>/templates/<version>/*.nupkg
+        var templatesRoot = Path.Combine(dotnetRoot, "templates");
+        if (Directory.Exists(templatesRoot))
+        {
+            // Pick the latest version directory
+            var latestTemplateDir = Directory.EnumerateDirectories(templatesRoot)
+                .Where(d =>
+                {
+                    var name = Path.GetFileName(d);
+                    return name.Length > 0 && char.IsDigit(name[0]);
+                })
+                .OrderByDescending(d => Path.GetFileName(d), StringComparer.OrdinalIgnoreCase)
+                .FirstOrDefault();
+
+            if (latestTemplateDir is not null)
             {
-                var name = Path.GetFileName(d);
-                return name.Length > 0 && char.IsDigit(name[0]);
-            })
-            .OrderByDescending(d => Path.GetFileName(d), StringComparer.OrdinalIgnoreCase)
-            .FirstOrDefault();
-
-        if (latestSdk is null)
-        {
-            return [];
+                packages.AddRange(Directory.EnumerateFiles(latestTemplateDir, "*.nupkg"));
+            }
         }
 
-        var templatesDir = Path.Combine(latestSdk, "Templates");
-        return Directory.Exists(templatesDir)
-            ? Directory.EnumerateFiles(templatesDir, "*.nupkg").ToList()
-            : [];
+        // Workload / extra templates: <dotnetRoot>/template-packs/*.nupkg
+        var templatePacksDir = Path.Combine(dotnetRoot, "template-packs");
+        if (Directory.Exists(templatePacksDir))
+        {
+            packages.AddRange(Directory.EnumerateFiles(templatePacksDir, "*.nupkg"));
+        }
+
+        // Legacy layout: <dotnetRoot>/sdk/<version>/Templates/*.nupkg
+        if (packages.Count == 0)
+        {
+            var sdkDir = Path.Combine(dotnetRoot, "sdk");
+            if (Directory.Exists(sdkDir))
+            {
+                var latestSdk = Directory.EnumerateDirectories(sdkDir)
+                    .Where(d =>
+                    {
+                        var name = Path.GetFileName(d);
+                        return name.Length > 0 && char.IsDigit(name[0]);
+                    })
+                    .OrderByDescending(d => Path.GetFileName(d), StringComparer.OrdinalIgnoreCase)
+                    .FirstOrDefault();
+
+                if (latestSdk is not null)
+                {
+                    var legacyDir = Path.Combine(latestSdk, "Templates");
+                    if (Directory.Exists(legacyDir))
+                    {
+                        packages.AddRange(Directory.EnumerateFiles(legacyDir, "*.nupkg"));
+                    }
+                }
+            }
+        }
+
+        return packages;
     }
 
     /// <summary>
@@ -352,4 +425,16 @@ internal sealed class TemplateEngineService : IDisposable
 
         return stdout;
     }
+}
+
+/// <summary>
+/// A target framework option exposed by a template's <c>Framework</c> choice parameter.
+/// </summary>
+/// <param name="Moniker">The value passed to the template engine (e.g. <c>net8.0</c>).</param>
+/// <param name="DisplayName">Human-readable name from the template (e.g. <c>.NET 8.0</c>), may be empty.</param>
+internal sealed record FrameworkChoice(string Moniker, string? DisplayName)
+{
+    /// <summary>Shows e.g. <c>.NET 8.0 (net8.0)</c> or just <c>net8.0</c> when no display name exists.</summary>
+    public override string ToString() =>
+        string.IsNullOrWhiteSpace(DisplayName) ? Moniker : $"{DisplayName} ({Moniker})";
 }

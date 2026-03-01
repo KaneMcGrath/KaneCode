@@ -6,6 +6,7 @@ using KaneCode.ViewModels;
 using ICSharpCode.AvalonEdit.Rendering;
 using Microsoft.TemplateEngine.Abstractions;
 using Microsoft.Win32;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Text.Json;
@@ -503,16 +504,37 @@ public partial class MainWindow : Window
         Grid.SetColumnSpan(templateCombo, 2);
         rootPanel.Children.Add(templateCombo);
 
-        AddLabel(rootPanel, "Framework:", 2);
-        var frameworkTextBox = new TextBox
+        var frameworkLabel = new TextBlock
         {
-            Text = "net8.0",
-            Margin = new Thickness(0, 0, 0, 8)
+            Text = "Framework:",
+            VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(0, 0, 8, 8)
         };
-        Grid.SetRow(frameworkTextBox, 2);
-        Grid.SetColumn(frameworkTextBox, 1);
-        Grid.SetColumnSpan(frameworkTextBox, 2);
-        rootPanel.Children.Add(frameworkTextBox);
+        Grid.SetRow(frameworkLabel, 2);
+        Grid.SetColumn(frameworkLabel, 0);
+        rootPanel.Children.Add(frameworkLabel);
+
+        var frameworkCombo = new ComboBox { Margin = new Thickness(0, 0, 0, 8) };
+        Grid.SetRow(frameworkCombo, 2);
+        Grid.SetColumn(frameworkCombo, 1);
+        Grid.SetColumnSpan(frameworkCombo, 2);
+        rootPanel.Children.Add(frameworkCombo);
+
+        void RefreshFrameworks()
+        {
+            if (templateCombo.SelectedItem is not TemplateDisplayItem item)
+            {
+                return;
+            }
+
+            var choices = TemplateEngineService.GetFrameworkChoices(item.Info);
+            frameworkCombo.ItemsSource = choices.Count > 0 ? (IEnumerable<object>)choices : [new FrameworkChoice("(Default)", null)];
+            frameworkCombo.SelectedIndex = 0;
+            frameworkCombo.IsEnabled = choices.Count > 0;
+        }
+
+        templateCombo.SelectionChanged += (_, _) => RefreshFrameworks();
+        RefreshFrameworks();
 
         AddLabel(rootPanel, "Location:", 3);
         var destinationTextBox = new TextBox
@@ -608,7 +630,7 @@ public partial class MainWindow : Window
                 name,
                 selectedItem.Info,
                 location,
-                string.IsNullOrWhiteSpace(frameworkTextBox.Text) ? null : frameworkTextBox.Text.Trim(),
+                frameworkCombo.IsEnabled && frameworkCombo.SelectedItem is FrameworkChoice fc ? fc.Moniker : null,
                 createSolutionCheckBox.IsChecked == true);
             dialog.DialogResult = true;
         };
