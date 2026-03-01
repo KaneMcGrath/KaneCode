@@ -129,9 +129,19 @@
   - Template list discovered via `dotnet new list --type project`; solution created via `dotnet new sln` + `dotnet sln add`
   - Files: `MainWindow.xaml`, `MainWindow.xaml.cs`, `Services/DotnetCliService.cs`
 
-- [ ] **4.7 Rebuild New Project System with Microsoft.TemplateEngine**
-  - The previous implementation of the new project dialog was a quick prototype using `dotnet new` CLI commands, which had limitations in terms of template discovery, customization, and extensibility.
-  - Rebuild the new project system using the `Microsoft.TemplateEngine` NuGet package, which provides a programmatic API for discovering and instantiating templates from the installed .NET SDK.
+- [O] **4.7 Rebuild New Project System with Microsoft.TemplateEngine**
+  - Replaced `DotnetCliService` (CLI output parsing) with `TemplateEngineService` using `Microsoft.TemplateEngine.IDE.Bootstrapper` API
+  - Template discovery via `Bootstrapper.GetTemplatesAsync()` with SDK template packages auto-installed from the .NET SDK's `Templates` directory
+  - Project instantiation via `Bootstrapper.CreateAsync()` with `ITemplateInfo` — no CLI parsing needed
+  - Solution creation still uses minimal `dotnet new sln` / `dotnet sln add` CLI calls
+  - Files: new `Services/TemplateEngineService.cs`, `MainWindow.xaml.cs`, `KaneCode.csproj`; removed `Services/DotnetCliService.cs`
+  - **QA verification:**
+	- Open KaneCode, click File > New Project — verify template list populates from SDK templates
+	- Select a template (e.g., Console App), set project name and location, click Create
+	- Verify project files are created on disk and the project loads in the editor
+	- Test with "Create solution (.sln)" checked and unchecked
+	- Verify the first `.cs` file opens automatically after project creation
+	- Test cancellation — ensure no partial state if dialog is cancelled
 
 
 

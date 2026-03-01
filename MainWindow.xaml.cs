@@ -4,6 +4,7 @@ using KaneCode.Services;
 using KaneCode.Theming;
 using KaneCode.ViewModels;
 using ICSharpCode.AvalonEdit.Rendering;
+using Microsoft.TemplateEngine.Abstractions;
 using Microsoft.Win32;
 using System.Diagnostics;
 using System.IO;
@@ -23,7 +24,7 @@ namespace KaneCode;
 public partial class MainWindow : Window
 {
     private readonly MainViewModel _viewModel = new();
-    private readonly DotnetCliService _dotnetCli = new();
+    private readonly TemplateEngineService _templateEngine = new();
     private Popup? _quickInfoPopup;
 
     public MainWindow()
@@ -64,6 +65,7 @@ public partial class MainWindow : Window
         CodeEditor.PreviewMouseLeftButtonUp -= CodeEditor_PreviewMouseLeftButtonUp;
         CloseQuickInfoPopup();
         _viewModel.Dispose();
+        _templateEngine.Dispose();
     }
 
     /// <summary>
@@ -385,10 +387,10 @@ public partial class MainWindow : Window
 
     private async void FileMenu_NewProject_Click(object sender, RoutedEventArgs e)
     {
-        IReadOnlyList<DotnetTemplate> templates;
+        IReadOnlyList<ITemplateInfo> templates;
         try
         {
-            templates = await _dotnetCli.GetProjectTemplatesAsync();
+            templates = await _templateEngine.GetProjectTemplatesAsync();
         }
         catch (InvalidOperationException ex)
         {
@@ -409,15 +411,13 @@ public partial class MainWindow : Window
 
             if (dialogState.CreateSolution)
             {
-                // Create project in projectDir (like: cd projectDir && dotnet new template)
-                await _dotnetCli.CreateProjectAsync(
-                    dialogState.TemplateShortName,
+                await _templateEngine.CreateProjectAsync(
+                    dialogState.Template,
                     dialogState.ProjectName,
                     projectDir,
                     dialogState.TargetFramework);
 
-                // Create sln in the same directory and add the project
-                var solutionPath = await _dotnetCli.CreateSolutionAsync(
+                var solutionPath = await _templateEngine.CreateSolutionAsync(
                     dialogState.ProjectName,
                     projectDir);
 
@@ -426,8 +426,8 @@ public partial class MainWindow : Window
             }
             else
             {
-                await _dotnetCli.CreateProjectAsync(
-                    dialogState.TemplateShortName,
+                await _templateEngine.CreateProjectAsync(
+                    dialogState.Template,
                     dialogState.ProjectName,
                     projectDir,
                     dialogState.TargetFramework);
@@ -452,7 +452,7 @@ public partial class MainWindow : Window
         }
     }
 
-    private NewProjectDialogState? ShowNewProjectDialog(IReadOnlyList<DotnetTemplate> templates)
+    private NewProjectDialogState? ShowNewProjectDialog(IReadOnlyList<ITemplateInfo> templates)
     {
         if (templates.Count == 0)
         {
@@ -491,9 +491,10 @@ public partial class MainWindow : Window
         rootPanel.Children.Add(nameTextBox);
 
         AddLabel(rootPanel, "Template:", 1);
+        var displayItems = templates.Select(t => new TemplateDisplayItem(t)).ToList();
         var templateCombo = new ComboBox
         {
-            ItemsSource = templates,
+            ItemsSource = displayItems,
             SelectedIndex = 0,
             Margin = new Thickness(0, 0, 0, 8)
         };
@@ -596,7 +597,7 @@ public partial class MainWindow : Window
                 return;
             }
 
-            if (templateCombo.SelectedItem is not DotnetTemplate selectedTemplate)
+            if (templateCombo.SelectedItem is not TemplateDisplayItem selectedItem)
             {
                 MessageBox.Show("Select a template.", "New Project",
                     MessageBoxButton.OK, MessageBoxImage.Warning);
@@ -605,7 +606,7 @@ public partial class MainWindow : Window
 
             result = new NewProjectDialogState(
                 name,
-                selectedTemplate.ShortName,
+                selectedItem.Info,
                 location,
                 string.IsNullOrWhiteSpace(frameworkTextBox.Text) ? null : frameworkTextBox.Text.Trim(),
                 createSolutionCheckBox.IsChecked == true);
@@ -891,8 +892,20 @@ public partial class MainWindow : Window
 
     private sealed record NewProjectDialogState(
         string ProjectName,
-        string TemplateShortName,
+        ITemplateInfo Template,
         string DestinationDirectory,
         string? TargetFramework,
         bool CreateSolution);
+
+    /// <summary>
+    /// Wraps <see cref="ITemplateInfo"/> for display in a combo box.
+    /// </summary>
+    private sealed record TemplateDisplayItem(ITemplateInfo Info)
+    {
+        public override string ToString()
+        {
+            var shortName = Info.ShortNameList.Count > 0 ? Info.ShortNameList[0] : "";
+            return $"{Info.Name} ({shortName})";
+        }
+    }
 }
