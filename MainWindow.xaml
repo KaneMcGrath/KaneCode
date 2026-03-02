@@ -57,6 +57,9 @@ Icon="Icons/KaneCode.ico">
                 <MenuItem Header="Fi_nd References"
                           Tag="{Binding ElementName=FindReferencesAnchorable}"
                           Click="ViewMenuPanel_Click" />
+                <MenuItem Header="_Git Changes"
+                          Tag="{Binding ElementName=GitChangesAnchorable}"
+                          Click="ViewMenuPanel_Click" />
                 <Separator />
                 <MenuItem Header="_Options" Command="{Binding OpenOptionsCommand}" />
             </MenuItem>
@@ -65,6 +68,18 @@ Icon="Icons/KaneCode.ico">
                 <MenuItem Header="_Run Project" Command="{Binding RunCommand}" />
                 <Separator />
                 <MenuItem Header="_Cancel" Command="{Binding CancelBuildCommand}" />
+            </MenuItem>
+            <MenuItem Header="_Git">
+                <MenuItem Header="_Refresh Status" Command="{Binding RefreshGitStatusCommand}" />
+                <MenuItem Header="_Git Changes"
+                          Tag="{Binding ElementName=GitChangesAnchorable}"
+                          Click="ViewMenuPanel_Click" />
+                <Separator />
+                <MenuItem Header="_Initialize Repository"
+                          Command="{Binding InitializeGitRepositoryCommand}" />
+                <Separator />
+                <MenuItem Header="{Binding GitRepositoryStatusText}"
+                          IsEnabled="False" />
             </MenuItem>
             <MenuItem Header="_Help">
                 <MenuItem Header="_About" />
@@ -132,6 +147,37 @@ Icon="Icons/KaneCode.ico">
                                                                 </DataTrigger>
                                                                 <DataTrigger Binding="{Binding ItemType}" Value="Solution">
                                                                     <Setter Property="FontWeight" Value="Bold" />
+                                                                </DataTrigger>
+                                                            </Style.Triggers>
+                                                        </Style>
+                                                    </TextBlock.Style>
+                                                </TextBlock>
+                                                <TextBlock Text="{Binding GitBadgeText}"
+                                                           FontSize="10" FontWeight="Bold"
+                                                           Margin="6,0,0,0" VerticalAlignment="Center">
+                                                    <TextBlock.Style>
+                                                        <Style TargetType="TextBlock">
+                                                            <Setter Property="Visibility" Value="Collapsed" />
+                                                            <Style.Triggers>
+                                                                <DataTrigger Binding="{Binding GitBadge}" Value="Modified">
+                                                                    <Setter Property="Visibility" Value="Visible" />
+                                                                    <Setter Property="Foreground" Value="#FFCC66" />
+                                                                </DataTrigger>
+                                                                <DataTrigger Binding="{Binding GitBadge}" Value="Added">
+                                                                    <Setter Property="Visibility" Value="Visible" />
+                                                                    <Setter Property="Foreground" Value="#73C991" />
+                                                                </DataTrigger>
+                                                                <DataTrigger Binding="{Binding GitBadge}" Value="Untracked">
+                                                                    <Setter Property="Visibility" Value="Visible" />
+                                                                    <Setter Property="Foreground" Value="#C8C8C8" />
+                                                                </DataTrigger>
+                                                                <DataTrigger Binding="{Binding GitBadge}" Value="Deleted">
+                                                                    <Setter Property="Visibility" Value="Visible" />
+                                                                    <Setter Property="Foreground" Value="#F44747" />
+                                                                </DataTrigger>
+                                                                <DataTrigger Binding="{Binding GitBadge}" Value="Conflict">
+                                                                    <Setter Property="Visibility" Value="Visible" />
+                                                                    <Setter Property="Foreground" Value="#F48771" />
                                                                 </DataTrigger>
                                                             </Style.Triggers>
                                                         </Style>
@@ -306,6 +352,18 @@ Icon="Icons/KaneCode.ico">
                                                               References="{Binding ReferenceItems}"
                                                               PanelStatusText="{Binding FindReferencesStatusText}"
                                                               NavigateRequested="FindReferencesPanel_NavigateRequested" />
+                            </avalonDock:LayoutAnchorable>
+                            <avalonDock:LayoutAnchorable x:Name="GitChangesAnchorable" Title="Git Changes"
+                                                         CanClose="False"
+                                                         CanHide="True"
+                                                         CanAutoHide="True"
+                                                         ContentId="GitChangesPane">
+                                <controls:GitChangesPanel x:Name="GitChangesPanel"
+                                                          UnstagedChanges="{Binding UnstagedChanges}"
+                                                          StagedChanges="{Binding StagedChanges}"
+                                                          PanelStatusText="{Binding GitChangesStatusText}"
+                                                          RefreshRequested="GitChangesPanel_RefreshRequested"
+                                                          FileOpenRequested="GitChangesPanel_FileOpenRequested" />
                             </avalonDock:LayoutAnchorable>
                         </avalonDock:LayoutAnchorablePane>
 

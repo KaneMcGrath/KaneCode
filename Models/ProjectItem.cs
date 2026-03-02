@@ -63,6 +63,31 @@ public sealed class ProjectItem : ObservableObject
         set => SetProperty(ref _isSelected, value);
     }
 
+    private GitStatusBadge _gitBadge;
+    /// <summary>Git status badge shown next to the file name in the explorer tree.</summary>
+    public GitStatusBadge GitBadge
+    {
+        get => _gitBadge;
+        set
+        {
+            if (SetProperty(ref _gitBadge, value))
+            {
+                OnPropertyChanged(nameof(GitBadgeText));
+            }
+        }
+    }
+
+    /// <summary>Single-character label for the current <see cref="GitBadge"/>; empty when <see cref="GitStatusBadge.None"/>.</summary>
+    public string GitBadgeText => _gitBadge switch
+    {
+        GitStatusBadge.Modified  => "M",
+        GitStatusBadge.Added     => "A",
+        GitStatusBadge.Untracked => "?",
+        GitStatusBadge.Deleted   => "D",
+        GitStatusBadge.Conflict  => "C",
+        _                        => string.Empty
+    };
+
     /// <summary>Emoji icon derived from <see cref="ItemType"/> and file extension.</summary>
     public string Icon => ItemType switch
     {

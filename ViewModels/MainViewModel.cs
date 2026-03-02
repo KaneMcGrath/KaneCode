@@ -32,6 +32,7 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
     private readonly RoslynCodeActionService _codeActionService;
     private readonly RoslynRefactoringService _refactoringService;
     private readonly BuildService _buildService = new();
+    private readonly GitService _gitService = new();
     private readonly TemplateService _templateService = new();
     private RoslynClassificationColorizer? _classificationColorizer;
     private RoslynDiagnosticRenderer? _diagnosticRenderer;
@@ -92,9 +93,17 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
         DeleteExplorerItemCommand = new RelayCommand(param => DeleteExplorerItem(param as ProjectItem));
         RenameExplorerItemCommand = new RelayCommand(param => RenameExplorerItem(param as ProjectItem));
         NewFolderCommand = new RelayCommand(param => CreateNewFolder(param as ProjectItem));
+        RefreshGitStatusCommand = new RelayCommand(_ => RefreshGitStatus(), _ => _gitService.IsRepositoryOpen);
+        InitializeGitRepositoryCommand = new RelayCommand(_ => InitializeGitRepository(), _ => CanInitializeGitRepository);
+        StageFileCommand   = new RelayCommand(param => ExecuteGitOperation(() => _gitService.StageFile(AsRelativePath(param))), _ => _gitService.IsRepositoryOpen);
+        StageAllCommand    = new RelayCommand(_ => ExecuteGitOperation(() => _gitService.StageAll()), _ => _gitService.IsRepositoryOpen);
+        UnstageFileCommand = new RelayCommand(param => ExecuteGitOperation(() => _gitService.UnstageFile(AsRelativePath(param))), _ => _gitService.IsRepositoryOpen);
+        UnstageAllCommand  = new RelayCommand(_ => ExecuteGitOperation(() => _gitService.UnstageAll()), _ => _gitService.IsRepositoryOpen);
+        DiscardFileCommand = new RelayCommand(param => DiscardFile(param as GitChangesEntry), _ => _gitService.IsRepositoryOpen);
 
         _buildService.OutputReceived += OnBuildOutputReceived;
         _buildService.ProcessExited += OnBuildProcessExited;
+        _gitService.StatusChanged += OnGitStatusChanged;
     }
 
     public ICommand NewFileCommand { get; }
@@ -128,6 +137,13 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
     public ICommand DeleteExplorerItemCommand { get; }
     public ICommand RenameExplorerItemCommand { get; }
     public ICommand NewFolderCommand { get; }
+    public ICommand RefreshGitStatusCommand { get; }
+    public ICommand InitializeGitRepositoryCommand { get; }
+    public ICommand StageFileCommand { get; }
+    public ICommand StageAllCommand { get; }
+    public ICommand UnstageFileCommand { get; }
+    public ICommand UnstageAllCommand { get; }
+    public ICommand DiscardFileCommand { get; }
 
     private ObservableCollection<ProjectItem> _projectItems = [];
     public ObservableCollection<ProjectItem> ProjectItems
@@ -145,6 +161,7 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
             if (SetProperty(ref _projectRootPath, value))
             {
                 OnPropertyChanged(nameof(WindowTitle));
+                OnPropertyChanged(nameof(CanInitializeGitRepository));
             }
         }
     }
@@ -195,6 +212,26 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
         get => _findReferencesStatusText;
         private set => SetProperty(ref _findReferencesStatusText, value);
     }
+
+    /// <summary>Files with unstaged working-directory changes, shown in the Git Changes panel.</summary>
+    public ObservableCollection<GitChangesEntry> UnstagedChanges { get; } = [];
+
+    /// <summary>Files with staged index changes, shown in the Git Changes panel.</summary>
+    public ObservableCollection<GitChangesEntry> StagedChanges { get; } = [];
+
+    private string _gitChangesStatusText = string.Empty;
+    /// <summary>Summary text shown in the Git Changes panel header.</summary>
+    public string GitChangesStatusText
+    {
+        get => _gitChangesStatusText;
+        private set => SetProperty(ref _gitChangesStatusText, value);
+    }
+
+    public bool CanInitializeGitRepository => !string.IsNullOrWhiteSpace(ProjectRootPath) && !_gitService.IsRepositoryOpen;
+
+    public string GitRepositoryStatusText => _gitService.IsRepositoryOpen
+        ? $"Branch: {_gitService.CurrentBranchName ?? "(detached)"}"
+        : "No repository";
 
     private OpenFileTab? _activeTab;
     public OpenFileTab? ActiveTab
@@ -523,6 +560,7 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
                 var root = EditorService.BuildSolutionTree(_loadedProjectOrSolutionPath, projectPaths);
                 RestoreExpandedPaths(root, expandedPaths);
                 ProjectItems = new ObservableCollection<ProjectItem> { root };
+                ApplyGitStatusToTree(_gitService.GetStatus());
                 return;
             }
 
@@ -531,6 +569,7 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
                 var root = EditorService.BuildProjectTree(_loadedProjectOrSolutionPath);
                 RestoreExpandedPaths(root, expandedPaths);
                 ProjectItems = new ObservableCollection<ProjectItem> { root };
+                ApplyGitStatusToTree(_gitService.GetStatus());
                 return;
             }
         }
@@ -539,6 +578,7 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
         var folderRoot = EditorService.BuildFileTree(ProjectRootPath);
         RestoreExpandedPaths(folderRoot, expandedPaths);
         ProjectItems = new ObservableCollection<ProjectItem>(folderRoot.Children);
+        ApplyGitStatusToTree(_gitService.GetStatus());
     }
 
     /// <summary>
@@ -715,6 +755,8 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
             var root = EditorService.BuildProjectTree(projectPath);
             ProjectItems = new ObservableCollection<ProjectItem> { root };
 
+            OpenRepositoryForPath(projectDir);
+
             LoadingStatus = $"Loaded: {result.Name} ({result.TargetFramework}) — {result.SourceFiles.Length} file(s)";
             ScheduleLoadingStatusClear();
         }
@@ -768,6 +810,8 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
             var projectPaths = result.Projects.Select(p => p.ProjectPath).ToList();
             var root = EditorService.BuildSolutionTree(solutionPath, projectPaths);
             ProjectItems = new ObservableCollection<ProjectItem> { root };
+
+            OpenRepositoryForPath(solutionDir);
 
             var totalFiles = result.Projects.Sum(p => p.SourceFiles.Length);
             var projectNames = string.Join(", ", result.Projects.Select(p => p.Name));
@@ -830,6 +874,8 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
         ProjectRootPath = rootPath;
         var root = EditorService.BuildFileTree(rootPath);
         ProjectItems = new ObservableCollection<ProjectItem>(root.Children);
+
+        OpenRepositoryForPath(rootPath);
     }
 
     private void Save()
@@ -2318,6 +2364,222 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
             && _editor.TextArea.Selection is { IsEmpty: false };
     }
 
+    private void OpenRepositoryForPath(string path)
+    {
+        _gitService.TryOpenRepository(path);
+        ApplyGitStatusToTree(_gitService.GetStatus());
+        UpdateGitRepositoryState();
+    }
+
+    private void RefreshGitStatus()
+    {
+        _gitService.RefreshStatus();
+        UpdateGitRepositoryState();
+    }
+
+    private void InitializeGitRepository()
+    {
+        if (string.IsNullOrWhiteSpace(ProjectRootPath) || !Directory.Exists(ProjectRootPath))
+        {
+            return;
+        }
+
+        if (!_gitService.TryInitializeRepository(ProjectRootPath))
+        {
+            MessageBox.Show($"Failed to initialize Git repository:\n{ProjectRootPath}", "Git",
+                MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        ApplyGitStatusToTree(_gitService.GetStatus());
+        UpdateGitRepositoryState();
+    }
+
+    private void DiscardFile(GitChangesEntry? entry)
+    {
+        if (entry is null) return;
+
+        var result = MessageBox.Show(
+            $"Discard all changes to \"{entry.RelativePath}\"?\nThis cannot be undone.",
+            "Discard Changes",
+            MessageBoxButton.YesNo,
+            MessageBoxImage.Warning);
+
+        if (result != MessageBoxResult.Yes) return;
+
+        ExecuteGitOperation(() => _gitService.DiscardFile(entry.RelativePath));
+    }
+
+    private void ExecuteGitOperation(Action operation)
+    {
+        try
+        {
+            operation();
+        }
+        catch (LibGit2Sharp.LibGit2SharpException ex)
+        {
+            MessageBox.Show($"Git operation failed:\n{ex.Message}", "Git Error",
+                MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+    }
+
+    private static string AsRelativePath(object? param) =>
+        (param as GitChangesEntry)?.RelativePath ?? string.Empty;
+
+    private void UpdateGitRepositoryState()
+    {
+        OnPropertyChanged(nameof(CanInitializeGitRepository));
+        OnPropertyChanged(nameof(GitRepositoryStatusText));
+        CommandManager.InvalidateRequerySuggested();
+    }
+
+    private void OnGitStatusChanged(IReadOnlyList<GitFileStatusEntry> entries)
+    {
+        Application.Current.Dispatcher.BeginInvoke(() =>
+        {
+            ApplyGitStatusToTree(entries);
+            UpdateGitRepositoryState();
+        });
+    }
+
+    private void ApplyGitStatusToTree(IReadOnlyList<GitFileStatusEntry> entries)
+    {
+        var workDir = _gitService.RepositoryWorkingDirectory;
+        if (workDir is null)
+        {
+            ClearGitBadgesOnItems(ProjectItems);
+            ClearGitChangesCollections();
+            return;
+        }
+
+        var statusByPath = new Dictionary<string, GitStatusBadge>(StringComparer.OrdinalIgnoreCase);
+        foreach (var entry in entries)
+        {
+            // LibGit2Sharp uses forward-slash separators; normalize to the OS separator.
+            var normalized = entry.FilePath.Replace('/', Path.DirectorySeparatorChar);
+            var fullPath = Path.GetFullPath(Path.Combine(workDir, normalized));
+            statusByPath[fullPath] = ToGitStatusBadge(entry.Status);
+        }
+
+        foreach (var item in ProjectItems)
+        {
+            ApplyBadgeToItem(item, statusByPath);
+        }
+
+        UpdateGitChangesCollections(entries, workDir);
+    }
+
+    private static GitStatusBadge ApplyBadgeToItem(
+        ProjectItem item,
+        Dictionary<string, GitStatusBadge> statusByPath)
+    {
+        if (!item.IsDirectory)
+        {
+            var badge = statusByPath.TryGetValue(item.FullPath, out var b) ? b : GitStatusBadge.None;
+            item.GitBadge = badge;
+            return badge;
+        }
+
+        var worst = GitStatusBadge.None;
+        foreach (var child in item.Children)
+        {
+            var childBadge = ApplyBadgeToItem(child, statusByPath);
+            if (BadgeSeverity(childBadge) > BadgeSeverity(worst))
+            {
+                worst = childBadge;
+            }
+        }
+
+        item.GitBadge = worst;
+        return worst;
+    }
+
+    private static void ClearGitBadgesOnItems(IEnumerable<ProjectItem> items)
+    {
+        foreach (var item in items)
+        {
+            item.GitBadge = GitStatusBadge.None;
+            if (item.IsDirectory)
+            {
+                ClearGitBadgesOnItems(item.Children);
+            }
+        }
+    }
+
+    private static GitStatusBadge ToGitStatusBadge(LibGit2Sharp.FileStatus status)
+    {
+        if (status.HasFlag(LibGit2Sharp.FileStatus.Conflicted))         return GitStatusBadge.Conflict;
+        if (status.HasFlag(LibGit2Sharp.FileStatus.DeletedFromWorkdir)
+            || status.HasFlag(LibGit2Sharp.FileStatus.DeletedFromIndex))  return GitStatusBadge.Deleted;
+        if (status.HasFlag(LibGit2Sharp.FileStatus.ModifiedInWorkdir)
+            || status.HasFlag(LibGit2Sharp.FileStatus.ModifiedInIndex))   return GitStatusBadge.Modified;
+        if (status.HasFlag(LibGit2Sharp.FileStatus.NewInIndex))           return GitStatusBadge.Added;
+        if (status.HasFlag(LibGit2Sharp.FileStatus.NewInWorkdir))         return GitStatusBadge.Untracked;
+        return GitStatusBadge.None;
+    }
+
+    private static int BadgeSeverity(GitStatusBadge badge) => badge switch
+    {
+        GitStatusBadge.Conflict  => 5,
+        GitStatusBadge.Deleted   => 4,
+        GitStatusBadge.Modified  => 3,
+        GitStatusBadge.Added     => 2,
+        GitStatusBadge.Untracked => 1,
+        _                        => 0
+    };
+
+    private void UpdateGitChangesCollections(IReadOnlyList<GitFileStatusEntry> entries, string workDir)
+    {
+        UnstagedChanges.Clear();
+        StagedChanges.Clear();
+
+        foreach (var entry in entries)
+        {
+            var relPath = entry.FilePath.Replace('/', Path.DirectorySeparatorChar);
+            var fullPath = Path.GetFullPath(Path.Combine(workDir, relPath));
+
+            var stagedBadge = ToStagedBadge(entry.Status);
+            if (stagedBadge != GitStatusBadge.None)
+            {
+                StagedChanges.Add(new GitChangesEntry(relPath, fullPath, stagedBadge));
+            }
+
+            var unstagedBadge = ToUnstagedBadge(entry.Status);
+            if (unstagedBadge != GitStatusBadge.None)
+            {
+                UnstagedChanges.Add(new GitChangesEntry(relPath, fullPath, unstagedBadge));
+            }
+        }
+
+        GitChangesStatusText = UnstagedChanges.Count + StagedChanges.Count > 0
+            ? $"{UnstagedChanges.Count} unstaged, {StagedChanges.Count} staged"
+            : "No changes";
+    }
+
+    private void ClearGitChangesCollections()
+    {
+        UnstagedChanges.Clear();
+        StagedChanges.Clear();
+        GitChangesStatusText = string.Empty;
+    }
+
+    private static GitStatusBadge ToStagedBadge(LibGit2Sharp.FileStatus status)
+    {
+        if (status.HasFlag(LibGit2Sharp.FileStatus.NewInIndex))       return GitStatusBadge.Added;
+        if (status.HasFlag(LibGit2Sharp.FileStatus.ModifiedInIndex))  return GitStatusBadge.Modified;
+        if (status.HasFlag(LibGit2Sharp.FileStatus.DeletedFromIndex)) return GitStatusBadge.Deleted;
+        return GitStatusBadge.None;
+    }
+
+    private static GitStatusBadge ToUnstagedBadge(LibGit2Sharp.FileStatus status)
+    {
+        if (status.HasFlag(LibGit2Sharp.FileStatus.Conflicted))         return GitStatusBadge.Conflict;
+        if (status.HasFlag(LibGit2Sharp.FileStatus.DeletedFromWorkdir)) return GitStatusBadge.Deleted;
+        if (status.HasFlag(LibGit2Sharp.FileStatus.ModifiedInWorkdir))  return GitStatusBadge.Modified;
+        if (status.HasFlag(LibGit2Sharp.FileStatus.NewInWorkdir))       return GitStatusBadge.Untracked;
+        return GitStatusBadge.None;
+    }
+
     /// <summary>
     /// Gets Quick Info (hover tooltip) text for the symbol at the given editor offset.
     /// Returns null if no info is available or the file is not a C# file.
@@ -2496,6 +2758,8 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
         _buildService.OutputReceived -= OnBuildOutputReceived;
         _buildService.ProcessExited -= OnBuildProcessExited;
         _buildService.Dispose();
+        _gitService.StatusChanged -= OnGitStatusChanged;
+        _gitService.Dispose();
         CancelPreviousLoad();
         _loadingStatusClearCts?.Cancel();
         _loadingStatusClearCts?.Dispose();

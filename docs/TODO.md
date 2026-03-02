@@ -24,9 +24,15 @@
 
 - [X] **5.1** Add `LibGit2Sharp` NuGet package; create `Services/GitService.cs` skeleton (detect & open repo)
 - [X] **5.2** Implement repo status query — per-file status + `StatusChanged` event
-- [ ] **5.3** Explorer file-status indicators (M/A/?/D badges on tree nodes)
-- [ ] **5.4** Git Changes panel — unstaged / staged file lists (AvalonDock anchorable)
-- [ ] **5.5** Stage / Unstage / Discard operations in `GitService` + panel context menu
+- [X] **5.3** Explorer file-status indicators (M/A/?/D badges on tree nodes)
+- [X] **5.4** Git Changes panel — unstaged / staged file lists (AvalonDock anchorable)
+- [O] **5.5** Stage / Unstage / Discard operations in `GitService` + panel context menu
+  - QA: Right-click a modified file in **Unstaged Changes** → **Stage**; verify it moves to **Staged Changes** and its explorer badge updates.
+  - QA: Click **Stage All**; verify all unstaged files move to **Staged Changes**.
+  - QA: Right-click a staged file → **Unstage**; verify it returns to **Unstaged Changes**.
+  - QA: Click **Unstage All**; verify all staged files move back to **Unstaged Changes**.
+  - QA: Right-click a modified file → **Discard Changes** → confirm → verify the file reverts to its last committed state and disappears from the list.
+  - QA: Right-click an untracked (**?**) file → **Discard Changes** → confirm → verify the file is deleted from disk and removed from the list.
 - [ ] **5.6** Commit workflow — message box, validation, `GitService.CommitAsync`
 - [ ] **5.7** Branch listing & switching — drop-down + `GitService.CheckoutAsync`
 - [ ] **5.8** Create & delete branches — dialog + confirmation

@@ -53,6 +53,13 @@ public partial class MainWindow : Window
         CodeEditor.TextArea.TextView.MouseHover += TextView_MouseHover;
         CodeEditor.TextArea.TextView.MouseHoverStopped += TextView_MouseHoverStopped;
         CodeEditor.TextArea.TextView.VisualLinesChanged += TextView_VisualLinesChanged;
+
+        // Git Changes panel operations (wired here because EventHandler<T> can't be attributed in XAML)
+        GitChangesPanel.StageRequested    += GitChangesPanel_StageRequested;
+        GitChangesPanel.StageAllRequested += GitChangesPanel_StageAllRequested;
+        GitChangesPanel.UnstageRequested    += GitChangesPanel_UnstageRequested;
+        GitChangesPanel.UnstageAllRequested += GitChangesPanel_UnstageAllRequested;
+        GitChangesPanel.DiscardRequested  += GitChangesPanel_DiscardRequested;
     }
 
     private void OnClosed(object? sender, EventArgs e)
@@ -64,6 +71,11 @@ public partial class MainWindow : Window
         CodeEditor.TextArea.TextView.MouseHoverStopped -= TextView_MouseHoverStopped;
         CodeEditor.TextArea.TextView.VisualLinesChanged -= TextView_VisualLinesChanged;
         CodeEditor.PreviewMouseLeftButtonUp -= CodeEditor_PreviewMouseLeftButtonUp;
+        GitChangesPanel.StageRequested    -= GitChangesPanel_StageRequested;
+        GitChangesPanel.StageAllRequested -= GitChangesPanel_StageAllRequested;
+        GitChangesPanel.UnstageRequested    -= GitChangesPanel_UnstageRequested;
+        GitChangesPanel.UnstageAllRequested -= GitChangesPanel_UnstageAllRequested;
+        GitChangesPanel.DiscardRequested  -= GitChangesPanel_DiscardRequested;
         CloseQuickInfoPopup();
         _viewModel.Dispose();
         _templateEngine.Dispose();
@@ -270,6 +282,41 @@ public partial class MainWindow : Window
     private void FindReferencesPanel_NavigateRequested(object? sender, ReferenceItem item)
     {
         _viewModel.NavigateToReference(item);
+    }
+
+    private void GitChangesPanel_RefreshRequested(object? sender, EventArgs e)
+    {
+        _viewModel.RefreshGitStatusCommand.Execute(null);
+    }
+
+    private void GitChangesPanel_FileOpenRequested(object? sender, GitChangesEntry entry)
+    {
+        _viewModel.OpenFileByPath(entry.FullPath);
+    }
+
+    private void GitChangesPanel_StageRequested(object? sender, GitChangesEntry entry)
+    {
+        _viewModel.StageFileCommand.Execute(entry);
+    }
+
+    private void GitChangesPanel_StageAllRequested(object? sender, EventArgs e)
+    {
+        _viewModel.StageAllCommand.Execute(null);
+    }
+
+    private void GitChangesPanel_UnstageRequested(object? sender, GitChangesEntry entry)
+    {
+        _viewModel.UnstageFileCommand.Execute(entry);
+    }
+
+    private void GitChangesPanel_UnstageAllRequested(object? sender, EventArgs e)
+    {
+        _viewModel.UnstageAllCommand.Execute(null);
+    }
+
+    private void GitChangesPanel_DiscardRequested(object? sender, GitChangesEntry entry)
+    {
+        _viewModel.DiscardFileCommand.Execute(entry);
     }
 
     private async void TextView_MouseHover(object? sender, MouseEventArgs e)
