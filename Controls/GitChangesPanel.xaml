@@ -9,6 +9,23 @@
                 Background="{DynamicResource ErrorListHeaderBackground}"
                 Padding="8,4">
             <DockPanel>
+                <StackPanel DockPanel.Dock="Right"
+                            Orientation="Horizontal"
+                            VerticalAlignment="Center"
+                            Margin="8,0,0,0">
+                    <TextBlock Text="Branch:"
+                               Margin="0,0,6,0"
+                               Foreground="{DynamicResource ErrorListHeaderForeground}"
+                               VerticalAlignment="Center" />
+                    <ComboBox x:Name="BranchCombo"
+                              Width="180"
+                              Height="22"
+                              SelectionChanged="BranchCombo_SelectionChanged"
+                              VerticalAlignment="Center"
+                              IsEditable="False"
+                              Background="{DynamicResource PanelSecondaryBackground}"
+                              Foreground="{DynamicResource ErrorListHeaderForeground}" />
+                </StackPanel>
                 <Button x:Name="RefreshButton"
                         DockPanel.Dock="Right"
                         Content="⟳ Refresh"
@@ -75,6 +92,8 @@
                          MouseDoubleClick="UnstagedList_MouseDoubleClick">
                     <ListBox.ContextMenu>
                         <ContextMenu>
+                            <MenuItem Header="View _Diff" Click="UnstagedContextMenu_ViewDiff" />
+                            <Separator />
                             <MenuItem Header="_Stage" Click="UnstagedContextMenu_Stage" />
                             <MenuItem Header="_Discard Changes..." Click="UnstagedContextMenu_Discard" />
                         </ContextMenu>
@@ -172,6 +191,8 @@
                          MouseDoubleClick="StagedList_MouseDoubleClick">
                     <ListBox.ContextMenu>
                         <ContextMenu>
+                            <MenuItem Header="View _Diff" Click="StagedContextMenu_ViewDiff" />
+                            <Separator />
                             <MenuItem Header="_Unstage" Click="StagedContextMenu_Unstage" />
                         </ContextMenu>
                     </ListBox.ContextMenu>

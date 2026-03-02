@@ -63,6 +63,38 @@ public partial class GitChangesPanel : UserControl
         set => SetValue(PanelStatusTextProperty, value);
     }
 
+    /// <summary>
+    /// Local branch names shown in the branch selector.
+    /// </summary>
+    public static readonly DependencyProperty GitBranchesProperty =
+        DependencyProperty.Register(
+            nameof(GitBranches),
+            typeof(ObservableCollection<string>),
+            typeof(GitChangesPanel),
+            new PropertyMetadata(null, OnGitBranchesChanged));
+
+    public ObservableCollection<string>? GitBranches
+    {
+        get => (ObservableCollection<string>?)GetValue(GitBranchesProperty);
+        set => SetValue(GitBranchesProperty, value);
+    }
+
+    /// <summary>
+    /// Currently selected branch in the branch selector.
+    /// </summary>
+    public static readonly DependencyProperty SelectedGitBranchProperty =
+        DependencyProperty.Register(
+            nameof(SelectedGitBranch),
+            typeof(string),
+            typeof(GitChangesPanel),
+            new PropertyMetadata(null, OnSelectedGitBranchChanged));
+
+    public string? SelectedGitBranch
+    {
+        get => (string?)GetValue(SelectedGitBranchProperty);
+        set => SetValue(SelectedGitBranchProperty, value);
+    }
+
     /// <summary>Raised when the user clicks the Refresh button.</summary>
     public event EventHandler? RefreshRequested;
 
@@ -83,6 +115,9 @@ public partial class GitChangesPanel : UserControl
 
     /// <summary>Raised when the user requests discarding changes to a single file.</summary>
     public event EventHandler<GitChangesEntry>? DiscardRequested;
+
+    /// <summary>Raised when the user requests opening side-by-side diff for a file.</summary>
+    public event EventHandler<GitChangesEntry>? DiffRequested;
 
     private static void OnUnstagedChangesChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {
@@ -130,6 +165,22 @@ public partial class GitChangesPanel : UserControl
         }
     }
 
+    private static void OnGitBranchesChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+    {
+        if (d is GitChangesPanel panel)
+        {
+            panel.BranchCombo.ItemsSource = e.NewValue as ObservableCollection<string>;
+        }
+    }
+
+    private static void OnSelectedGitBranchChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+    {
+        if (d is GitChangesPanel panel)
+        {
+            panel.BranchCombo.SelectedItem = e.NewValue as string;
+        }
+    }
+
     private void OnUnstagedCollectionChanged(
         object? sender,
         System.Collections.Specialized.NotifyCollectionChangedEventArgs e) =>
@@ -151,6 +202,11 @@ public partial class GitChangesPanel : UserControl
     private void RefreshButton_Click(object sender, RoutedEventArgs e)
     {
         RefreshRequested?.Invoke(this, EventArgs.Empty);
+    }
+
+    private void BranchCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        SelectedGitBranch = BranchCombo.SelectedItem as string;
     }
 
     private void StageAllButton_Click(object sender, RoutedEventArgs e)
@@ -179,11 +235,27 @@ public partial class GitChangesPanel : UserControl
         }
     }
 
+    private void UnstagedContextMenu_ViewDiff(object sender, RoutedEventArgs e)
+    {
+        if (UnstagedList.SelectedItem is GitChangesEntry entry)
+        {
+            DiffRequested?.Invoke(this, entry);
+        }
+    }
+
     private void StagedContextMenu_Unstage(object sender, RoutedEventArgs e)
     {
         if (StagedList.SelectedItem is GitChangesEntry entry)
         {
             UnstageRequested?.Invoke(this, entry);
+        }
+    }
+
+    private void StagedContextMenu_ViewDiff(object sender, RoutedEventArgs e)
+    {
+        if (StagedList.SelectedItem is GitChangesEntry entry)
+        {
+            DiffRequested?.Invoke(this, entry);
         }
     }
 

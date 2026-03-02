@@ -48,6 +48,7 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
     private CancellationTokenSource? _renameCts;
     private CancellationTokenSource? _loadCts;
     private bool _isLoadingProject;
+    private bool _isUpdatingSelectedBranch;
     private readonly TimeSpan _analysisDelay = TimeSpan.FromMilliseconds(500);
     private CancellationTokenSource? _loadingStatusClearCts;
     private string? _loadedProjectOrSolutionPath;
@@ -100,6 +101,9 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
         UnstageFileCommand = new RelayCommand(param => ExecuteGitOperation(() => _gitService.UnstageFile(AsRelativePath(param))), _ => _gitService.IsRepositoryOpen);
         UnstageAllCommand  = new RelayCommand(_ => ExecuteGitOperation(() => _gitService.UnstageAll()), _ => _gitService.IsRepositoryOpen);
         DiscardFileCommand = new RelayCommand(param => DiscardFile(param as GitChangesEntry), _ => _gitService.IsRepositoryOpen);
+        CommitCommand = new RelayCommand(async _ => await CommitChangesAsync(), _ => _gitService.IsRepositoryOpen);
+        CreateBranchCommand = new RelayCommand(async _ => await CreateBranchAsync(), _ => _gitService.IsRepositoryOpen);
+        DeleteBranchCommand = new RelayCommand(async _ => await DeleteBranchAsync(), _ => _gitService.IsRepositoryOpen);
 
         _buildService.OutputReceived += OnBuildOutputReceived;
         _buildService.ProcessExited += OnBuildProcessExited;
@@ -144,6 +148,9 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
     public ICommand UnstageFileCommand { get; }
     public ICommand UnstageAllCommand { get; }
     public ICommand DiscardFileCommand { get; }
+    public ICommand CommitCommand { get; }
+    public ICommand CreateBranchCommand { get; }
+    public ICommand DeleteBranchCommand { get; }
 
     private ObservableCollection<ProjectItem> _projectItems = [];
     public ObservableCollection<ProjectItem> ProjectItems
@@ -219,6 +226,9 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
     /// <summary>Files with staged index changes, shown in the Git Changes panel.</summary>
     public ObservableCollection<GitChangesEntry> StagedChanges { get; } = [];
 
+    /// <summary>Local Git branches available for checkout, shown in the Git Changes panel branch selector.</summary>
+    public ObservableCollection<string> GitBranches { get; } = [];
+
     private string _gitChangesStatusText = string.Empty;
     /// <summary>Summary text shown in the Git Changes panel header.</summary>
     public string GitChangesStatusText
@@ -232,6 +242,21 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
     public string GitRepositoryStatusText => _gitService.IsRepositoryOpen
         ? $"Branch: {_gitService.CurrentBranchName ?? "(detached)"}"
         : "No repository";
+
+    private string? _selectedGitBranch;
+    public string? SelectedGitBranch
+    {
+        get => _selectedGitBranch;
+        set
+        {
+            if (!SetProperty(ref _selectedGitBranch, value) || _isUpdatingSelectedBranch)
+            {
+                return;
+            }
+
+            _ = CheckoutSelectedBranchAsync(value);
+        }
+    }
 
     private OpenFileTab? _activeTab;
     public OpenFileTab? ActiveTab
@@ -864,6 +889,41 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
         {
             MessageBox.Show($"Could not open file:\n{ex.Message}", "Error",
                 MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
+
+    internal async Task<GitFileDiffResult?> GetFileDiffAsync(string relativePath)
+    {
+        if (string.IsNullOrWhiteSpace(relativePath))
+        {
+            return null;
+        }
+
+        try
+        {
+            return await _gitService.GetFileDiffAsync(relativePath).ConfigureAwait(true);
+        }
+        catch (ArgumentException ex)
+        {
+            MessageBox.Show(ex.Message, "Git Diff", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return null;
+        }
+        catch (InvalidOperationException ex)
+        {
+            MessageBox.Show(ex.Message, "Git Diff", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return null;
+        }
+        catch (IOException ex)
+        {
+            MessageBox.Show($"Failed to load file content for diff:\n{ex.Message}", "Git Diff",
+                MessageBoxButton.OK, MessageBoxImage.Warning);
+            return null;
+        }
+        catch (LibGit2Sharp.LibGit2SharpException ex)
+        {
+            MessageBox.Show($"Failed to load diff:\n{ex.Message}", "Git Diff",
+                MessageBoxButton.OK, MessageBoxImage.Warning);
+            return null;
         }
     }
 
@@ -2371,6 +2431,45 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
         UpdateGitRepositoryState();
     }
 
+    private async Task CommitChangesAsync()
+    {
+        var message = PromptForInput("Git Commit", "Commit message:", string.Empty);
+        if (message is null)
+        {
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(message))
+        {
+            MessageBox.Show("Commit message is required.", "Git Commit",
+                MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        try
+        {
+            await _gitService.CommitAsync(message.Trim()).ConfigureAwait(true);
+            RefreshGitStatus();
+            MessageBox.Show("Commit created.", "Git Commit",
+                MessageBoxButton.OK, MessageBoxImage.Information);
+        }
+        catch (ArgumentException ex)
+        {
+            MessageBox.Show(ex.Message, "Git Commit",
+                MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+        catch (InvalidOperationException ex)
+        {
+            MessageBox.Show(ex.Message, "Git Commit",
+                MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+        catch (LibGit2Sharp.LibGit2SharpException ex)
+        {
+            MessageBox.Show($"Commit failed:\n{ex.Message}", "Git Commit",
+                MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+    }
+
     private void RefreshGitStatus()
     {
         _gitService.RefreshStatus();
@@ -2416,6 +2515,16 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
         {
             operation();
         }
+        catch (ArgumentException ex)
+        {
+            MessageBox.Show(ex.Message, "Git Error",
+                MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+        catch (InvalidOperationException ex)
+        {
+            MessageBox.Show(ex.Message, "Git Error",
+                MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
         catch (LibGit2Sharp.LibGit2SharpException ex)
         {
             MessageBox.Show($"Git operation failed:\n{ex.Message}", "Git Error",
@@ -2426,8 +2535,147 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
     private static string AsRelativePath(object? param) =>
         (param as GitChangesEntry)?.RelativePath ?? string.Empty;
 
+    private async Task CheckoutSelectedBranchAsync(string? branchName)
+    {
+        if (string.IsNullOrWhiteSpace(branchName) || !_gitService.IsRepositoryOpen)
+        {
+            return;
+        }
+
+        if (string.Equals(branchName, _gitService.CurrentBranchName, StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        try
+        {
+            await _gitService.CheckoutAsync(branchName).ConfigureAwait(true);
+            RefreshProjectItems();
+            RefreshGitStatus();
+        }
+        catch (ArgumentException ex)
+        {
+            MessageBox.Show(ex.Message, "Git Branch", MessageBoxButton.OK, MessageBoxImage.Warning);
+            RefreshGitBranches();
+        }
+        catch (InvalidOperationException ex)
+        {
+            MessageBox.Show(ex.Message, "Git Branch", MessageBoxButton.OK, MessageBoxImage.Warning);
+            RefreshGitBranches();
+        }
+        catch (LibGit2Sharp.LibGit2SharpException ex)
+        {
+            MessageBox.Show($"Branch checkout failed:\n{ex.Message}", "Git Branch",
+                MessageBoxButton.OK, MessageBoxImage.Warning);
+            RefreshGitBranches();
+        }
+    }
+
+    private async Task CreateBranchAsync()
+    {
+        var branchName = PromptForInput("Create Branch", "Branch name:", string.Empty);
+        if (branchName is null)
+        {
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(branchName))
+        {
+            MessageBox.Show("Branch name is required.", "Git Branch",
+                MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        try
+        {
+            await _gitService.CreateBranchAsync(branchName.Trim()).ConfigureAwait(true);
+            RefreshGitBranches();
+        }
+        catch (ArgumentException ex)
+        {
+            MessageBox.Show(ex.Message, "Git Branch", MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+        catch (InvalidOperationException ex)
+        {
+            MessageBox.Show(ex.Message, "Git Branch", MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+        catch (LibGit2Sharp.LibGit2SharpException ex)
+        {
+            MessageBox.Show($"Branch creation failed:\n{ex.Message}", "Git Branch",
+                MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+    }
+
+    private async Task DeleteBranchAsync()
+    {
+        var defaultBranchName = SelectedGitBranch ?? string.Empty;
+        var branchName = PromptForInput("Delete Branch", "Branch name:", defaultBranchName);
+        if (branchName is null)
+        {
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(branchName))
+        {
+            MessageBox.Show("Branch name is required.", "Git Branch",
+                MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        var trimmedName = branchName.Trim();
+        var result = MessageBox.Show(
+            $"Delete branch '{trimmedName}'?",
+            "Delete Branch",
+            MessageBoxButton.YesNo,
+            MessageBoxImage.Warning);
+
+        if (result != MessageBoxResult.Yes)
+        {
+            return;
+        }
+
+        try
+        {
+            await _gitService.DeleteBranchAsync(trimmedName).ConfigureAwait(true);
+            RefreshGitBranches();
+        }
+        catch (ArgumentException ex)
+        {
+            MessageBox.Show(ex.Message, "Git Branch", MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+        catch (InvalidOperationException ex)
+        {
+            MessageBox.Show(ex.Message, "Git Branch", MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+        catch (LibGit2Sharp.LibGit2SharpException ex)
+        {
+            MessageBox.Show($"Branch deletion failed:\n{ex.Message}", "Git Branch",
+                MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+    }
+
+    private void RefreshGitBranches()
+    {
+        _isUpdatingSelectedBranch = true;
+        try
+        {
+            GitBranches.Clear();
+            foreach (var branch in _gitService.GetLocalBranches())
+            {
+                GitBranches.Add(branch);
+            }
+
+            SelectedGitBranch = _gitService.CurrentBranchName;
+        }
+        finally
+        {
+            _isUpdatingSelectedBranch = false;
+        }
+    }
+
     private void UpdateGitRepositoryState()
     {
+        RefreshGitBranches();
         OnPropertyChanged(nameof(CanInitializeGitRepository));
         OnPropertyChanged(nameof(GitRepositoryStatusText));
         CommandManager.InvalidateRequerySuggested();

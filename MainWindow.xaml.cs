@@ -60,6 +60,7 @@ public partial class MainWindow : Window
         GitChangesPanel.UnstageRequested    += GitChangesPanel_UnstageRequested;
         GitChangesPanel.UnstageAllRequested += GitChangesPanel_UnstageAllRequested;
         GitChangesPanel.DiscardRequested  += GitChangesPanel_DiscardRequested;
+        GitChangesPanel.DiffRequested += GitChangesPanel_DiffRequested;
     }
 
     private void OnClosed(object? sender, EventArgs e)
@@ -76,6 +77,7 @@ public partial class MainWindow : Window
         GitChangesPanel.UnstageRequested    -= GitChangesPanel_UnstageRequested;
         GitChangesPanel.UnstageAllRequested -= GitChangesPanel_UnstageAllRequested;
         GitChangesPanel.DiscardRequested  -= GitChangesPanel_DiscardRequested;
+        GitChangesPanel.DiffRequested -= GitChangesPanel_DiffRequested;
         CloseQuickInfoPopup();
         _viewModel.Dispose();
         _templateEngine.Dispose();
@@ -317,6 +319,18 @@ public partial class MainWindow : Window
     private void GitChangesPanel_DiscardRequested(object? sender, GitChangesEntry entry)
     {
         _viewModel.DiscardFileCommand.Execute(entry);
+    }
+
+    private async void GitChangesPanel_DiffRequested(object? sender, GitChangesEntry entry)
+    {
+        var diff = await _viewModel.GetFileDiffAsync(entry.RelativePath);
+        if (diff is null)
+        {
+            return;
+        }
+
+        GitDiffPanel.SetDiff(diff.RelativePath, diff.OriginalText, diff.ModifiedText);
+        ShowLayoutAnchorable(GitDiffAnchorable);
     }
 
     private async void TextView_MouseHover(object? sender, MouseEventArgs e)

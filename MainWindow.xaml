@@ -60,6 +60,9 @@ Icon="Icons/KaneCode.ico">
                 <MenuItem Header="_Git Changes"
                           Tag="{Binding ElementName=GitChangesAnchorable}"
                           Click="ViewMenuPanel_Click" />
+                <MenuItem Header="Git _Diff"
+                          Tag="{Binding ElementName=GitDiffAnchorable}"
+                          Click="ViewMenuPanel_Click" />
                 <Separator />
                 <MenuItem Header="_Options" Command="{Binding OpenOptionsCommand}" />
             </MenuItem>
@@ -71,6 +74,9 @@ Icon="Icons/KaneCode.ico">
             </MenuItem>
             <MenuItem Header="_Git">
                 <MenuItem Header="_Refresh Status" Command="{Binding RefreshGitStatusCommand}" />
+                <MenuItem Header="_Commit..." Command="{Binding CommitCommand}" />
+                <MenuItem Header="_Create Branch..." Command="{Binding CreateBranchCommand}" />
+                <MenuItem Header="_Delete Branch..." Command="{Binding DeleteBranchCommand}" />
                 <MenuItem Header="_Git Changes"
                           Tag="{Binding ElementName=GitChangesAnchorable}"
                           Click="ViewMenuPanel_Click" />
@@ -361,9 +367,18 @@ Icon="Icons/KaneCode.ico">
                                 <controls:GitChangesPanel x:Name="GitChangesPanel"
                                                           UnstagedChanges="{Binding UnstagedChanges}"
                                                           StagedChanges="{Binding StagedChanges}"
+                                                          GitBranches="{Binding GitBranches}"
+                                                          SelectedGitBranch="{Binding SelectedGitBranch, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                                                           PanelStatusText="{Binding GitChangesStatusText}"
                                                           RefreshRequested="GitChangesPanel_RefreshRequested"
                                                           FileOpenRequested="GitChangesPanel_FileOpenRequested" />
+                            </avalonDock:LayoutAnchorable>
+                            <avalonDock:LayoutAnchorable x:Name="GitDiffAnchorable" Title="Git Diff"
+                                                         CanClose="False"
+                                                         CanHide="True"
+                                                         CanAutoHide="True"
+                                                         ContentId="GitDiffPane">
+                                <controls:GitDiffPanel x:Name="GitDiffPanel" />
                             </avalonDock:LayoutAnchorable>
                         </avalonDock:LayoutAnchorablePane>
 

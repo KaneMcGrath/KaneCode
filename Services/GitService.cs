@@ -30,6 +30,23 @@ internal sealed class GitService : IDisposable
     internal string? CurrentBranchName => _repository?.Head?.FriendlyName;
 
     /// <summary>
+    /// Gets all local branch names sorted alphabetically.
+    /// </summary>
+    internal IReadOnlyList<string> GetLocalBranches()
+    {
+        if (_repository is null)
+        {
+            return [];
+        }
+
+        return _repository.Branches
+            .Where(branch => !branch.IsRemote)
+            .Select(branch => branch.FriendlyName)
+            .OrderBy(name => name, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
+    /// <summary>
     /// Attempts to detect a Git repository from the provided file or directory path.
     /// </summary>
     /// <param name="path">File system path used as the detection starting point.</param>
@@ -201,6 +218,157 @@ internal sealed class GitService : IDisposable
     }
 
     /// <summary>
+    /// Creates a commit from currently staged index changes.
+    /// </summary>
+    /// <exception cref="ArgumentException">Thrown when the commit message is empty.</exception>
+    /// <exception cref="InvalidOperationException">Thrown when no repository is open, no staged changes exist, or Git identity is not configured.</exception>
+    internal Task CommitAsync(string message, CancellationToken cancellationToken = default)
+    {
+        if (_repository is null)
+        {
+            throw new InvalidOperationException("No repository is open.");
+        }
+
+        if (string.IsNullOrWhiteSpace(message))
+        {
+            throw new ArgumentException("Commit message is required.", nameof(message));
+        }
+
+        cancellationToken.ThrowIfCancellationRequested();
+
+        var status = _repository.RetrieveStatus();
+        var hasStagedChanges = status.Any(entry => HasStagedChanges(entry.State));
+        if (!hasStagedChanges)
+        {
+            throw new InvalidOperationException("There are no staged changes to commit.");
+        }
+
+        var signature = _repository.Config.BuildSignature(DateTimeOffset.Now);
+        if (signature is null)
+        {
+            throw new InvalidOperationException("Git user name and email must be configured before committing.");
+        }
+
+        _repository.Commit(message.Trim(), signature, signature);
+        RefreshStatus();
+        return Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// Creates a new local branch.
+    /// </summary>
+    internal Task CreateBranchAsync(string branchName, CancellationToken cancellationToken = default)
+    {
+        if (_repository is null)
+        {
+            throw new InvalidOperationException("No repository is open.");
+        }
+
+        if (string.IsNullOrWhiteSpace(branchName))
+        {
+            throw new ArgumentException("Branch name is required.", nameof(branchName));
+        }
+
+        cancellationToken.ThrowIfCancellationRequested();
+
+        var normalizedName = branchName.Trim();
+        if (_repository.Branches[normalizedName] is not null)
+        {
+            throw new InvalidOperationException($"Branch '{normalizedName}' already exists.");
+        }
+
+        _repository.CreateBranch(normalizedName);
+        RefreshStatus();
+        return Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// Deletes an existing local branch.
+    /// </summary>
+    internal Task DeleteBranchAsync(string branchName, CancellationToken cancellationToken = default)
+    {
+        if (_repository is null)
+        {
+            throw new InvalidOperationException("No repository is open.");
+        }
+
+        if (string.IsNullOrWhiteSpace(branchName))
+        {
+            throw new ArgumentException("Branch name is required.", nameof(branchName));
+        }
+
+        cancellationToken.ThrowIfCancellationRequested();
+
+        var normalizedName = branchName.Trim();
+        var branch = _repository.Branches[normalizedName];
+        if (branch is null || branch.IsRemote)
+        {
+            throw new InvalidOperationException($"Branch '{normalizedName}' was not found.");
+        }
+
+        if (string.Equals(branch.FriendlyName, _repository.Head.FriendlyName, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidOperationException("Cannot delete the currently checked-out branch.");
+        }
+
+        _repository.Branches.Remove(branch);
+        RefreshStatus();
+        return Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// Gets side-by-side diff content for a file by comparing HEAD content to working-tree content.
+    /// </summary>
+    internal Task<GitFileDiffResult> GetFileDiffAsync(string relativePath, CancellationToken cancellationToken = default)
+    {
+        if (_repository is null)
+        {
+            throw new InvalidOperationException("No repository is open.");
+        }
+
+        if (string.IsNullOrWhiteSpace(relativePath))
+        {
+            throw new ArgumentException("File path is required.", nameof(relativePath));
+        }
+
+        cancellationToken.ThrowIfCancellationRequested();
+
+        var normalizedPath = NormalizePath(relativePath.Trim());
+        var originalText = ReadHeadFileText(_repository, normalizedPath);
+        var modifiedText = ReadWorkingTreeFileText(_repository, normalizedPath);
+
+        return Task.FromResult(new GitFileDiffResult(relativePath, originalText, modifiedText));
+    }
+
+    /// <summary>
+    /// Checks out the specified local branch.
+    /// </summary>
+    internal Task CheckoutAsync(string branchName, CancellationToken cancellationToken = default)
+    {
+        if (_repository is null)
+        {
+            throw new InvalidOperationException("No repository is open.");
+        }
+
+        if (string.IsNullOrWhiteSpace(branchName))
+        {
+            throw new ArgumentException("Branch name is required.", nameof(branchName));
+        }
+
+        cancellationToken.ThrowIfCancellationRequested();
+
+        var branch = _repository.Branches[branchName];
+        if (branch is null || branch.IsRemote)
+        {
+            throw new InvalidOperationException($"Branch '{branchName}' was not found.");
+        }
+
+        Commands.Checkout(_repository, branch);
+        RefreshStatus();
+        return Task.CompletedTask;
+    }
+
+    /// <summary>
     /// Refreshes repository status and raises <see cref="StatusChanged"/> when it differs from the previous snapshot.
     /// </summary>
     internal IReadOnlyList<GitFileStatusEntry> RefreshStatus()
@@ -265,6 +433,41 @@ internal sealed class GitService : IDisposable
             .Select(entry => new GitFileStatusEntry(entry.FilePath, entry.State))
             .OrderBy(entry => entry.FilePath, StringComparer.OrdinalIgnoreCase)
             .ToList();
+    }
+
+    private static bool HasStagedChanges(FileStatus status)
+    {
+        return status.HasFlag(FileStatus.NewInIndex)
+            || status.HasFlag(FileStatus.ModifiedInIndex)
+            || status.HasFlag(FileStatus.DeletedFromIndex)
+            || status.HasFlag(FileStatus.RenamedInIndex)
+            || status.HasFlag(FileStatus.TypeChangeInIndex);
+    }
+
+    private static string ReadHeadFileText(Repository repository, string normalizedPath)
+    {
+        var tip = repository.Head.Tip;
+        if (tip is null)
+        {
+            return string.Empty;
+        }
+
+        var entry = tip[normalizedPath];
+        if (entry?.Target is not Blob blob)
+        {
+            return string.Empty;
+        }
+
+        using var stream = blob.GetContentStream();
+        using var reader = new StreamReader(stream);
+        return reader.ReadToEnd();
+    }
+
+    private static string ReadWorkingTreeFileText(Repository repository, string normalizedPath)
+    {
+        var relativePath = normalizedPath.Replace('/', Path.DirectorySeparatorChar);
+        var fullPath = Path.GetFullPath(Path.Combine(repository.Info.WorkingDirectory, relativePath));
+        return File.Exists(fullPath) ? File.ReadAllText(fullPath) : string.Empty;
     }
 
     private bool HasStatusChanged(IReadOnlyList<GitFileStatusEntry> snapshot)
