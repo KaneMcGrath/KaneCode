@@ -94,6 +94,12 @@
                         <ContextMenu>
                             <MenuItem Header="View _Diff" Click="UnstagedContextMenu_ViewDiff" />
                             <Separator />
+                            <MenuItem Header="Conflict _Helpers">
+                                <MenuItem Header="Accept _Current" Click="UnstagedContextMenu_AcceptCurrent" />
+                                <MenuItem Header="Accept _Incoming" Click="UnstagedContextMenu_AcceptIncoming" />
+                                <MenuItem Header="Accept _Both" Click="UnstagedContextMenu_AcceptBoth" />
+                            </MenuItem>
+                            <Separator />
                             <MenuItem Header="_Stage" Click="UnstagedContextMenu_Stage" />
                             <MenuItem Header="_Discard Changes..." Click="UnstagedContextMenu_Discard" />
                         </ContextMenu>

@@ -61,6 +61,9 @@ public partial class MainWindow : Window
         GitChangesPanel.UnstageAllRequested += GitChangesPanel_UnstageAllRequested;
         GitChangesPanel.DiscardRequested  += GitChangesPanel_DiscardRequested;
         GitChangesPanel.DiffRequested += GitChangesPanel_DiffRequested;
+        GitChangesPanel.AcceptCurrentConflictRequested += GitChangesPanel_AcceptCurrentConflictRequested;
+        GitChangesPanel.AcceptIncomingConflictRequested += GitChangesPanel_AcceptIncomingConflictRequested;
+        GitChangesPanel.AcceptBothConflictRequested += GitChangesPanel_AcceptBothConflictRequested;
     }
 
     private void OnClosed(object? sender, EventArgs e)
@@ -78,6 +81,9 @@ public partial class MainWindow : Window
         GitChangesPanel.UnstageAllRequested -= GitChangesPanel_UnstageAllRequested;
         GitChangesPanel.DiscardRequested  -= GitChangesPanel_DiscardRequested;
         GitChangesPanel.DiffRequested -= GitChangesPanel_DiffRequested;
+        GitChangesPanel.AcceptCurrentConflictRequested -= GitChangesPanel_AcceptCurrentConflictRequested;
+        GitChangesPanel.AcceptIncomingConflictRequested -= GitChangesPanel_AcceptIncomingConflictRequested;
+        GitChangesPanel.AcceptBothConflictRequested -= GitChangesPanel_AcceptBothConflictRequested;
         CloseQuickInfoPopup();
         _viewModel.Dispose();
         _templateEngine.Dispose();
@@ -331,6 +337,21 @@ public partial class MainWindow : Window
 
         GitDiffPanel.SetDiff(diff.RelativePath, diff.OriginalText, diff.ModifiedText);
         ShowLayoutAnchorable(GitDiffAnchorable);
+    }
+
+    private void GitChangesPanel_AcceptCurrentConflictRequested(object? sender, GitChangesEntry entry)
+    {
+        _viewModel.AcceptCurrentConflictCommand.Execute(entry);
+    }
+
+    private void GitChangesPanel_AcceptIncomingConflictRequested(object? sender, GitChangesEntry entry)
+    {
+        _viewModel.AcceptIncomingConflictCommand.Execute(entry);
+    }
+
+    private void GitChangesPanel_AcceptBothConflictRequested(object? sender, GitChangesEntry entry)
+    {
+        _viewModel.AcceptBothConflictCommand.Execute(entry);
     }
 
     private async void TextView_MouseHover(object? sender, MouseEventArgs e)

@@ -36,6 +36,7 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
     private readonly TemplateService _templateService = new();
     private RoslynClassificationColorizer? _classificationColorizer;
     private RoslynDiagnosticRenderer? _diagnosticRenderer;
+    private GitGutterChangeRenderer? _gitGutterRenderer;
     private SearchPanel? _searchPanel;
     private CompletionWindow? _completionWindow;
     private OverloadInsightWindow? _insightWindow;
@@ -101,9 +102,15 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
         UnstageFileCommand = new RelayCommand(param => ExecuteGitOperation(() => _gitService.UnstageFile(AsRelativePath(param))), _ => _gitService.IsRepositoryOpen);
         UnstageAllCommand  = new RelayCommand(_ => ExecuteGitOperation(() => _gitService.UnstageAll()), _ => _gitService.IsRepositoryOpen);
         DiscardFileCommand = new RelayCommand(param => DiscardFile(param as GitChangesEntry), _ => _gitService.IsRepositoryOpen);
+        AcceptCurrentConflictCommand = new RelayCommand(param => ResolveConflict(param as GitChangesEntry, GitConflictResolution.AcceptCurrent), _ => _gitService.IsRepositoryOpen);
+        AcceptIncomingConflictCommand = new RelayCommand(param => ResolveConflict(param as GitChangesEntry, GitConflictResolution.AcceptIncoming), _ => _gitService.IsRepositoryOpen);
+        AcceptBothConflictCommand = new RelayCommand(param => ResolveConflict(param as GitChangesEntry, GitConflictResolution.AcceptBoth), _ => _gitService.IsRepositoryOpen);
         CommitCommand = new RelayCommand(async _ => await CommitChangesAsync(), _ => _gitService.IsRepositoryOpen);
         CreateBranchCommand = new RelayCommand(async _ => await CreateBranchAsync(), _ => _gitService.IsRepositoryOpen);
         DeleteBranchCommand = new RelayCommand(async _ => await DeleteBranchAsync(), _ => _gitService.IsRepositoryOpen);
+        FetchCommand = new RelayCommand(async _ => await FetchAsync(), _ => _gitService.IsRepositoryOpen);
+        PullCommand = new RelayCommand(async _ => await PullAsync(), _ => _gitService.IsRepositoryOpen);
+        PushCommand = new RelayCommand(async _ => await PushAsync(), _ => _gitService.IsRepositoryOpen);
 
         _buildService.OutputReceived += OnBuildOutputReceived;
         _buildService.ProcessExited += OnBuildProcessExited;
@@ -148,9 +155,15 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
     public ICommand UnstageFileCommand { get; }
     public ICommand UnstageAllCommand { get; }
     public ICommand DiscardFileCommand { get; }
+    public ICommand AcceptCurrentConflictCommand { get; }
+    public ICommand AcceptIncomingConflictCommand { get; }
+    public ICommand AcceptBothConflictCommand { get; }
     public ICommand CommitCommand { get; }
     public ICommand CreateBranchCommand { get; }
     public ICommand DeleteBranchCommand { get; }
+    public ICommand FetchCommand { get; }
+    public ICommand PullCommand { get; }
+    public ICommand PushCommand { get; }
 
     private ObservableCollection<ProjectItem> _projectItems = [];
     public ObservableCollection<ProjectItem> ProjectItems
@@ -226,6 +239,9 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
     /// <summary>Files with staged index changes, shown in the Git Changes panel.</summary>
     public ObservableCollection<GitChangesEntry> StagedChanges { get; } = [];
 
+    /// <summary>Commit history rows shown in the Git Log panel.</summary>
+    public ObservableCollection<GitCommitLogItem> GitCommitHistory { get; } = [];
+
     /// <summary>Local Git branches available for checkout, shown in the Git Changes panel branch selector.</summary>
     public ObservableCollection<string> GitBranches { get; } = [];
 
@@ -235,6 +251,14 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
     {
         get => _gitChangesStatusText;
         private set => SetProperty(ref _gitChangesStatusText, value);
+    }
+
+    private string _gitLogStatusText = string.Empty;
+    /// <summary>Summary text shown in the Git Log panel header.</summary>
+    public string GitLogStatusText
+    {
+        get => _gitLogStatusText;
+        private set => SetProperty(ref _gitLogStatusText, value);
     }
 
     public bool CanInitializeGitRepository => !string.IsNullOrWhiteSpace(ProjectRootPath) && !_gitService.IsRepositoryOpen;
@@ -326,6 +350,9 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
 
         _diagnosticRenderer = new RoslynDiagnosticRenderer();
         _editor.TextArea.TextView.BackgroundRenderers.Add(_diagnosticRenderer);
+
+        _gitGutterRenderer = new GitGutterChangeRenderer();
+        _editor.TextArea.TextView.BackgroundRenderers.Add(_gitGutterRenderer);
 
         _searchPanel = SearchPanel.Install(_editor.TextArea);
 
@@ -1135,6 +1162,8 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
                 }
             }
 
+            UpdateGitGutterMarkers();
+
             OnPropertyChanged(nameof(WindowTitle));
             OnPropertyChanged(nameof(StatusText));
         }
@@ -1163,6 +1192,7 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
             LoadingStatus = null;
         }
 
+        UpdateGitGutterMarkers();
         ScheduleRoslynAnalysis();
     }
 
@@ -2509,6 +2539,27 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
         ExecuteGitOperation(() => _gitService.DiscardFile(entry.RelativePath));
     }
 
+    private void ResolveConflict(GitChangesEntry? entry, GitConflictResolution resolution)
+    {
+        if (entry is null)
+        {
+            return;
+        }
+
+        ExecuteGitOperation(() => _gitService.ResolveConflict(entry.RelativePath, resolution));
+
+        if (_editor is not null && ActiveTab is not null
+            && string.Equals(ActiveTab.FilePath, entry.FullPath, StringComparison.OrdinalIgnoreCase)
+            && File.Exists(entry.FullPath))
+        {
+            var updatedText = EditorService.ReadFile(entry.FullPath);
+            _editor.Text = updatedText;
+            ActiveTab.Document.Text = updatedText;
+        }
+
+        UpdateGitGutterMarkers();
+    }
+
     private void ExecuteGitOperation(Action operation)
     {
         try
@@ -2534,6 +2585,63 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
 
     private static string AsRelativePath(object? param) =>
         (param as GitChangesEntry)?.RelativePath ?? string.Empty;
+
+    private void UpdateGitGutterMarkers()
+    {
+        if (_gitGutterRenderer is null || _editor is null || ActiveTab is null)
+        {
+            return;
+        }
+
+        if (!_gitService.IsRepositoryOpen || !_gitService.TryGetRelativePath(ActiveTab.FilePath, out var relativePath) || string.IsNullOrWhiteSpace(relativePath))
+        {
+            _gitGutterRenderer.UpdateChanges([]);
+            _editor.TextArea.TextView.Redraw();
+            return;
+        }
+
+        var headText = _gitService.GetHeadFileText(relativePath);
+        var currentText = _editor.Text;
+
+        var changes = BuildGitLineChanges(headText, currentText, _editor.Document.LineCount);
+        _gitGutterRenderer.UpdateChanges(changes);
+        _editor.TextArea.TextView.Redraw();
+    }
+
+    private static IReadOnlyList<GitLineChange> BuildGitLineChanges(string headText, string currentText, int currentLineCount)
+    {
+        var headLines = headText.Replace("\r\n", "\n", StringComparison.Ordinal).Replace('\r', '\n').Split('\n');
+        var currentLines = currentText.Replace("\r\n", "\n", StringComparison.Ordinal).Replace('\r', '\n').Split('\n');
+
+        var changes = new List<GitLineChange>();
+        var maxLines = Math.Max(headLines.Length, currentLines.Length);
+
+        for (var index = 0; index < maxLines; index++)
+        {
+            var hasHead = index < headLines.Length;
+            var hasCurrent = index < currentLines.Length;
+
+            if (!hasHead && hasCurrent)
+            {
+                changes.Add(new GitLineChange(index + 1, GitLineChangeType.Added));
+                continue;
+            }
+
+            if (hasHead && !hasCurrent)
+            {
+                var markerLine = Math.Min(index + 1, Math.Max(currentLineCount, 1));
+                changes.Add(new GitLineChange(markerLine, GitLineChangeType.Deleted));
+                continue;
+            }
+
+            if (!string.Equals(headLines[index], currentLines[index], StringComparison.Ordinal))
+            {
+                changes.Add(new GitLineChange(index + 1, GitLineChangeType.Modified));
+            }
+        }
+
+        return changes;
+    }
 
     private async Task CheckoutSelectedBranchAsync(string? branchName)
     {
@@ -2654,6 +2762,69 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
         }
     }
 
+    private Task FetchAsync()
+    {
+        return RunRemoteOperationAsync("Fetch", progress => _gitService.FetchAsync(progress: progress));
+    }
+
+    private Task PullAsync()
+    {
+        return RunRemoteOperationAsync("Pull", progress => _gitService.PullAsync(progress: progress));
+    }
+
+    private Task PushAsync()
+    {
+        return RunRemoteOperationAsync("Push", progress => _gitService.PushAsync(progress: progress));
+    }
+
+    private async Task RunRemoteOperationAsync(string operationName, Func<IProgress<string>, Task> operation)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(operationName);
+        ArgumentNullException.ThrowIfNull(operation);
+
+        BuildOutputLines.Clear();
+        BuildSummary = $"Git {operationName}...";
+        BuildOutputLines.Add($"> git {operationName.ToLowerInvariant()}");
+        BuildOutputLines.Add(string.Empty);
+
+        var progress = new Progress<string>(line => BuildOutputLines.Add(line));
+
+        try
+        {
+            await operation(progress).ConfigureAwait(true);
+            BuildSummary = $"Git {operationName} succeeded";
+            BuildOutputLines.Add(string.Empty);
+            BuildOutputLines.Add($"Git {operationName} completed successfully.");
+
+            RefreshGitStatus();
+            UpdateGitRepositoryState();
+        }
+        catch (OperationCanceledException)
+        {
+            BuildSummary = $"Git {operationName} cancelled";
+            BuildOutputLines.Add("Operation cancelled.");
+        }
+        catch (ArgumentException ex)
+        {
+            BuildSummary = $"Git {operationName} failed";
+            BuildOutputLines.Add($"Error: {ex.Message}");
+            MessageBox.Show(ex.Message, $"Git {operationName}", MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+        catch (InvalidOperationException ex)
+        {
+            BuildSummary = $"Git {operationName} failed";
+            BuildOutputLines.Add($"Error: {ex.Message}");
+            MessageBox.Show(ex.Message, $"Git {operationName}", MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+        catch (LibGit2Sharp.LibGit2SharpException ex)
+        {
+            BuildSummary = $"Git {operationName} failed";
+            BuildOutputLines.Add($"Error: {ex.Message}");
+            MessageBox.Show($"Git {operationName} failed:\n{ex.Message}",
+                $"Git {operationName}", MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+    }
+
     private void RefreshGitBranches()
     {
         _isUpdatingSelectedBranch = true;
@@ -2673,9 +2844,25 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
         }
     }
 
+    private void RefreshGitLog()
+    {
+        GitCommitHistory.Clear();
+
+        var commits = _gitService.GetCommitHistory();
+        foreach (var commit in commits)
+        {
+            GitCommitHistory.Add(commit);
+        }
+
+        GitLogStatusText = commits.Count > 0
+            ? $"{commits.Count} commit(s)"
+            : "No commits";
+    }
+
     private void UpdateGitRepositoryState()
     {
         RefreshGitBranches();
+        RefreshGitLog();
         OnPropertyChanged(nameof(CanInitializeGitRepository));
         OnPropertyChanged(nameof(GitRepositoryStatusText));
         CommandManager.InvalidateRequerySuggested();
@@ -2686,6 +2873,7 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
         Application.Current.Dispatcher.BeginInvoke(() =>
         {
             ApplyGitStatusToTree(entries);
+            UpdateGitGutterMarkers();
             UpdateGitRepositoryState();
         });
     }

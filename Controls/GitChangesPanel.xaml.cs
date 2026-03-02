@@ -119,6 +119,15 @@ public partial class GitChangesPanel : UserControl
     /// <summary>Raised when the user requests opening side-by-side diff for a file.</summary>
     public event EventHandler<GitChangesEntry>? DiffRequested;
 
+    /// <summary>Raised when the user chooses "Accept Current" conflict resolution for a file.</summary>
+    public event EventHandler<GitChangesEntry>? AcceptCurrentConflictRequested;
+
+    /// <summary>Raised when the user chooses "Accept Incoming" conflict resolution for a file.</summary>
+    public event EventHandler<GitChangesEntry>? AcceptIncomingConflictRequested;
+
+    /// <summary>Raised when the user chooses "Accept Both" conflict resolution for a file.</summary>
+    public event EventHandler<GitChangesEntry>? AcceptBothConflictRequested;
+
     private static void OnUnstagedChangesChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {
         if (d is GitChangesPanel panel)
@@ -240,6 +249,30 @@ public partial class GitChangesPanel : UserControl
         if (UnstagedList.SelectedItem is GitChangesEntry entry)
         {
             DiffRequested?.Invoke(this, entry);
+        }
+    }
+
+    private void UnstagedContextMenu_AcceptCurrent(object sender, RoutedEventArgs e)
+    {
+        if (UnstagedList.SelectedItem is GitChangesEntry entry)
+        {
+            AcceptCurrentConflictRequested?.Invoke(this, entry);
+        }
+    }
+
+    private void UnstagedContextMenu_AcceptIncoming(object sender, RoutedEventArgs e)
+    {
+        if (UnstagedList.SelectedItem is GitChangesEntry entry)
+        {
+            AcceptIncomingConflictRequested?.Invoke(this, entry);
+        }
+    }
+
+    private void UnstagedContextMenu_AcceptBoth(object sender, RoutedEventArgs e)
+    {
+        if (UnstagedList.SelectedItem is GitChangesEntry entry)
+        {
+            AcceptBothConflictRequested?.Invoke(this, entry);
         }
     }
 

@@ -47,6 +47,32 @@ internal sealed class GitService : IDisposable
     }
 
     /// <summary>
+    /// Gets the latest commit history entries for the opened repository.
+    /// </summary>
+    internal IReadOnlyList<GitCommitLogItem> GetCommitHistory(int maxCount = 200)
+    {
+        if (_repository is null)
+        {
+            return [];
+        }
+
+        if (maxCount <= 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(maxCount), "Max count must be greater than zero.");
+        }
+
+        return _repository.Commits
+            .Take(maxCount)
+            .Select(commit => new GitCommitLogItem(
+                commit.Id.Sha[..7],
+                commit.Id.Sha,
+                commit.MessageShort,
+                commit.Author.Name,
+                commit.Author.When))
+            .ToList();
+    }
+
+    /// <summary>
     /// Attempts to detect a Git repository from the provided file or directory path.
     /// </summary>
     /// <param name="path">File system path used as the detection starting point.</param>
@@ -218,6 +244,56 @@ internal sealed class GitService : IDisposable
     }
 
     /// <summary>
+    /// Gets repository-relative paths that are currently in conflict.
+    /// </summary>
+    internal IReadOnlyList<string> GetConflictedFiles()
+    {
+        if (_repository is null)
+        {
+            return [];
+        }
+
+        return _repository.Index.Conflicts
+            .Select(conflict => conflict.Ours?.Path ?? conflict.Theirs?.Path ?? conflict.Ancestor?.Path)
+            .Where(path => !string.IsNullOrWhiteSpace(path))
+            .Select(path => path!)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
+    /// <summary>
+    /// Resolves merge conflict markers in a conflicted file by accepting current, incoming, or both sections.
+    /// </summary>
+    internal void ResolveConflict(string relativePath, GitConflictResolution resolution)
+    {
+        if (_repository is null)
+        {
+            throw new InvalidOperationException("No repository is open.");
+        }
+
+        if (string.IsNullOrWhiteSpace(relativePath))
+        {
+            throw new ArgumentException("File path is required.", nameof(relativePath));
+        }
+
+        var normalizedPath = NormalizePath(relativePath.Trim());
+        var fullPath = Path.GetFullPath(Path.Combine(
+            _repository.Info.WorkingDirectory,
+            normalizedPath.Replace('/', Path.DirectorySeparatorChar)));
+
+        if (!File.Exists(fullPath))
+        {
+            throw new InvalidOperationException($"Conflict file was not found: {relativePath}");
+        }
+
+        var content = File.ReadAllText(fullPath);
+        var resolved = ResolveConflictMarkers(content, resolution);
+        File.WriteAllText(fullPath, resolved);
+        RefreshStatus();
+    }
+
+    /// <summary>
     /// Creates a commit from currently staged index changes.
     /// </summary>
     /// <exception cref="ArgumentException">Thrown when the commit message is empty.</exception>
@@ -341,6 +417,178 @@ internal sealed class GitService : IDisposable
     }
 
     /// <summary>
+    /// Attempts to convert an absolute file path to a repository-relative path.
+    /// </summary>
+    internal bool TryGetRelativePath(string fullPath, out string? relativePath)
+    {
+        if (string.IsNullOrWhiteSpace(fullPath))
+        {
+            throw new ArgumentException("File path is required.", nameof(fullPath));
+        }
+
+        if (_repository is null)
+        {
+            relativePath = null;
+            return false;
+        }
+
+        var workingDirectory = _repository.Info.WorkingDirectory;
+        if (!fullPath.StartsWith(workingDirectory, StringComparison.OrdinalIgnoreCase))
+        {
+            relativePath = null;
+            return false;
+        }
+
+        relativePath = NormalizePath(Path.GetRelativePath(workingDirectory, fullPath));
+        return true;
+    }
+
+    /// <summary>
+    /// Gets file text from the current HEAD commit for a repository-relative path.
+    /// Returns empty text when the file does not exist in HEAD.
+    /// </summary>
+    internal string GetHeadFileText(string relativePath)
+    {
+        if (_repository is null)
+        {
+            throw new InvalidOperationException("No repository is open.");
+        }
+
+        if (string.IsNullOrWhiteSpace(relativePath))
+        {
+            throw new ArgumentException("File path is required.", nameof(relativePath));
+        }
+
+        var normalizedPath = NormalizePath(relativePath.Trim());
+        return ReadHeadFileText(_repository, normalizedPath);
+    }
+
+    /// <summary>
+    /// Fetches updates from the specified remote.
+    /// </summary>
+    internal Task FetchAsync(
+        string remoteName = "origin",
+        IProgress<string>? progress = null,
+        CancellationToken cancellationToken = default)
+    {
+        if (_repository is null)
+        {
+            throw new InvalidOperationException("No repository is open.");
+        }
+
+        if (string.IsNullOrWhiteSpace(remoteName))
+        {
+            throw new ArgumentException("Remote name is required.", nameof(remoteName));
+        }
+
+        cancellationToken.ThrowIfCancellationRequested();
+
+        var remote = _repository.Network.Remotes[remoteName]
+            ?? throw new InvalidOperationException($"Remote '{remoteName}' was not found.");
+
+        var options = BuildFetchOptions(progress, cancellationToken);
+        Commands.Fetch(_repository, remote.Name, Array.Empty<string>(), options, logMessage: null);
+
+        RefreshStatus();
+        return Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// Pulls updates from the specified remote into the current branch.
+    /// </summary>
+    internal Task PullAsync(
+        string remoteName = "origin",
+        IProgress<string>? progress = null,
+        CancellationToken cancellationToken = default)
+    {
+        if (_repository is null)
+        {
+            throw new InvalidOperationException("No repository is open.");
+        }
+
+        if (string.IsNullOrWhiteSpace(remoteName))
+        {
+            throw new ArgumentException("Remote name is required.", nameof(remoteName));
+        }
+
+        cancellationToken.ThrowIfCancellationRequested();
+
+        var remote = _repository.Network.Remotes[remoteName]
+            ?? throw new InvalidOperationException($"Remote '{remoteName}' was not found.");
+
+        var signature = _repository.Config.BuildSignature(DateTimeOffset.Now);
+        if (signature is null)
+        {
+            throw new InvalidOperationException("Git user name and email must be configured before pulling.");
+        }
+
+        var pullOptions = new PullOptions
+        {
+            FetchOptions = BuildFetchOptions(progress, cancellationToken)
+        };
+
+        Commands.Pull(_repository, signature, pullOptions);
+        progress?.Report($"Pulled from '{remote.Name}'.");
+
+        RefreshStatus();
+        return Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// Pushes the current branch to the specified remote.
+    /// </summary>
+    internal Task PushAsync(
+        string remoteName = "origin",
+        IProgress<string>? progress = null,
+        CancellationToken cancellationToken = default)
+    {
+        if (_repository is null)
+        {
+            throw new InvalidOperationException("No repository is open.");
+        }
+
+        if (string.IsNullOrWhiteSpace(remoteName))
+        {
+            throw new ArgumentException("Remote name is required.", nameof(remoteName));
+        }
+
+        cancellationToken.ThrowIfCancellationRequested();
+
+        var branch = _repository.Head;
+        if (_repository.Info.IsHeadDetached)
+        {
+            throw new InvalidOperationException("Cannot push while HEAD is detached.");
+        }
+
+        var remote = _repository.Network.Remotes[remoteName]
+            ?? throw new InvalidOperationException($"Remote '{remoteName}' was not found.");
+
+        var pushDestination = string.IsNullOrWhiteSpace(branch.UpstreamBranchCanonicalName)
+            ? branch.CanonicalName
+            : branch.UpstreamBranchCanonicalName;
+
+        var pushOptions = new PushOptions
+        {
+            OnPushTransferProgress = (current, total, bytes) =>
+            {
+                progress?.Report($"Push progress: {current}/{total} objects, {bytes} bytes");
+                return !cancellationToken.IsCancellationRequested;
+            },
+            OnPackBuilderProgress = (stage, current, total) =>
+            {
+                progress?.Report($"Packing: {stage} {current}/{total}");
+                return !cancellationToken.IsCancellationRequested;
+            }
+        };
+
+        _repository.Network.Push(remote, $"{branch.CanonicalName}:{pushDestination}", pushOptions);
+        progress?.Report($"Pushed '{branch.FriendlyName}' to '{remote.Name}'.");
+
+        RefreshStatus();
+        return Task.CompletedTask;
+    }
+
+    /// <summary>
     /// Checks out the specified local branch.
     /// </summary>
     internal Task CheckoutAsync(string branchName, CancellationToken cancellationToken = default)
@@ -444,6 +692,27 @@ internal sealed class GitService : IDisposable
             || status.HasFlag(FileStatus.TypeChangeInIndex);
     }
 
+    private static FetchOptions BuildFetchOptions(IProgress<string>? progress, CancellationToken cancellationToken)
+    {
+        return new FetchOptions
+        {
+            OnTransferProgress = stats =>
+            {
+                progress?.Report($"Fetch progress: {stats.ReceivedObjects}/{stats.TotalObjects} objects ({stats.ReceivedBytes} bytes)");
+                return !cancellationToken.IsCancellationRequested;
+            },
+            OnProgress = message =>
+            {
+                if (!string.IsNullOrWhiteSpace(message))
+                {
+                    progress?.Report(message.Trim());
+                }
+
+                return !cancellationToken.IsCancellationRequested;
+            }
+        };
+    }
+
     private static string ReadHeadFileText(Repository repository, string normalizedPath)
     {
         var tip = repository.Head.Tip;
@@ -470,6 +739,68 @@ internal sealed class GitService : IDisposable
         return File.Exists(fullPath) ? File.ReadAllText(fullPath) : string.Empty;
     }
 
+    private static string ResolveConflictMarkers(string content, GitConflictResolution resolution)
+    {
+        var normalized = content.Replace("\r\n", "\n", StringComparison.Ordinal).Replace('\r', '\n');
+        var lines = normalized.Split('\n');
+        var output = new List<string>(lines.Length);
+
+        for (var index = 0; index < lines.Length; index++)
+        {
+            var line = lines[index];
+            if (!line.StartsWith("<<<<<<<", StringComparison.Ordinal))
+            {
+                output.Add(line);
+                continue;
+            }
+
+            var currentLines = new List<string>();
+            var incomingLines = new List<string>();
+
+            index++;
+            while (index < lines.Length && !lines[index].StartsWith("=======", StringComparison.Ordinal))
+            {
+                currentLines.Add(lines[index]);
+                index++;
+            }
+
+            if (index >= lines.Length)
+            {
+                throw new InvalidOperationException("Malformed conflict markers: missing ======= section delimiter.");
+            }
+
+            index++;
+            while (index < lines.Length && !lines[index].StartsWith(">>>>>>>", StringComparison.Ordinal))
+            {
+                incomingLines.Add(lines[index]);
+                index++;
+            }
+
+            if (index >= lines.Length)
+            {
+                throw new InvalidOperationException("Malformed conflict markers: missing >>>>>>> section terminator.");
+            }
+
+            switch (resolution)
+            {
+                case GitConflictResolution.AcceptCurrent:
+                    output.AddRange(currentLines);
+                    break;
+                case GitConflictResolution.AcceptIncoming:
+                    output.AddRange(incomingLines);
+                    break;
+                case GitConflictResolution.AcceptBoth:
+                    output.AddRange(currentLines);
+                    output.AddRange(incomingLines);
+                    break;
+                default:
+                    throw new ArgumentOutOfRangeException(nameof(resolution), resolution, "Unsupported conflict resolution strategy.");
+            }
+        }
+
+        return string.Join(Environment.NewLine, output);
+    }
+
     private bool HasStatusChanged(IReadOnlyList<GitFileStatusEntry> snapshot)
     {
         if (_lastStatusByPath.Count != snapshot.Count)
@@ -491,4 +822,11 @@ internal sealed class GitService : IDisposable
     /// <summary>Normalizes path separators to the forward-slash form expected by LibGit2Sharp.</summary>
     private static string NormalizePath(string path) =>
         path.Replace(Path.DirectorySeparatorChar, '/');
+}
+
+internal enum GitConflictResolution
+{
+    AcceptCurrent,
+    AcceptIncoming,
+    AcceptBoth
 }

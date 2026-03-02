@@ -63,6 +63,9 @@ Icon="Icons/KaneCode.ico">
                 <MenuItem Header="Git _Diff"
                           Tag="{Binding ElementName=GitDiffAnchorable}"
                           Click="ViewMenuPanel_Click" />
+                <MenuItem Header="Git _Log"
+                          Tag="{Binding ElementName=GitLogAnchorable}"
+                          Click="ViewMenuPanel_Click" />
                 <Separator />
                 <MenuItem Header="_Options" Command="{Binding OpenOptionsCommand}" />
             </MenuItem>
@@ -74,11 +77,18 @@ Icon="Icons/KaneCode.ico">
             </MenuItem>
             <MenuItem Header="_Git">
                 <MenuItem Header="_Refresh Status" Command="{Binding RefreshGitStatusCommand}" />
+                <MenuItem Header="_Fetch" Command="{Binding FetchCommand}" />
+                <MenuItem Header="_Pull" Command="{Binding PullCommand}" />
+                <MenuItem Header="P_ush" Command="{Binding PushCommand}" />
+                <Separator />
                 <MenuItem Header="_Commit..." Command="{Binding CommitCommand}" />
                 <MenuItem Header="_Create Branch..." Command="{Binding CreateBranchCommand}" />
                 <MenuItem Header="_Delete Branch..." Command="{Binding DeleteBranchCommand}" />
                 <MenuItem Header="_Git Changes"
                           Tag="{Binding ElementName=GitChangesAnchorable}"
+                          Click="ViewMenuPanel_Click" />
+                <MenuItem Header="Git _Log"
+                          Tag="{Binding ElementName=GitLogAnchorable}"
                           Click="ViewMenuPanel_Click" />
                 <Separator />
                 <MenuItem Header="_Initialize Repository"
@@ -379,6 +389,15 @@ Icon="Icons/KaneCode.ico">
                                                          CanAutoHide="True"
                                                          ContentId="GitDiffPane">
                                 <controls:GitDiffPanel x:Name="GitDiffPanel" />
+                            </avalonDock:LayoutAnchorable>
+                            <avalonDock:LayoutAnchorable x:Name="GitLogAnchorable" Title="Git Log"
+                                                         CanClose="False"
+                                                         CanHide="True"
+                                                         CanAutoHide="True"
+                                                         ContentId="GitLogPane">
+                                <controls:GitLogPanel x:Name="GitLogPanel"
+                                                      Commits="{Binding GitCommitHistory}"
+                                                      PanelStatusText="{Binding GitLogStatusText}" />
                             </avalonDock:LayoutAnchorable>
                         </avalonDock:LayoutAnchorablePane>
 
