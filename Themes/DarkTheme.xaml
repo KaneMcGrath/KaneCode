@@ -121,4 +121,11 @@
     <SolidColorBrush x:Key="AiChatRefTagBackground" Color="#2D3748" />
     <SolidColorBrush x:Key="AiChatRefTagForeground" Color="#A0C4E8" />
 
+    <!-- AI Chat tool-call blocks -->
+    <SolidColorBrush x:Key="AiChatToolCallBackground" Color="#1E2A38" />
+    <SolidColorBrush x:Key="AiChatToolCallBorder" Color="#3A4F65" />
+    <SolidColorBrush x:Key="AiChatToolCallForeground" Color="#C8D6E5" />
+    <SolidColorBrush x:Key="AiChatToolCallSuccessForeground" Color="#4EC9B0" />
+    <SolidColorBrush x:Key="AiChatToolCallErrorForeground" Color="#F14C4C" />
+
 </ResourceDictionary>

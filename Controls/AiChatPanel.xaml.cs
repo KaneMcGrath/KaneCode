@@ -1,5 +1,6 @@
 using KaneCode.Models;
 using KaneCode.Services.Ai;
+using KaneCode.Theming;
 using System.Diagnostics;
 using System.IO;
 using System.Text.Json;
@@ -802,6 +803,15 @@ public partial class AiChatPanel : UserControl
                     {
                         ct.ThrowIfCancellationRequested();
 
+                        Expander? toolExpander = null;
+                        TextBlock? toolResultBlock = null;
+
+                        await Dispatcher.InvokeAsync(() =>
+                        {
+                            (toolExpander, toolResultBlock) = CreateToolCallBlock(
+                                toolCall.FunctionName, toolCall.ArgumentsJson);
+                        });
+
                         var tool = _toolRegistry.Get(toolCall.FunctionName);
                         ToolCallResult result;
 
@@ -816,9 +826,6 @@ public partial class AiChatPanel : UserControl
                                 var args = string.IsNullOrWhiteSpace(toolCall.ArgumentsJson)
                                     ? default
                                     : JsonDocument.Parse(toolCall.ArgumentsJson).RootElement;
-
-                                await Dispatcher.InvokeAsync(() =>
-                                    AppendSystemMessage($"🔧 Calling {toolCall.FunctionName}..."));
 
                                 result = await tool.ExecuteAsync(args, ct).ConfigureAwait(false);
                             }
@@ -843,8 +850,7 @@ public partial class AiChatPanel : UserControl
 
                         await Dispatcher.InvokeAsync(() =>
                         {
-                            var status = result.Success ? "✅" : "❌";
-                            AppendSystemMessage($"{status} {toolCall.FunctionName}: {Truncate(resultContent, 200)}");
+                            FinalizeToolCallBlock(toolExpander!, toolResultBlock!, toolCall.FunctionName, result);
                         });
                     }
 
@@ -1105,6 +1111,121 @@ public partial class AiChatPanel : UserControl
 
         MessagePanel.Children.Add(tb);
         MessageScroller.ScrollToEnd();
+    }
+
+    /// <summary>
+    /// Creates a collapsible tool-call block showing the tool name, arguments, and a spinner.
+    /// Returns the expander, the status TextBlock (for updating header), and the result TextBlock
+    /// (for filling in when the tool finishes).
+    /// </summary>
+    private (Expander expander, TextBlock resultBlock) CreateToolCallBlock(string toolName, string argumentsJson)
+    {
+        var argsDisplay = FormatToolArgs(argumentsJson);
+
+        var argsBlock = new TextBlock
+        {
+            Text = argsDisplay,
+            TextWrapping = TextWrapping.Wrap,
+            Foreground = FindBrush(ThemeResourceKeys.AiChatToolCallForeground),
+            FontSize = 11,
+            FontFamily = new FontFamily("Cascadia Code, Consolas, Courier New"),
+            Margin = new Thickness(0, 2, 0, 4)
+        };
+
+        var resultBlock = new TextBlock
+        {
+            TextWrapping = TextWrapping.Wrap,
+            FontSize = 11,
+            Margin = new Thickness(0, 4, 0, 0)
+        };
+
+        var contentPanel = new StackPanel();
+        contentPanel.Children.Add(argsBlock);
+        contentPanel.Children.Add(resultBlock);
+
+        var expander = new Expander
+        {
+            Header = $"⏳ {toolName}",
+            IsExpanded = false,
+            Foreground = FindBrush(ThemeResourceKeys.AiChatToolCallForeground),
+            FontSize = 12,
+            Margin = new Thickness(4, 4, 40, 0),
+            Content = new Border
+            {
+                Background = FindBrush(ThemeResourceKeys.AiChatToolCallBackground),
+                CornerRadius = new CornerRadius(4),
+                Padding = new Thickness(8, 6, 8, 6),
+                BorderBrush = FindBrush(ThemeResourceKeys.AiChatToolCallBorder),
+                BorderThickness = new Thickness(1),
+                Child = contentPanel
+            }
+        };
+
+        MessagePanel.Children.Add(expander);
+
+        var shouldStickToBottom = IsMessageScrollerNearBottom();
+        if (shouldStickToBottom)
+        {
+            MessageScroller.ScrollToEnd();
+        }
+
+        return (expander, resultBlock);
+    }
+
+    /// <summary>
+    /// Updates a tool-call expander with the final result (success or error).
+    /// </summary>
+    private void FinalizeToolCallBlock(Expander expander, TextBlock resultBlock, string toolName, ToolCallResult result)
+    {
+        if (result.Success)
+        {
+            expander.Header = $"✅ {toolName}";
+            resultBlock.Text = Truncate(result.Output, 500);
+            resultBlock.Foreground = FindBrush(ThemeResourceKeys.AiChatToolCallSuccessForeground);
+        }
+        else
+        {
+            expander.Header = $"❌ {toolName}";
+            resultBlock.Text = result.Error ?? "Unknown error";
+            resultBlock.Foreground = FindBrush(ThemeResourceKeys.AiChatToolCallErrorForeground);
+        }
+
+        var shouldStickToBottom = IsMessageScrollerNearBottom();
+        if (shouldStickToBottom)
+        {
+            MessageScroller.ScrollToEnd();
+        }
+    }
+
+    /// <summary>
+    /// Formats tool arguments JSON into a readable display string.
+    /// </summary>
+    private static string FormatToolArgs(string argumentsJson)
+    {
+        if (string.IsNullOrWhiteSpace(argumentsJson))
+        {
+            return "(no arguments)";
+        }
+
+        try
+        {
+            using var doc = JsonDocument.Parse(argumentsJson);
+            var entries = new List<string>();
+            foreach (var prop in doc.RootElement.EnumerateObject())
+            {
+                var value = prop.Value.ValueKind == JsonValueKind.String
+                    ? prop.Value.GetString()
+                    : prop.Value.GetRawText();
+
+                entries.Add($"{prop.Name}: {Truncate(value ?? "", 120)}");
+            }
+
+            return string.Join("\n", entries);
+        }
+        catch (JsonException)
+        {
+            return Truncate(argumentsJson, 200);
+        }
     }
 
     /// <summary>

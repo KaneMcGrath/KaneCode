@@ -119,4 +119,11 @@ internal static class ThemeResourceKeys
     public const string AiChatThinkingBorder = nameof(AiChatThinkingBorder);
     public const string AiChatRefTagBackground = nameof(AiChatRefTagBackground);
     public const string AiChatRefTagForeground = nameof(AiChatRefTagForeground);
+
+    // AI Chat tool-call blocks
+    public const string AiChatToolCallBackground = nameof(AiChatToolCallBackground);
+    public const string AiChatToolCallBorder = nameof(AiChatToolCallBorder);
+    public const string AiChatToolCallForeground = nameof(AiChatToolCallForeground);
+    public const string AiChatToolCallSuccessForeground = nameof(AiChatToolCallSuccessForeground);
+    public const string AiChatToolCallErrorForeground = nameof(AiChatToolCallErrorForeground);
 }

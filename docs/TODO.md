@@ -59,10 +59,15 @@
   - QA: Model chains multiple tool calls → each is executed and result shown before next model call
   - QA: Tool-call loop reaches 20 iterations → stops and shows safety-limit warning
   - QA: User cancels during tool execution → streaming stops cleanly
-- [ ] **7.4** Tool-call UI rendering — show tool invocations and results in chat
+- [~] **7.4** Tool-call UI rendering — show tool invocations and results in chat
     - Render each tool call as a collapsible block (like thinking) showing tool name, arguments, and result
     - Show a spinner/status indicator while a tool is executing
     - Color-code success (green) vs error (red) results
+  - QA: Tool invocation shows collapsible block with ⏳ spinner and tool name during execution
+  - QA: On success → header changes to ✅, result text is green-tinted
+  - QA: On error → header changes to ❌, error text is red-tinted
+  - QA: Expanding a tool-call block shows formatted arguments and result text
+  - QA: Dark and light themes both render tool-call blocks with appropriate colors
 
 ### Phase 8 — Built-in Agent Tools
 
