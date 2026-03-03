@@ -99,4 +99,21 @@
     <SolidColorBrush x:Key="ErrorListSelectedBackground" Color="#094771" />
     <SolidColorBrush x:Key="ErrorListGridLine" Color="#3E3E42" />
 
+    <!-- AI Chat panel -->
+    <SolidColorBrush x:Key="AiChatBackground" Color="#1E1E1E" />
+    <SolidColorBrush x:Key="AiChatForeground" Color="#D4D4D4" />
+    <SolidColorBrush x:Key="AiChatSecondaryForeground" Color="#808080" />
+    <SolidColorBrush x:Key="AiChatHeaderBackground" Color="#2D2D2D" />
+    <SolidColorBrush x:Key="AiChatHeaderForeground" Color="#D4D4D4" />
+    <SolidColorBrush x:Key="AiChatBorder" Color="#3E3E42" />
+    <SolidColorBrush x:Key="AiChatInputBackground" Color="#252526" />
+    <SolidColorBrush x:Key="AiChatUserBubble" Color="#264F78" />
+    <SolidColorBrush x:Key="AiChatUserForeground" Color="#FFFFFF" />
+    <SolidColorBrush x:Key="AiChatAssistantBubble" Color="#2D2D30" />
+    <SolidColorBrush x:Key="AiChatAssistantForeground" Color="#D4D4D4" />
+    <SolidColorBrush x:Key="AiChatCodeBlockBackground" Color="#1A1A1A" />
+    <SolidColorBrush x:Key="AiChatCodeForeground" Color="#CE9178" />
+    <SolidColorBrush x:Key="AiChatSendButtonBackground" Color="#0E639C" />
+    <SolidColorBrush x:Key="AiChatSendButtonForeground" Color="#FFFFFF" />
+
 </ResourceDictionary>

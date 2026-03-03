@@ -66,6 +66,9 @@ Icon="Icons/KaneCode.ico">
                 <MenuItem Header="Git _Log"
                           Tag="{Binding ElementName=GitLogAnchorable}"
                           Click="ViewMenuPanel_Click" />
+                <MenuItem Header="_AI Chat"
+                          Tag="{Binding ElementName=AiChatAnchorable}"
+                          Click="ViewMenuPanel_Click" />
                 <Separator />
                 <MenuItem Header="_Options" Command="{Binding OpenOptionsCommand}" />
             </MenuItem>
@@ -398,6 +401,13 @@ Icon="Icons/KaneCode.ico">
                                 <controls:GitLogPanel x:Name="GitLogPanel"
                                                       Commits="{Binding GitCommitHistory}"
                                                       PanelStatusText="{Binding GitLogStatusText}" />
+                            </avalonDock:LayoutAnchorable>
+                            <avalonDock:LayoutAnchorable x:Name="AiChatAnchorable" Title="AI Chat"
+                                                         CanClose="False"
+                                                         CanHide="True"
+                                                         CanAutoHide="True"
+                                                         ContentId="AiChatPane">
+                                <controls:AiChatPanel x:Name="AiChatPanel" />
                             </avalonDock:LayoutAnchorable>
                         </avalonDock:LayoutAnchorablePane>
 

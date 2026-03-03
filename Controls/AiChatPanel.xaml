@@ -1,0 +1,81 @@
+<UserControl x:Class="KaneCode.Controls.AiChatPanel"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <DockPanel Background="{DynamicResource AiChatBackground}">
+
+        <!-- Header -->
+        <Border DockPanel.Dock="Top"
+                Background="{DynamicResource AiChatHeaderBackground}"
+                Padding="8,4">
+            <Grid>
+                <TextBlock Text="AI Chat"
+                           FontWeight="SemiBold"
+                           Foreground="{DynamicResource AiChatHeaderForeground}"
+                           VerticalAlignment="Center" />
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                    <TextBlock x:Name="ProviderLabel"
+                               Text="No provider"
+                               FontSize="11"
+                               Foreground="{DynamicResource AiChatSecondaryForeground}"
+                               VerticalAlignment="Center"
+                               Margin="0,0,8,0" />
+                    <Button x:Name="ClearButton"
+                            Content="Clear"
+                            Click="ClearButton_Click"
+                            Padding="6,2"
+                            FontSize="11"
+                            Foreground="{DynamicResource AiChatForeground}"
+                            Background="{DynamicResource AiChatInputBackground}"
+                            BorderBrush="{DynamicResource AiChatBorder}"
+                            BorderThickness="1"
+                            Cursor="Hand" />
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <!-- Input area at the bottom -->
+        <Border DockPanel.Dock="Bottom"
+                Background="{DynamicResource AiChatInputBackground}"
+                Padding="6"
+                BorderThickness="0,1,0,0"
+                BorderBrush="{DynamicResource AiChatBorder}">
+            <DockPanel>
+                <Button x:Name="SendButton"
+                        DockPanel.Dock="Right"
+                        Content="Send"
+                        Click="SendButton_Click"
+                        Padding="12,4"
+                        Margin="6,0,0,0"
+                        FontSize="12"
+                        VerticalAlignment="Bottom"
+                        Foreground="{DynamicResource AiChatSendButtonForeground}"
+                        Background="{DynamicResource AiChatSendButtonBackground}"
+                        BorderThickness="0"
+                        Cursor="Hand" />
+                <TextBox x:Name="InputBox"
+                         AcceptsReturn="True"
+                         TextWrapping="Wrap"
+                         MaxHeight="120"
+                         VerticalScrollBarVisibility="Auto"
+                         FontSize="13"
+                         FontFamily="Segoe UI, Consolas"
+                         Foreground="{DynamicResource AiChatForeground}"
+                         Background="{DynamicResource AiChatInputBackground}"
+                         CaretBrush="{DynamicResource AiChatForeground}"
+                         BorderThickness="1"
+                         BorderBrush="{DynamicResource AiChatBorder}"
+                         Padding="6,4"
+                         KeyDown="InputBox_KeyDown" />
+            </DockPanel>
+        </Border>
+
+        <!-- Message area (scrollable) -->
+        <ScrollViewer x:Name="MessageScroller"
+                      VerticalScrollBarVisibility="Auto"
+                      HorizontalScrollBarVisibility="Disabled"
+                      Background="{DynamicResource AiChatBackground}">
+            <StackPanel x:Name="MessagePanel"
+                        Margin="8,8,8,8" />
+        </ScrollViewer>
+    </DockPanel>
+</UserControl>

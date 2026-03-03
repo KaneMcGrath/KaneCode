@@ -97,4 +97,21 @@ internal static class ThemeResourceKeys
     public const string TooltipBackground = nameof(TooltipBackground);
     public const string TooltipForeground = nameof(TooltipForeground);
     public const string TooltipBorder = nameof(TooltipBorder);
+
+    // AI Chat panel
+    public const string AiChatBackground = nameof(AiChatBackground);
+    public const string AiChatForeground = nameof(AiChatForeground);
+    public const string AiChatSecondaryForeground = nameof(AiChatSecondaryForeground);
+    public const string AiChatHeaderBackground = nameof(AiChatHeaderBackground);
+    public const string AiChatHeaderForeground = nameof(AiChatHeaderForeground);
+    public const string AiChatBorder = nameof(AiChatBorder);
+    public const string AiChatInputBackground = nameof(AiChatInputBackground);
+    public const string AiChatUserBubble = nameof(AiChatUserBubble);
+    public const string AiChatUserForeground = nameof(AiChatUserForeground);
+    public const string AiChatAssistantBubble = nameof(AiChatAssistantBubble);
+    public const string AiChatAssistantForeground = nameof(AiChatAssistantForeground);
+    public const string AiChatCodeBlockBackground = nameof(AiChatCodeBlockBackground);
+    public const string AiChatCodeForeground = nameof(AiChatCodeForeground);
+    public const string AiChatSendButtonBackground = nameof(AiChatSendButtonBackground);
+    public const string AiChatSendButtonForeground = nameof(AiChatSendButtonForeground);
 }

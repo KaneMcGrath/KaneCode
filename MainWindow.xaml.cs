@@ -1,6 +1,7 @@
 ﻿using KaneCode.Infrastructure;
 using KaneCode.Models;
 using KaneCode.Services;
+using KaneCode.Services.Ai;
 using KaneCode.Theming;
 using KaneCode.ViewModels;
 using ICSharpCode.AvalonEdit.Rendering;
@@ -26,6 +27,7 @@ public partial class MainWindow : Window
 {
     private readonly MainViewModel _viewModel = new();
     private readonly TemplateEngineService _templateEngine = new();
+    private readonly AiProviderRegistry _aiProviderRegistry = new();
     private Popup? _quickInfoPopup;
 
     public MainWindow()
@@ -64,6 +66,10 @@ public partial class MainWindow : Window
         GitChangesPanel.AcceptCurrentConflictRequested += GitChangesPanel_AcceptCurrentConflictRequested;
         GitChangesPanel.AcceptIncomingConflictRequested += GitChangesPanel_AcceptIncomingConflictRequested;
         GitChangesPanel.AcceptBothConflictRequested += GitChangesPanel_AcceptBothConflictRequested;
+
+        // Initialize AI provider registry and configure the chat panel
+        _aiProviderRegistry.Reload();
+        ConfigureAiChatPanel();
     }
 
     private void OnClosed(object? sender, EventArgs e)
@@ -87,6 +93,7 @@ public partial class MainWindow : Window
         CloseQuickInfoPopup();
         _viewModel.Dispose();
         _templateEngine.Dispose();
+        _aiProviderRegistry.Dispose();
     }
 
     /// <summary>
@@ -127,6 +134,26 @@ public partial class MainWindow : Window
         anchorable.IsActive = true;
         anchorable.IsSelected = true;
         DockManager.ActiveContent = anchorable.Content ?? anchorable;
+    }
+
+    /// <summary>
+    /// Configures the AI Chat panel with the active provider from the registry.
+    /// </summary>
+    private void ConfigureAiChatPanel()
+    {
+        var provider = _aiProviderRegistry.ActiveProvider;
+        var settings = AiSettingsManager.Load().FirstOrDefault(s => s.IsActive)
+                       ?? AiSettingsManager.Load().FirstOrDefault();
+        AiChatPanel.Configure(provider, settings?.SelectedModel);
+    }
+
+    /// <summary>
+    /// Reloads AI providers and reconfigures the chat panel. Call after settings change.
+    /// </summary>
+    internal void ReloadAiProviders()
+    {
+        _aiProviderRegistry.Reload();
+        ConfigureAiChatPanel();
     }
 
     /// <summary>
