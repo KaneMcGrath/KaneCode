@@ -24,12 +24,14 @@ internal interface IAiProvider
 
     /// <summary>
     /// Sends a chat completion request and streams response tokens as they arrive.
+    /// Reasoning models may emit <see cref="AiStreamTokenType.Reasoning"/> tokens
+    /// before the main <see cref="AiStreamTokenType.Content"/> tokens.
     /// </summary>
     /// <param name="messages">The conversation messages to send.</param>
     /// <param name="model">The model identifier to use (e.g. "gpt-4o").</param>
     /// <param name="cancellationToken">Token to cancel the request.</param>
-    /// <returns>An async enumerable of response token strings.</returns>
-    IAsyncEnumerable<string> StreamCompletionAsync(
+    /// <returns>An async enumerable of streamed tokens.</returns>
+    IAsyncEnumerable<AiStreamToken> StreamCompletionAsync(
         IReadOnlyList<AiChatMessage> messages,
         string model,
         CancellationToken cancellationToken = default);

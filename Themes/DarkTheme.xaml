@@ -115,5 +115,8 @@
     <SolidColorBrush x:Key="AiChatCodeForeground" Color="#CE9178" />
     <SolidColorBrush x:Key="AiChatSendButtonBackground" Color="#0E639C" />
     <SolidColorBrush x:Key="AiChatSendButtonForeground" Color="#FFFFFF" />
+    <SolidColorBrush x:Key="AiChatThinkingBackground" Color="#1A2332" />
+    <SolidColorBrush x:Key="AiChatThinkingForeground" Color="#9CDCFE" />
+    <SolidColorBrush x:Key="AiChatThinkingBorder" Color="#264F78" />
 
 </ResourceDictionary>

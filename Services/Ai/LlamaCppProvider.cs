@@ -38,7 +38,7 @@ internal sealed class LlamaCppProvider : IAiProvider, IDisposable
     ];
 
     /// <inheritdoc />
-    public async IAsyncEnumerable<string> StreamCompletionAsync(
+    public async IAsyncEnumerable<AiStreamToken> StreamCompletionAsync(
         IReadOnlyList<AiChatMessage> messages,
         string model,
         [EnumeratorCancellation] CancellationToken cancellationToken = default)
@@ -104,8 +104,7 @@ internal sealed class LlamaCppProvider : IAiProvider, IDisposable
                 yield break;
             }
 
-            var token = ExtractContentToken(data);
-            if (token is not null)
+            await foreach (var token in ExtractStreamTokens(data))
             {
                 yield return token;
             }
@@ -113,33 +112,63 @@ internal sealed class LlamaCppProvider : IAiProvider, IDisposable
     }
 
     /// <summary>
-    /// Extracts the content delta from an SSE chat completion chunk.
-    /// Expected shape: <c>{ "choices": [{ "delta": { "content": "..." } }] }</c>
+    /// Extracts content and reasoning tokens from an SSE chat completion chunk.
+    /// Reasoning models emit <c>reasoning_content</c> in the delta alongside or instead of <c>content</c>.
     /// </summary>
-    private static string? ExtractContentToken(string json)
+    private static IAsyncEnumerable<AiStreamToken> ExtractStreamTokens(string json)
     {
-        try
-        {
-            using var doc = JsonDocument.Parse(json);
-            var root = doc.RootElement;
+        return ExtractStreamTokensCore(json);
 
-            if (root.TryGetProperty("choices", out var choices) &&
-                choices.GetArrayLength() > 0)
+        static async IAsyncEnumerable<AiStreamToken> ExtractStreamTokensCore(string json)
+        {
+            JsonDocument? doc = null;
+            try
             {
-                var firstChoice = choices[0];
-                if (firstChoice.TryGetProperty("delta", out var delta) &&
-                    delta.TryGetProperty("content", out var content))
+                doc = JsonDocument.Parse(json);
+            }
+            catch (JsonException)
+            {
+                yield break;
+            }
+
+            using (doc)
+            {
+                var root = doc.RootElement;
+
+                if (!root.TryGetProperty("choices", out var choices) || choices.GetArrayLength() == 0)
                 {
-                    return content.GetString();
+                    yield break;
+                }
+
+                var firstChoice = choices[0];
+                if (!firstChoice.TryGetProperty("delta", out var delta))
+                {
+                    yield break;
+                }
+
+                // Reasoning tokens (chain-of-thought from reasoning models)
+                if (delta.TryGetProperty("reasoning_content", out var reasoning))
+                {
+                    var text = reasoning.GetString();
+                    if (!string.IsNullOrEmpty(text))
+                    {
+                        yield return new AiStreamToken(AiStreamTokenType.Reasoning, text);
+                    }
+                }
+
+                // Normal content tokens
+                if (delta.TryGetProperty("content", out var content))
+                {
+                    var text = content.GetString();
+                    if (!string.IsNullOrEmpty(text))
+                    {
+                        yield return new AiStreamToken(AiStreamTokenType.Content, text);
+                    }
                 }
             }
-        }
-        catch (JsonException)
-        {
-            // Malformed chunk — skip
-        }
 
-        return null;
+            await Task.CompletedTask;
+        }
     }
 
     public void Dispose()

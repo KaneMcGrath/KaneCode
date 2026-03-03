@@ -110,7 +110,10 @@ public partial class AiChatPanel : UserControl
         SendButton.Click += StopButton_Click;
 
         var responseBuilder = new System.Text.StringBuilder();
+        var reasoningBuilder = new System.Text.StringBuilder();
         var assistantBlock = CreateAssistantMessageBlock();
+        Expander? thinkingExpander = null;
+        TextBlock? thinkingTextBlock = null;
 
         CancelStreaming();
         _streamCts = new CancellationTokenSource();
@@ -123,14 +126,40 @@ public partial class AiChatPanel : UserControl
             await foreach (var token in _provider.StreamCompletionAsync(_conversationHistory, model, ct)
                 .ConfigureAwait(false))
             {
-                responseBuilder.Append(token);
-
-                // Post UI update to the dispatcher queue so WPF can render between tokens
-                await Dispatcher.InvokeAsync(() =>
+                if (token.Type == AiStreamTokenType.Reasoning)
                 {
-                    RenderMarkdownInto(assistantBlock, responseBuilder.ToString());
-                    MessageScroller.ScrollToEnd();
-                });
+                    reasoningBuilder.Append(token.Text);
+
+                    await Dispatcher.InvokeAsync(() =>
+                    {
+                        if (thinkingExpander is null)
+                        {
+                            (thinkingExpander, thinkingTextBlock) = CreateThinkingExpander(assistantBlock.Parent as UIElement);
+                        }
+
+                        thinkingTextBlock!.Text = reasoningBuilder.ToString();
+                        thinkingExpander.Header = $"💭 Thinking ({reasoningBuilder.Length:N0} chars)...";
+                        MessageScroller.ScrollToEnd();
+                    });
+                }
+                else
+                {
+                    responseBuilder.Append(token.Text);
+
+                    await Dispatcher.InvokeAsync(() =>
+                    {
+                        // Finalize the thinking header once content starts
+                        if (thinkingExpander is not null &&
+                            thinkingExpander.Header is string header &&
+                            header.EndsWith("...", StringComparison.Ordinal))
+                        {
+                            thinkingExpander.Header = $"💭 Thought for {reasoningBuilder.Length:N0} chars";
+                        }
+
+                        RenderMarkdownInto(assistantBlock, responseBuilder.ToString());
+                        MessageScroller.ScrollToEnd();
+                    });
+                }
             }
 
             // Record final response in history
@@ -237,6 +266,69 @@ public partial class AiChatPanel : UserControl
         border.Child = rtb;
         MessagePanel.Children.Add(border);
         return rtb;
+    }
+
+    /// <summary>
+    /// Creates a collapsible thinking/reasoning expander (collapsed by default)
+    /// and adds it to the message panel. If <paramref name="insertBefore"/> is supplied,
+    /// the expander is inserted before that element.
+    /// Returns both the expander and the inner TextBlock so reasoning tokens
+    /// can be appended progressively.
+    /// </summary>
+    private (Expander expander, TextBlock textBlock) CreateThinkingExpander(UIElement? insertBefore = null)
+    {
+        var textBlock = new TextBlock
+        {
+            TextWrapping = TextWrapping.Wrap,
+            Foreground = FindBrush("AiChatThinkingForeground"),
+            FontSize = 12,
+            FontFamily = new FontFamily("Segoe UI"),
+            Margin = new Thickness(0, 4, 0, 0)
+        };
+
+        var scrollViewer = new ScrollViewer
+        {
+            MaxHeight = 200,
+            VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+            Content = textBlock
+        };
+
+        var expander = new Expander
+        {
+            Header = "💭 Thinking...",
+            IsExpanded = false,
+            Foreground = FindBrush("AiChatThinkingForeground"),
+            FontSize = 12,
+            Margin = new Thickness(4, 4, 40, 0),
+            Content = new Border
+            {
+                Background = FindBrush("AiChatThinkingBackground"),
+                CornerRadius = new CornerRadius(4),
+                Padding = new Thickness(8, 6, 8, 6),
+                BorderBrush = FindBrush("AiChatThinkingBorder"),
+                BorderThickness = new Thickness(1),
+                Child = scrollViewer
+            }
+        };
+
+        if (insertBefore is not null)
+        {
+            var index = MessagePanel.Children.IndexOf(insertBefore);
+            if (index >= 0)
+            {
+                MessagePanel.Children.Insert(index, expander);
+            }
+            else
+            {
+                MessagePanel.Children.Add(expander);
+            }
+        }
+        else
+        {
+            MessagePanel.Children.Add(expander);
+        }
+
+        return (expander, textBlock);
     }
 
     private void AppendSystemMessage(string text)
