@@ -117,4 +117,6 @@ internal static class ThemeResourceKeys
     public const string AiChatThinkingBackground = nameof(AiChatThinkingBackground);
     public const string AiChatThinkingForeground = nameof(AiChatThinkingForeground);
     public const string AiChatThinkingBorder = nameof(AiChatThinkingBorder);
+    public const string AiChatRefTagBackground = nameof(AiChatRefTagBackground);
+    public const string AiChatRefTagForeground = nameof(AiChatRefTagForeground);
 }

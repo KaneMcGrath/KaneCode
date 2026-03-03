@@ -145,6 +145,7 @@ public partial class MainWindow : Window
         var settings = AiSettingsManager.Load().FirstOrDefault(s => s.IsActive)
                        ?? AiSettingsManager.Load().FirstOrDefault();
         AiChatPanel.Configure(provider, settings?.SelectedModel);
+        AiChatPanel.SetProjectItemsProvider(() => _viewModel.ProjectItems);
     }
 
     /// <summary>

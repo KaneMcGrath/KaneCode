@@ -45,6 +45,30 @@
                        Foreground="{DynamicResource AiChatSecondaryForeground}" />
         </Border>
 
+        <!-- Reference bar -->
+        <Border DockPanel.Dock="Bottom"
+                Background="{DynamicResource AiChatInputBackground}"
+                Padding="4,3"
+                BorderThickness="0,1,0,0"
+                BorderBrush="{DynamicResource AiChatBorder}">
+            <DockPanel>
+                <Button x:Name="AddReferenceButton"
+                        DockPanel.Dock="Left"
+                        Content="&#x1F4CE; Add"
+                        Click="AddReferenceButton_Click"
+                        Padding="6,2"
+                        FontSize="11"
+                        Foreground="{DynamicResource AiChatForeground}"
+                        Background="Transparent"
+                        BorderThickness="0"
+                        Cursor="Hand"
+                        VerticalAlignment="Center" />
+                <WrapPanel x:Name="ReferenceTagsPanel"
+                           Orientation="Horizontal"
+                           Margin="4,0,0,0" />
+            </DockPanel>
+        </Border>
+
         <!-- Input area -->
         <Border DockPanel.Dock="Bottom"
                 Background="{DynamicResource AiChatInputBackground}"
@@ -77,7 +101,7 @@
                          BorderThickness="1"
                          BorderBrush="{DynamicResource AiChatBorder}"
                          Padding="6,4"
-                         PreviewKeyDown="InputBox_PreviewKeyDown" />
+                         PreviewKeyDown="InputBox_PreviewKeyDown" TextChanged="InputBox_TextChanged" />
             </DockPanel>
         </Border>
 

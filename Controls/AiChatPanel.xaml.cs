@@ -1,9 +1,12 @@
+using KaneCode.Models;
 using KaneCode.Services.Ai;
 using System.Diagnostics;
+using System.IO;
 using System.Text.RegularExpressions;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Documents;
+using System.Windows.Input;
 using System.Windows.Media;
 
 namespace KaneCode.Controls;
@@ -15,11 +18,14 @@ namespace KaneCode.Controls;
 public partial class AiChatPanel : UserControl
 {
     private readonly List<AiChatMessage> _conversationHistory = [];
+    private readonly List<AiChatReference> _references = [];
     private IAiProvider? _provider;
     private string? _model;
     private CancellationTokenSource? _streamCts;
     private bool _isStreaming;
     private AiUsageStats? _lastUsageStats;
+    private Func<IReadOnlyList<ProjectItem>>? _projectItemsProvider;
+    private ListBox? _mentionPopup;
 
     public AiChatPanel()
     {
@@ -38,6 +44,150 @@ public partial class AiChatPanel : UserControl
             : "No provider";
     }
 
+    /// <summary>
+    /// Sets a callback that returns the current project items for file browsing and @ mentions.
+    /// </summary>
+    internal void SetProjectItemsProvider(Func<IReadOnlyList<ProjectItem>> provider)
+    {
+        _projectItemsProvider = provider;
+    }
+
+    // ── Reference management ───────────────────────────────────────
+
+    /// <summary>
+    /// Adds a file reference to the current conversation context.
+    /// </summary>
+    internal void AddFileReference(string filePath)
+    {
+        if (_references.Any(r => r.FullPath.Equals(filePath, StringComparison.OrdinalIgnoreCase)))
+        {
+            return;
+        }
+
+        var reference = new AiChatReference(AiReferenceKind.File, filePath);
+
+        try
+        {
+            reference.Content = File.ReadAllText(filePath);
+        }
+        catch (IOException)
+        {
+            reference.Content = "(unable to read file)";
+        }
+
+        _references.Add(reference);
+        RenderReferenceTags();
+    }
+
+    private void RemoveReference(AiChatReference reference)
+    {
+        _references.Remove(reference);
+        RenderReferenceTags();
+    }
+
+    private void RenderReferenceTags()
+    {
+        ReferenceTagsPanel.Children.Clear();
+
+        foreach (var reference in _references)
+        {
+            var tag = CreateReferenceTag(reference);
+            ReferenceTagsPanel.Children.Add(tag);
+        }
+    }
+
+    private Border CreateReferenceTag(AiChatReference reference)
+    {
+        var removeButton = new Button
+        {
+            Content = "✕",
+            FontSize = 9,
+            Padding = new Thickness(2, 0, 2, 0),
+            Margin = new Thickness(4, 0, 0, 0),
+            Foreground = FindBrush("AiChatSecondaryForeground"),
+            Background = Brushes.Transparent,
+            BorderThickness = new Thickness(0),
+            Cursor = Cursors.Hand,
+            VerticalAlignment = VerticalAlignment.Center
+        };
+        removeButton.Click += (_, _) => RemoveReference(reference);
+
+        var icon = reference.Kind == AiReferenceKind.File ? "📄 " : "🔗 ";
+
+        var tag = new Border
+        {
+            Background = FindBrush("AiChatRefTagBackground"),
+            CornerRadius = new CornerRadius(3),
+            Padding = new Thickness(5, 2, 3, 2),
+            Margin = new Thickness(0, 1, 4, 1),
+            VerticalAlignment = VerticalAlignment.Center,
+            Child = new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+                Children =
+                {
+                    new TextBlock
+                    {
+                        Text = $"{icon}{reference.DisplayName}",
+                        FontSize = 11,
+                        Foreground = FindBrush("AiChatRefTagForeground"),
+                        VerticalAlignment = VerticalAlignment.Center
+                    },
+                    removeButton
+                }
+            }
+        };
+
+        tag.ToolTip = reference.FullPath;
+        return tag;
+    }
+
+    /// <summary>
+    /// Builds the context injection text from all attached references.
+    /// </summary>
+    private string BuildReferenceContext()
+    {
+        if (_references.Count == 0)
+        {
+            return string.Empty;
+        }
+
+        var sb = new System.Text.StringBuilder();
+        sb.AppendLine("The user has attached the following files for reference:");
+        sb.AppendLine();
+
+        foreach (var reference in _references)
+        {
+            sb.AppendLine(reference.ToContextString());
+            sb.AppendLine();
+        }
+
+        return sb.ToString();
+    }
+
+    private void AddReferenceButton_Click(object sender, RoutedEventArgs e)
+    {
+        var projectItems = _projectItemsProvider?.Invoke();
+        if (projectItems is null || projectItems.Count == 0)
+        {
+            AppendSystemMessage("No project loaded. Open a project or folder first.");
+            return;
+        }
+
+        var dialog = new AiReferencePickerDialog(projectItems)
+        {
+            Owner = Window.GetWindow(this)
+        };
+
+        if (dialog.ShowDialog() == true)
+        {
+            foreach (var path in dialog.SelectedFilePaths)
+            {
+                AddFileReference(path);
+            }
+        }
+    }
+
     private async void SendButton_Click(object sender, RoutedEventArgs e)
     {
         await SendMessageAsync();
@@ -45,15 +195,55 @@ public partial class AiChatPanel : UserControl
 
     private async void InputBox_PreviewKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
     {
-        if (e.Key != System.Windows.Input.Key.Enter)
+        // Handle @ mention popup navigation
+        if (_mentionPopup is not null && _mentionPopup.Visibility == Visibility.Visible)
+        {
+            if (e.Key == Key.Down)
+            {
+                e.Handled = true;
+                if (_mentionPopup.SelectedIndex < _mentionPopup.Items.Count - 1)
+                {
+                    _mentionPopup.SelectedIndex++;
+                }
+
+                return;
+            }
+
+            if (e.Key == Key.Up)
+            {
+                e.Handled = true;
+                if (_mentionPopup.SelectedIndex > 0)
+                {
+                    _mentionPopup.SelectedIndex--;
+                }
+
+                return;
+            }
+
+            if (e.Key is Key.Enter or Key.Tab)
+            {
+                e.Handled = true;
+                AcceptMentionSelection();
+                return;
+            }
+
+            if (e.Key == Key.Escape)
+            {
+                e.Handled = true;
+                DismissMentionPopup();
+                return;
+            }
+        }
+
+        if (e.Key != Key.Enter)
         {
             return;
         }
 
-        var modifiers = System.Windows.Input.Keyboard.Modifiers;
+        var modifiers = Keyboard.Modifiers;
 
         // Shift+Enter inserts a newline
-        if ((modifiers & System.Windows.Input.ModifierKeys.Shift) == System.Windows.Input.ModifierKeys.Shift)
+        if ((modifiers & ModifierKeys.Shift) == ModifierKeys.Shift)
         {
             e.Handled = true;
             var caretIndex = InputBox.CaretIndex;
@@ -63,10 +253,162 @@ public partial class AiChatPanel : UserControl
         }
 
         // Enter sends (without Shift)
-        if (modifiers == System.Windows.Input.ModifierKeys.None)
+        if (modifiers == ModifierKeys.None)
         {
             e.Handled = true;
             await SendMessageAsync();
+        }
+    }
+
+    // ── @ mention autocomplete ─────────────────────────────────────
+
+    /// <summary>
+    /// Called when text changes in the input box. Detects '@' triggers for file mention autocomplete.
+    /// </summary>
+    internal void InputBox_TextChanged(object sender, TextChangedEventArgs e)
+    {
+        var text = InputBox.Text;
+        var caret = InputBox.CaretIndex;
+
+        if (string.IsNullOrEmpty(text) || caret == 0)
+        {
+            DismissMentionPopup();
+            return;
+        }
+
+        // Find the '@' before the caret
+        var atIndex = text.LastIndexOf('@', caret - 1);
+        if (atIndex < 0 || (atIndex > 0 && !char.IsWhiteSpace(text[atIndex - 1])))
+        {
+            DismissMentionPopup();
+            return;
+        }
+
+        var query = text[(atIndex + 1)..caret];
+
+        // Don't show popup if query contains whitespace (user moved on)
+        if (query.Contains(' ') || query.Contains('\n'))
+        {
+            DismissMentionPopup();
+            return;
+        }
+
+        ShowMentionPopup(query, atIndex);
+    }
+
+    private void ShowMentionPopup(string query, int atIndex)
+    {
+        var projectItems = _projectItemsProvider?.Invoke();
+        if (projectItems is null || projectItems.Count == 0)
+        {
+            DismissMentionPopup();
+            return;
+        }
+
+        var allFiles = new List<string>();
+        CollectFilePaths(projectItems, allFiles);
+
+        var filtered = string.IsNullOrEmpty(query)
+            ? allFiles.Take(12).ToList()
+            : allFiles.Where(p =>
+                Path.GetFileName(p).Contains(query, StringComparison.OrdinalIgnoreCase))
+              .Take(12).ToList();
+
+        if (filtered.Count == 0)
+        {
+            DismissMentionPopup();
+            return;
+        }
+
+        if (_mentionPopup is null)
+        {
+            _mentionPopup = new ListBox
+            {
+                MaxHeight = 180,
+                FontSize = 11,
+                Background = FindBrush("AiChatInputBackground"),
+                Foreground = FindBrush("AiChatForeground"),
+                BorderBrush = FindBrush("AiChatBorder"),
+                BorderThickness = new Thickness(1),
+                Margin = new Thickness(4, 0, 4, 2)
+            };
+
+            _mentionPopup.MouseDoubleClick += (_, _) => AcceptMentionSelection();
+
+            // Insert popup just above the input area border
+            var inputBorder = InputBox.Parent as DockPanel;
+            var inputContainer = inputBorder?.Parent as Border;
+            if (inputContainer is not null)
+            {
+                var parentPanel = inputContainer.Parent as DockPanel;
+                if (parentPanel is not null)
+                {
+                    var idx = parentPanel.Children.IndexOf(inputContainer);
+                    parentPanel.Children.Insert(idx, _mentionPopup);
+                    DockPanel.SetDock(_mentionPopup, Dock.Bottom);
+                }
+            }
+        }
+
+        _mentionPopup.ItemsSource = filtered.Select(Path.GetFileName).ToList();
+        _mentionPopup.Tag = filtered; // Store full paths
+        _mentionPopup.SelectedIndex = 0;
+        _mentionPopup.Visibility = Visibility.Visible;
+    }
+
+    private void AcceptMentionSelection()
+    {
+        if (_mentionPopup is null || _mentionPopup.SelectedIndex < 0)
+        {
+            return;
+        }
+
+        var fullPaths = _mentionPopup.Tag as List<string>;
+        if (fullPaths is null || _mentionPopup.SelectedIndex >= fullPaths.Count)
+        {
+            return;
+        }
+
+        var selectedPath = fullPaths[_mentionPopup.SelectedIndex];
+        var fileName = Path.GetFileName(selectedPath);
+
+        // Replace the @query with the filename and add the file as a reference
+        var text = InputBox.Text;
+        var caret = InputBox.CaretIndex;
+        var atIndex = text.LastIndexOf('@', caret - 1);
+
+        if (atIndex >= 0)
+        {
+            var newText = text[..atIndex] + fileName + (caret < text.Length ? text[caret..] : "");
+            InputBox.Text = newText;
+            InputBox.CaretIndex = atIndex + fileName.Length;
+        }
+
+        AddFileReference(selectedPath);
+        DismissMentionPopup();
+    }
+
+    private void DismissMentionPopup()
+    {
+        if (_mentionPopup is not null)
+        {
+            _mentionPopup.Visibility = Visibility.Collapsed;
+        }
+    }
+
+    private static void CollectFilePaths(IReadOnlyList<ProjectItem> items, List<string> results)
+    {
+        foreach (var item in items)
+        {
+            if (item.ItemType == ProjectItemType.File)
+            {
+                results.Add(item.FullPath);
+            }
+
+            if (item.Children.Count > 0)
+            {
+                CollectFilePaths(item.Children, results);
+            }
         }
     }
 
@@ -101,8 +443,17 @@ public partial class AiChatPanel : UserControl
         // Display user message
         AppendUserMessage(text);
 
-        // Add to history
-        _conversationHistory.Add(new AiChatMessage(AiChatRole.User, text));
+        // Add to history (with reference context injected if any references are attached)
+        var referenceContext = BuildReferenceContext();
+        if (!string.IsNullOrEmpty(referenceContext))
+        {
+            var userMessageWithContext = $"{referenceContext}\n{text}";
+            _conversationHistory.Add(new AiChatMessage(AiChatRole.User, userMessageWithContext));
+        }
+        else
+        {
+            _conversationHistory.Add(new AiChatMessage(AiChatRole.User, text));
+        }
 
         // Stream assistant response
         _isStreaming = true;

@@ -118,5 +118,7 @@
     <SolidColorBrush x:Key="AiChatThinkingBackground" Color="#1A2332" />
     <SolidColorBrush x:Key="AiChatThinkingForeground" Color="#9CDCFE" />
     <SolidColorBrush x:Key="AiChatThinkingBorder" Color="#264F78" />
+    <SolidColorBrush x:Key="AiChatRefTagBackground" Color="#2D3748" />
+    <SolidColorBrush x:Key="AiChatRefTagForeground" Color="#A0C4E8" />
 
 </ResourceDictionary>

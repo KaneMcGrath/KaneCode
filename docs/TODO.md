@@ -25,20 +25,15 @@
 - [x] **6.1** `IAiProvider` abstraction + provider/API-key settings in Options (encrypted storage)
 - [x] **6.2** Llama.cpp (local) provider implementation, talks to a local Llama.cpp HTTP endpoint.
 - [x] **6.3** AI Chat panel — AvalonDock anchorable, markdown rendering, streaming tokens
-  - QA: View → AI Chat → panel appears in the bottom dock group
-  - QA: With no provider configured → type a message → system message says "No AI provider configured"
-  - QA: Configure a llama.cpp provider → relaunch → AI Chat shows provider name in header
-  - QA: Send a message → tokens stream in progressively with markdown formatting (headings, code blocks, bold, bullet lists)
-  - QA: Click "⏹ Stop" mid-stream → streaming halts, partial response preserved
-  - QA: Click "Clear" → conversation history and messages cleared
-  - QA: Switch between Dark and Light themes → chat colors update correctly
-  - QA: Enter sends message, Shift+Enter inserts newline
-- [ ] **6.4** Context injection — "Ask about selection" with file, selection, and diagnostics
-- [ ] **6.5** Project-wide context builder — file tree, packages, TFM for system prompt
-- [ ] **6.6** Inline code generation / edit — insert at caret or replace selection with diff preview
-- [ ] **6.7** AI-powered Explain & Fix Diagnostic — right-click diagnostic integration
-- [ ] **6.8** Conversation history & context management — persist per-project, token budget
-- [ ] **6.9** Agent mode — plan/act/observe loop, surface steps in chat, require user confirmation
-- [ ] **6.10** OpenAI / Azure OpenAI provider implementation (GPT-4o / 4.1 / o3-mini)
+- [~] **6.4** Reference addition — Add references to files, classes, or methods in the codebase
+	- bar above the chat input to "Add reference" — opens a dialog to select a file, class, or method, and adds it to the current conversation context.
+	- support '@' mentions in the chat input to reference code elements directly in the conversation with an autocomplete dropdown.
+  - QA: Click "📎 Add" → picker dialog opens with searchable file list → select a file → tag appears in reference bar
+  - QA: Click ✕ on a reference tag → tag is removed
+  - QA: Send a message with references attached → AI response acknowledges the file content
+  - QA: Type '@' in the input box → autocomplete popup appears with file names → Arrow keys + Enter to select → file added as reference
+  - QA: Type '@partial' → popup filters to matching files → Escape dismisses popup
+  - QA: Double-click a file in the @ popup → file added as reference
+
 
 
