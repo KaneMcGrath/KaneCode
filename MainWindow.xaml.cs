@@ -166,6 +166,7 @@ public partial class MainWindow : Window
             ?? _viewModel.ProjectItems.FirstOrDefault()?.FullPath;
 
         _agentToolRegistry.Register(new ReadFileTool(projectRoot));
+        _agentToolRegistry.Register(new WriteFileTool(projectRoot));
     }
 
     /// <summary>

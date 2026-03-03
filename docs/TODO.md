@@ -75,10 +75,15 @@
     - Parameters: `filePath` (string)
     - Returns the file text, or error if not found / too large
     - Respects a max file size limit (e.g. 100 KB) to protect context budget
-- [ ] **8.2** `WriteFileTool` — create or overwrite a file by path
+- [~] **8.2** `WriteFileTool` — create or overwrite a file by path
     - Parameters: `filePath` (string), `content` (string)
     - Writes the file to disk and opens it in the editor
     - Reports success or IO error
+  - QA: Agent calls write_file with relative path + content → file is created in project and success is returned
+  - QA: Agent calls write_file with existing file path → file content is overwritten
+  - QA: Missing `filePath` or `content` argument → tool returns descriptive error
+  - QA: Invalid path or access denied → tool returns explicit IO/access/path error
+  - QA: Tool is marked as confirmation-required before execution
 - [ ] **8.3** `EditFileTool` — search-and-replace edit within a file
     - Parameters: `filePath` (string), `oldText` (string), `newText` (string)
     - Applies a single find-and-replace, fails if `oldText` is not found or matches multiple locations
