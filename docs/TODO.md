@@ -22,15 +22,8 @@
 
 ### Phase 6 — AI Agents
 
-- [~] **6.1** `IAiProvider` abstraction + provider/API-key settings in Options (encrypted storage)
-  - QA: Open Options → verify "AI Providers" category appears in the sidebar
-  - QA: Click "Add" → new provider entry appears in the list
-  - QA: Fill in Label, Provider, Endpoint, API Key, Model → click "Save" → close and reopen Options → settings persist
-  - QA: Verify API key is masked (PasswordBox) and stored encrypted in `%LocalAppData%\KaneCode\ai-settings.json`
-  - QA: Select a provider → mark "Active" → save → reopen → only one provider is active
-  - QA: Click "Remove" → entry is removed → save → reopen → entry is gone
-- [ ] **6.2** Llama.cpp (local) provider implementation, talks to a local Llama.cpp HTTP endpoint.
-- [ ] **6.3** OpenAI / Azure OpenAI provider implementation (GPT-4o / 4.1 / o3-mini)
+- [x] **6.1** `IAiProvider` abstraction + provider/API-key settings in Options (encrypted storage)
+- [x] **6.2** Llama.cpp (local) provider implementation, talks to a local Llama.cpp HTTP endpoint.
 - [ ] **6.4** AI Chat panel — AvalonDock anchorable, markdown rendering, streaming tokens
 - [ ] **6.5** Context injection — "Ask about selection" with file, selection, and diagnostics
 - [ ] **6.6** Project-wide context builder — file tree, packages, TFM for system prompt
@@ -38,5 +31,6 @@
 - [ ] **6.8** AI-powered Explain & Fix Diagnostic — right-click diagnostic integration
 - [ ] **6.9** Conversation history & context management — persist per-project, token budget
 - [ ] **6.10** Agent mode — plan/act/observe loop, surface steps in chat, require user confirmation
+- [ ] **6.3** OpenAI / Azure OpenAI provider implementation (GPT-4o / 4.1 / o3-mini)
 
 
