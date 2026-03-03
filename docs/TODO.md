@@ -88,9 +88,15 @@
   - QA: oldText appears more than once → fails with "N locations" error and hint to add more context
   - QA: Empty oldText → fails with explicit validation error
   - QA: File not found → returns "File not found" error
-- [ ] **8.4** `ListFilesTool` — list files in a directory or the project tree
+- [O] **8.4** `ListFilesTool` — list files in a directory or the project tree
     - Parameters: `directory` (string, optional — defaults to project root)
     - Returns a flat list of relative file paths
+  - QA: Call `list_files` with no `directory` argument → returns flat list of relative paths from project root, excluding bin/obj/.git
+  - QA: Call `list_files` with a valid relative subdirectory (e.g. `"Services"`) → returns only files under that subdirectory
+  - QA: Call `list_files` with an absolute path to an existing directory → returns files relative to that directory
+  - QA: Call `list_files` with a non-existent directory → returns "Directory not found" error
+  - QA: Open a project with more than 2000 files → result is truncated at 2000 entries with a trailing `... (truncated at 2000 files)` note
+  - QA: Directory contains `bin`, `obj`, `.git`, `node_modules` subdirectories → those are excluded from the output
 - [ ] **8.5** `SearchFilesTool` — search file contents with text or regex
     - Parameters: `query` (string), `directory` (string, optional), `isRegex` (bool, optional)
     - Returns matching file paths with line numbers and snippets
