@@ -61,6 +61,7 @@ internal sealed class LlamaCppProvider : IAiProvider, IDisposable
             serializedMessages.WriteTo(writer);
 
             writer.WriteBoolean("stream", true);
+            writer.WriteBoolean("cache_prompt", true);
 
             if (tools.ValueKind == JsonValueKind.Array && tools.GetArrayLength() > 0)
             {
