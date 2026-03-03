@@ -165,9 +165,11 @@ public partial class MainWindow : Window
             _viewModel.ProjectItems.FirstOrDefault(i => i.ItemType is ProjectItemType.Solution or ProjectItemType.Project)?.FullPath
             ?? _viewModel.ProjectItems.FirstOrDefault()?.FullPath;
 
+        Action<string> onFileChanged = _viewModel.NotifyFileChangedOnDisk;
+
         _agentToolRegistry.Register(new ReadFileTool(projectRoot));
-        _agentToolRegistry.Register(new WriteFileTool(projectRoot));
-        _agentToolRegistry.Register(new EditFileTool(projectRoot));
+        _agentToolRegistry.Register(new WriteFileTool(projectRoot, onFileChanged));
+        _agentToolRegistry.Register(new EditFileTool(projectRoot, onFileChanged));
         _agentToolRegistry.Register(new ListFilesTool(projectRoot));
         _agentToolRegistry.Register(new SearchFilesTool(projectRoot));
         _agentToolRegistry.Register(new RunBuildTool(_viewModel.BuildService, projectRoot));

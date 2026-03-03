@@ -31,11 +31,13 @@ internal sealed class EditFileTool : IAgentTool
         """).RootElement.Clone();
 
     private readonly Func<string?> _projectRootProvider;
+    private readonly Action<string>? _onFileChanged;
 
-    public EditFileTool(Func<string?> projectRootProvider)
+    public EditFileTool(Func<string?> projectRootProvider, Action<string>? onFileChanged = null)
     {
         ArgumentNullException.ThrowIfNull(projectRootProvider);
         _projectRootProvider = projectRootProvider;
+        _onFileChanged = onFileChanged;
     }
 
     public string Name => "edit_file";
@@ -113,6 +115,7 @@ internal sealed class EditFileTool : IAgentTool
         try
         {
             File.WriteAllText(resolvedPath, updatedContent);
+            _onFileChanged?.Invoke(resolvedPath);
         }
         catch (IOException ex)
         {

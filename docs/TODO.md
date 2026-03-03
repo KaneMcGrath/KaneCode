@@ -101,19 +101,11 @@
     - **Requires explicit user approval** before execution (security gate)
     - Returns stdout/stderr with a max output size limit
     - Timeout after configurable duration (default 30s)
-- [ ] **8.9** `GoToDefinitionTool` — find the definition of a symbol
-    - Parameters: `filePath` (string), `symbolName` (string) or `line`/`column`
-    - Uses `RoslynNavigationService.FindDefinitionAsync`
-    - Returns the file path, line, and surrounding code context
-- [ ] **8.10** `FindReferencesTool` — find all references to a symbol
+- [ ] **8.9** `FindReferencesTool` — find all references to a symbol
     - Parameters: `filePath` (string), `symbolName` (string) or `line`/`column`
     - Uses `RoslynNavigationService.FindReferencesAsync`
     - Returns list of locations with file, line, and snippet
-- [ ] **8.11** `GitStatusTool` — get current git status, branch, and changed files
-    - Uses existing `GitService` to return branch, staged/unstaged changes
-- [ ] **8.12** `GitDiffTool` — get the diff for a file or the entire working tree
-    - Parameters: `filePath` (string, optional)
-    - Returns unified diff output
+
 
 ### Phase 9 — Agent Mode
 

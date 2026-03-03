@@ -1037,6 +1037,58 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
         }
     }
 
+    /// <summary>
+    /// Reloads a file from disk into any open editor tab and updates the Roslyn workspace.
+    /// Called by agent tools after they write or edit a file so the editor and diagnostics
+    /// stay in sync with the on-disk content.
+    /// </summary>
+    internal void NotifyFileChangedOnDisk(string filePath)
+    {
+        ArgumentNullException.ThrowIfNull(filePath);
+
+        string content;
+        try
+        {
+            content = File.ReadAllText(filePath);
+        }
+        catch (IOException)
+        {
+            return;
+        }
+
+        // Dispatch to the UI thread so we can safely update the AvalonEdit TextDocument
+        Application.Current.Dispatcher.BeginInvoke(() =>
+        {
+            var tab = OpenTabs.FirstOrDefault(t =>
+                string.Equals(t.FilePath, filePath, StringComparison.OrdinalIgnoreCase));
+
+            if (tab is not null)
+            {
+                // Temporarily suppress the text-changed handler to avoid marking
+                // the file dirty or re-triggering analysis prematurely
+                _isActivating = true;
+                try
+                {
+                    tab.Document.Text = content;
+
+                    // The file on disk matches the editor now, so it is not dirty
+                    tab.IsDirty = false;
+                }
+                finally
+                {
+                    _isActivating = false;
+                }
+            }
+
+            // Update the Roslyn workspace so diagnostics reflect the new content
+            if (RoslynWorkspaceService.IsCSharpFile(filePath))
+            {
+                _ = _roslynService.OpenOrUpdateDocumentAsync(filePath, content);
+                ScheduleRoslynAnalysis();
+            }
+        });
+    }
+
     internal async Task<GitFileDiffResult?> GetFileDiffAsync(string relativePath)
     {
         if (string.IsNullOrWhiteSpace(relativePath))

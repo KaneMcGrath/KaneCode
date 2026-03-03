@@ -27,11 +27,13 @@ internal sealed class WriteFileTool : IAgentTool
         """).RootElement.Clone();
 
     private readonly Func<string?> _projectRootProvider;
+    private readonly Action<string>? _onFileChanged;
 
-    public WriteFileTool(Func<string?> projectRootProvider)
+    public WriteFileTool(Func<string?> projectRootProvider, Action<string>? onFileChanged = null)
     {
         ArgumentNullException.ThrowIfNull(projectRootProvider);
         _projectRootProvider = projectRootProvider;
+        _onFileChanged = onFileChanged;
     }
 
     public string Name => "write_file";
@@ -68,6 +70,7 @@ internal sealed class WriteFileTool : IAgentTool
             }
 
             File.WriteAllText(resolvedPath, content);
+            _onFileChanged?.Invoke(resolvedPath);
 
             var bytes = System.Text.Encoding.UTF8.GetByteCount(content);
             return Task.FromResult(ToolCallResult.Ok(

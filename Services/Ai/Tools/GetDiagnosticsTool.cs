@@ -55,6 +55,22 @@ internal sealed class GetDiagnosticsTool : IAgentTool
         var filePath = filePathElement.GetString()!.Trim();
         var resolvedPath = ResolvePath(filePath);
 
+        // Sync the Roslyn workspace with the latest on-disk content so diagnostics
+        // are never stale after agent file edits.
+        if (File.Exists(resolvedPath) && RoslynWorkspaceService.IsCSharpFile(resolvedPath))
+        {
+            try
+            {
+                var diskContent = File.ReadAllText(resolvedPath);
+                await _roslynService.OpenOrUpdateDocumentAsync(resolvedPath, diskContent, cancellationToken)
+                    .ConfigureAwait(false);
+            }
+            catch (IOException)
+            {
+                // Best-effort; fall through to existing diagnostics path.
+            }
+        }
+
         IReadOnlyList<Diagnostic> diagnostics;
         try
         {
