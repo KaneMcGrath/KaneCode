@@ -33,6 +33,25 @@ internal sealed class EditFileTool : IAgentTool
     private readonly Func<string?> _projectRootProvider;
     private readonly Action<string>? _onFileChanged;
 
+    /// <summary>
+    /// Normalizes line endings by converting CRLF to LF.
+    /// This ensures consistent internal representation regardless of platform.
+    /// </summary>
+    private static string NormalizeLineEndings(string content)
+    {
+        return content.Replace("\r\n", "\n").Replace("\r", "\n");
+    }
+
+    /// <summary>
+    /// Converts normalized LF line endings to platform-specific line endings.
+    /// On Windows, converts \n to \r\n. On other platforms, keeps \n.
+    /// </summary>
+    private static string ConvertToPlatformLineEndings(string normalizedContent)
+    {
+        var isWindows = Path.DirectorySeparatorChar == '\\';
+        return isWindows ? normalizedContent.Replace("\n", "\r\n") : normalizedContent;
+    }
+
     public EditFileTool(Func<string?> projectRootProvider, Action<string>? onFileChanged = null)
     {
         ArgumentNullException.ThrowIfNull(projectRootProvider);
@@ -70,6 +89,10 @@ internal sealed class EditFileTool : IAgentTool
         var oldText = oldTextElement.GetString() ?? string.Empty;
         var newText = newTextElement.GetString() ?? string.Empty;
 
+        // Normalize line endings for both oldText and newText
+        oldText = NormalizeLineEndings(oldText);
+        newText = NormalizeLineEndings(newText);
+
         if (oldText.Length == 0)
         {
             return Task.FromResult(ToolCallResult.Fail("oldText must not be empty"));
@@ -96,7 +119,10 @@ internal sealed class EditFileTool : IAgentTool
             return Task.FromResult(ToolCallResult.Fail($"Access denied: {ex.Message}"));
         }
 
-        var matchCount = CountOccurrences(originalContent, oldText);
+        // Normalize the file content to LF for consistent matching
+        var normalizedContent = NormalizeLineEndings(originalContent);
+
+        var matchCount = CountOccurrences(normalizedContent, oldText);
 
         if (matchCount == 0)
         {
@@ -110,11 +136,15 @@ internal sealed class EditFileTool : IAgentTool
                 $"oldText matches {matchCount} locations in '{filePath}'. Provide more surrounding context to make it unique."));
         }
 
-        var updatedContent = originalContent.Replace(oldText, newText, StringComparison.Ordinal);
+        // Perform the replacement on normalized content
+        var updatedNormalizedContent = normalizedContent.Replace(oldText, newText, StringComparison.Ordinal);
+
+        // Convert back to platform-specific line endings before writing
+        var finalContent = ConvertToPlatformLineEndings(updatedNormalizedContent);
 
         try
         {
-            File.WriteAllText(resolvedPath, updatedContent);
+            File.WriteAllText(resolvedPath, finalContent);
             _onFileChanged?.Invoke(resolvedPath);
         }
         catch (IOException ex)
@@ -126,7 +156,8 @@ internal sealed class EditFileTool : IAgentTool
             return Task.FromResult(ToolCallResult.Fail($"Access denied: {ex.Message}"));
         }
 
-        var lineNumber = GetLineNumber(originalContent, originalContent.IndexOf(oldText, StringComparison.Ordinal));
+        // Calculate line number in the normalized content
+        var lineNumber = GetLineNumber(normalizedContent, normalizedContent.IndexOf(oldText, StringComparison.Ordinal));
         return Task.FromResult(ToolCallResult.Ok(
             $"Edit applied at line {lineNumber} in '{resolvedPath}'."));
     }

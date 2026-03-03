@@ -1,4 +1,4 @@
-﻿# Kane Code — Development Tracker
+# Kane Code — Development Tracker
 
 > This file tracks implementation progress across all phases.
 >
@@ -12,6 +12,7 @@
 ## Status Key
 
 - `[ ]` — Not started
+- `[-]` — Skip
 - `[~]` — In progress
 - `[O]` — Awaiting review
 - `[x]` — Complete
@@ -96,15 +97,11 @@
     - Parameters: `filePath` (string)
     - Returns the list of errors/warnings with line numbers and messages
     - Uses existing `RoslynWorkspaceService.GetDiagnosticsAsync`
-- [ ] **8.8** `RunCommandTool` — execute a shell command (with user confirmation)
+- [-] **8.8** `RunCommandTool` — execute a shell command (with user confirmation)
     - Parameters: `command` (string), `workingDirectory` (string, optional)
     - **Requires explicit user approval** before execution (security gate)
     - Returns stdout/stderr with a max output size limit
     - Timeout after configurable duration (default 30s)
-- [ ] **8.9** `FindReferencesTool` — find all references to a symbol
-    - Parameters: `filePath` (string), `symbolName` (string) or `line`/`column`
-    - Uses `RoslynNavigationService.FindReferencesAsync`
-    - Returns list of locations with file, line, and snippet
 
 
 ### Phase 9 — Agent Mode
