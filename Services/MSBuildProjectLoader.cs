@@ -18,6 +18,7 @@ internal static class MSBuildProjectLoader
 {
     private static bool _msBuildRegistered;
     private static readonly object _registerLock = new();
+    private static readonly string[] s_generatedSourcePatterns = ["*.g.cs", "*.g.i.cs"];
 
     /// <summary>
     /// Ensures MSBuild is registered via MSBuildLocator. Must be called before any MSBuild API usage.
@@ -206,13 +207,31 @@ internal static class MSBuildProjectLoader
 
         // Collect source files
         var sourceFiles = new List<string>();
+        var addedSourceFiles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        void AddSourceFile(string path)
+        {
+            if (!File.Exists(path))
+            {
+                return;
+            }
+
+            if (addedSourceFiles.Add(path))
+            {
+                sourceFiles.Add(path);
+            }
+        }
+
         foreach (var item in project.GetItems("Compile"))
         {
             var filePath = Path.GetFullPath(Path.Combine(projectDir, item.EvaluatedInclude));
-            if (File.Exists(filePath))
-            {
-                sourceFiles.Add(filePath);
-            }
+            AddSourceFile(filePath);
+        }
+
+        var configuration = project.GetPropertyValue("Configuration");
+        foreach (var generatedSourceFile in GetGeneratedSourceFiles(projectDir, targetFramework, configuration))
+        {
+            AddSourceFile(generatedSourceFile);
         }
 
         // Collect ProjectReference paths for cross-project resolution
@@ -381,6 +400,67 @@ internal static class MSBuildProjectLoader
         }
 
         return dirs.FirstOrDefault().Path;
+    }
+
+    private static IReadOnlyList<string> GetGeneratedSourceFiles(
+        string projectDir,
+        string targetFramework,
+        string configuration)
+    {
+        var objDir = Path.Combine(projectDir, "obj");
+        if (!Directory.Exists(objDir))
+        {
+            return [];
+        }
+
+        var candidateDirs = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        if (!string.IsNullOrWhiteSpace(configuration) && !string.IsNullOrWhiteSpace(targetFramework))
+        {
+            var configuredTargetDir = Path.Combine(objDir, configuration, targetFramework);
+            if (Directory.Exists(configuredTargetDir))
+            {
+                candidateDirs.Add(configuredTargetDir);
+            }
+
+            var configurationDir = Path.Combine(objDir, configuration);
+            var bestConfiguredTfmDir = FindBestTfmDirectory(configurationDir, targetFramework);
+            if (!string.IsNullOrWhiteSpace(bestConfiguredTfmDir))
+            {
+                candidateDirs.Add(bestConfiguredTfmDir);
+            }
+        }
+
+        if (!string.IsNullOrWhiteSpace(targetFramework))
+        {
+            foreach (var dir in Directory.EnumerateDirectories(objDir, targetFramework, SearchOption.AllDirectories))
+            {
+                candidateDirs.Add(dir);
+            }
+        }
+
+        var generatedFiles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var dir in candidateDirs)
+        {
+            foreach (var pattern in s_generatedSourcePatterns)
+            {
+                foreach (var file in Directory.EnumerateFiles(dir, pattern, SearchOption.TopDirectoryOnly))
+                {
+                    generatedFiles.Add(file);
+                }
+            }
+        }
+
+        // Implicit usings are generated into *.GlobalUsings.g.cs; include them broadly
+        // so analysis stays accurate even when TFM directory naming differs.
+        foreach (var globalUsingsFile in Directory.EnumerateFiles(objDir, "*.GlobalUsings.g.cs", SearchOption.AllDirectories))
+        {
+            generatedFiles.Add(globalUsingsFile);
+        }
+
+        return generatedFiles
+            .OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
+            .ToList();
     }
 
     private static string? GetNuGetPackagesPath()
