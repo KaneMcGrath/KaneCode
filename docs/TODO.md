@@ -26,29 +26,20 @@
 - [x] **6.2** Llama.cpp (local) provider implementation, talks to a local Llama.cpp HTTP endpoint.
 - [x] **6.3** AI Chat panel — AvalonDock anchorable, markdown rendering, streaming tokens
 - [x] **6.4** Reference addition — Add references to files, classes, or methods in the codebase
-- [O] **6.5** Context injection — "Ask about selection" with file, selection, and diagnostics
-  - QA: In editor, select code, right-click, click "Ask AI About Selection" → AI Chat opens with prefilled prompt
-  - QA: Confirm system message appears saying selection context was added for next message
-  - QA: Send message once → selection/file/diagnostic context is included in the AI request
-  - QA: Send a second message without re-running action → previous selection context is NOT re-sent
-  - QA: No selection case shows "No Selection" prompt and does not open Ask flow
-- [O] **6.6** Project-wide context builder — file tree, packages, TFM for system prompt
-  - QA: Open AI chat and send first message in a loaded project → verify model is aware of project TFM/packages/file tree context
-  - QA: Clear chat and send again → project context is re-injected once for the new conversation
-  - QA: Subsequent messages in same conversation do not repeatedly duplicate project context
-  - QA: Multi-project solution includes each project's TFM and package metadata in context
-- [O] **6.7** Conversation history & context management — persist per-project, token budget
-  - QA: Send several chat turns, close app, reopen same project → prior conversation history is loaded
-  - QA: Open a different project → conversation history is separate per project key
-  - QA: Click Clear in chat → in-memory and persisted history are both cleared
-  - QA: Create a very long conversation and continue sending → recent context is kept while old context is trimmed by token budget
+- [x] **6.5** Context injection — "Ask about selection" with file, selection, and diagnostics
+- [x] **6.6** Project-wide context builder — file tree, packages, TFM for system prompt
+- [x] **6.7** Conversation history & context management — persist per-project, token budget
 
 ### Phase 7 — Tool Calling Infrastructure
 
-- [ ] **7.1** Tool definition framework — `IAgentTool` interface, tool registry, JSON schema generation
+- [O] **7.1** Tool definition framework — `IAgentTool` interface, tool registry, JSON schema generation
     - `IAgentTool` with `Name`, `Description`, `ParametersSchema` (JSON Schema), `ExecuteAsync(JsonElement args)`
     - `AgentToolRegistry` to register/discover tools and serialize the tool list for the API
     - Shared `ToolCallResult` record with `Success`, `Output`, `Error` fields
+  - QA: Verify `IAgentTool` interface compiles and exposes Name, Description, ParametersSchema, ExecuteAsync
+  - QA: Verify `ToolCallResult.Ok("output")` and `ToolCallResult.Fail("error")` factory methods work
+  - QA: Register tools into `AgentToolRegistry`, call `Get(name)` → returns correct tool
+  - QA: Call `SerializeToolDefinitions()` → returns valid JSON array with type/function/name/description/parameters
 - [ ] **7.2** Tool-call message flow — extend `IAiProvider` and `AiChatMessage` for tool calls
     - Add `AiChatRole.Tool` and `ToolCallId` to `AiChatMessage`
     - Extend `AiStreamToken` with `AiStreamTokenType.ToolCall` carrying function name + arguments JSON
