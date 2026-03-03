@@ -30,17 +30,25 @@
             </DockPanel>
         </Border>
 
-        <!-- Output text -->
+        <!-- Output text (selectable read-only TextBox so users can copy output) -->
         <ScrollViewer x:Name="OutputScroller"
                       VerticalScrollBarVisibility="Auto"
                       HorizontalScrollBarVisibility="Auto"
                       Background="{DynamicResource ErrorListBackground}">
-            <TextBlock x:Name="OutputText"
-                       FontFamily="Cascadia Code, Consolas, Courier New"
-                       FontSize="12"
-                       Foreground="{DynamicResource ErrorListForeground}"
-                       Padding="8,4"
-                       TextWrapping="NoWrap" />
+            <TextBox x:Name="OutputText"
+                     FontFamily="Cascadia Code, Consolas, Courier New"
+                     FontSize="12"
+                     Foreground="{DynamicResource ErrorListForeground}"
+                     Padding="8,4"
+                     TextWrapping="NoWrap"
+                     IsReadOnly="True"
+                     BorderThickness="0"
+                     Background="Transparent"
+                     AcceptsReturn="True"
+                     AcceptsTab="True"
+                     VerticalScrollBarVisibility="Hidden"
+                     HorizontalScrollBarVisibility="Hidden"
+                     IsReadOnlyCaretVisible="False" />
         </ScrollViewer>
     </DockPanel>
 </UserControl>
