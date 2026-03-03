@@ -8,11 +8,16 @@
     <!-- Menu -->
     <SolidColorBrush x:Key="MenuBackground" Color="#E8E8E8" />
     <SolidColorBrush x:Key="MenuForeground" Color="#1E1E1E" />
-    <SolidColorBrush x:Key="MenuItemHighlight" Color="#C9DEF5" />
+    <SolidColorBrush x:Key="MenuItemHighlight" Color="#BF3000" />
     <SolidColorBrush x:Key="MenuPopupBackground" Color="#F0F0F0" />
     <SolidColorBrush x:Key="MenuPopupBorder" Color="#CCCCCC" />
     <SolidColorBrush x:Key="MenuSeparator" Color="#D0D0D0" />
     <SolidColorBrush x:Key="MenuItemDisabledForeground" Color="#A0A0A0" />
+
+    <!-- Buttons -->
+    <SolidColorBrush x:Key="ButtonMouseOverBackground" Color="#BF3000" />
+    <SolidColorBrush x:Key="ButtonPressedBackground" Color="#9B2400" />
+    <SolidColorBrush x:Key="ButtonPressedForeground" Color="#FFFFFF" />
 
     <!-- Status bar -->
     <SolidColorBrush x:Key="StatusBarBackground" Color="#BF3000" />
@@ -50,6 +55,7 @@
     <!-- TreeView -->
     <SolidColorBrush x:Key="TreeViewItemSelectedBackground" Color="#BF3000" />
     <SolidColorBrush x:Key="TreeViewItemSelectedForeground" Color="#1E1E1E" />
+    <SolidColorBrush x:Key="TreeViewItemMouseOverBackground" Color="#E0E0E0" />
 
     <!-- Roslyn semantic classification -->
     <SolidColorBrush x:Key="RoslynTypeForeground" Color="#267F99" />

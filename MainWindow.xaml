@@ -230,6 +230,15 @@ Icon="Icons/KaneCode.ico">
                                             <Setter Property="IsExpanded" Value="{Binding IsExpanded, Mode=TwoWay}" />
                                             <Setter Property="IsSelected" Value="{Binding IsSelected, Mode=TwoWay}" />
                                             <Setter Property="Foreground" Value="{DynamicResource PanelForeground}" />
+                                            <Style.Triggers>
+                                                <Trigger Property="IsMouseOver" Value="True">
+                                                    <Setter Property="Background" Value="{DynamicResource TreeViewItemMouseOverBackground}" />
+                                                </Trigger>
+                                                <Trigger Property="IsSelected" Value="True">
+                                                    <Setter Property="Background" Value="{DynamicResource TreeViewItemSelectedBackground}" />
+                                                    <Setter Property="Foreground" Value="{DynamicResource TreeViewItemSelectedForeground}" />
+                                                </Trigger>
+                                            </Style.Triggers>
                                         </Style>
                                     </TreeView.ItemContainerStyle>
                                 </TreeView>

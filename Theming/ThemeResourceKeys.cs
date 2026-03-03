@@ -18,6 +18,11 @@ internal static class ThemeResourceKeys
     public const string MenuSeparator = nameof(MenuSeparator);
     public const string MenuItemDisabledForeground = nameof(MenuItemDisabledForeground);
 
+    // Buttons
+    public const string ButtonMouseOverBackground = nameof(ButtonMouseOverBackground);
+    public const string ButtonPressedBackground = nameof(ButtonPressedBackground);
+    public const string ButtonPressedForeground = nameof(ButtonPressedForeground);
+
     // Status bar
     public const string StatusBarBackground = nameof(StatusBarBackground);
     public const string StatusBarForeground = nameof(StatusBarForeground);
@@ -54,6 +59,7 @@ internal static class ThemeResourceKeys
     // TreeView
     public const string TreeViewItemSelectedBackground = nameof(TreeViewItemSelectedBackground);
     public const string TreeViewItemSelectedForeground = nameof(TreeViewItemSelectedForeground);
+    public const string TreeViewItemMouseOverBackground = nameof(TreeViewItemMouseOverBackground);
 
     // Roslyn semantic classification
     public const string RoslynTypeForeground = nameof(RoslynTypeForeground);

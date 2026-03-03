@@ -160,4 +160,35 @@
         <Setter Property="Foreground" Value="{DynamicResource MenuForeground}" />
     </Style>
 
+    <!-- Button style for themed buttons -->
+    <ControlTemplate x:Key="ButtonTemplate" TargetType="Button">
+        <Border x:Name="Border"
+                Background="{TemplateBinding Background}"
+                BorderBrush="{TemplateBinding BorderBrush}"
+                BorderThickness="{TemplateBinding BorderThickness}"
+                Padding="{TemplateBinding Padding}">
+            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+        </Border>
+        <ControlTemplate.Triggers>
+            <Trigger Property="IsMouseOver" Value="True">
+                <Setter TargetName="Border" Property="Background"
+                        Value="{DynamicResource ButtonMouseOverBackground}" />
+            </Trigger>
+            <Trigger Property="IsPressed" Value="True">
+                <Setter TargetName="Border" Property="Background"
+                        Value="{DynamicResource ButtonPressedBackground}" />
+                <Setter Property="Foreground"
+                        Value="{DynamicResource ButtonPressedForeground}" />
+            </Trigger>
+            <Trigger Property="IsEnabled" Value="False">
+                <Setter TargetName="Border" Property="Opacity" Value="0.5" />
+            </Trigger>
+        </ControlTemplate.Triggers>
+    </ControlTemplate>
+
+    <Style TargetType="Button">
+        <Setter Property="Template" Value="{StaticResource ButtonTemplate}" />
+        <Setter Property="Foreground" Value="{DynamicResource MenuForeground}" />
+    </Style>
+
 </ResourceDictionary>
