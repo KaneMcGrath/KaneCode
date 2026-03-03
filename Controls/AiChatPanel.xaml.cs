@@ -2,6 +2,7 @@ using KaneCode.Models;
 using KaneCode.Services.Ai;
 using System.Diagnostics;
 using System.IO;
+using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Windows;
 using System.Windows.Controls;
@@ -25,7 +26,11 @@ public partial class AiChatPanel : UserControl
     private bool _isStreaming;
     private AiUsageStats? _lastUsageStats;
     private Func<IReadOnlyList<ProjectItem>>? _projectItemsProvider;
+    private Func<string?>? _projectConversationKeyProvider;
     private ListBox? _mentionPopup;
+    private string? _pendingSelectionContext;
+    private bool _projectContextInjected;
+    private const int OutboundTokenBudget = 12000;
 
     public AiChatPanel()
     {
@@ -39,6 +44,7 @@ public partial class AiChatPanel : UserControl
     {
         _provider = provider;
         _model = model;
+        _projectContextInjected = false;
         ProviderLabel.Text = provider is not null
             ? $"{provider.DisplayName}"
             : "No provider";
@@ -50,6 +56,165 @@ public partial class AiChatPanel : UserControl
     internal void SetProjectItemsProvider(Func<IReadOnlyList<ProjectItem>> provider)
     {
         _projectItemsProvider = provider;
+    }
+
+    /// <summary>
+    /// Sets a callback that returns a stable key representing the active project/solution
+    /// for persisted conversation history.
+    /// </summary>
+    internal void SetConversationProjectKeyProvider(Func<string?> provider)
+    {
+        _projectConversationKeyProvider = provider;
+        TryLoadPersistedConversation();
+    }
+
+    /// <summary>
+    /// Prepares one-shot context for "Ask AI about selection" using the current file,
+    /// selected code, and matching diagnostics. Context is injected into the next message only.
+    /// </summary>
+    internal void AskAboutSelection(string filePath, string selection, IReadOnlyList<DiagnosticItem> diagnostics)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(filePath);
+        ArgumentException.ThrowIfNullOrWhiteSpace(selection);
+
+        var sb = new System.Text.StringBuilder();
+        sb.AppendLine("Selection context:");
+        sb.AppendLine($"File: {filePath}");
+        sb.AppendLine();
+        sb.AppendLine("Selected code:");
+        sb.AppendLine("```csharp");
+        sb.AppendLine(selection);
+        sb.AppendLine("```");
+
+        if (diagnostics.Count > 0)
+        {
+            sb.AppendLine();
+            sb.AppendLine("Diagnostics overlapping this selection:");
+
+            foreach (var d in diagnostics)
+            {
+                sb.AppendLine($"- {d.Severity} {d.Code} at line {d.Line}, col {d.Column}: {d.Message}");
+            }
+        }
+
+        _pendingSelectionContext = sb.ToString();
+
+        if (string.IsNullOrWhiteSpace(InputBox.Text))
+        {
+            InputBox.Text = "Can you explain this selection and suggest fixes if needed?";
+            InputBox.CaretIndex = InputBox.Text.Length;
+        }
+
+        AppendSystemMessage("Selection context added for the next message.");
+    }
+
+    /// <summary>
+    /// Focuses the chat input textbox and places caret at the end.
+    /// </summary>
+    internal void FocusInput()
+    {
+        InputBox.Focus();
+        InputBox.CaretIndex = InputBox.Text.Length;
+    }
+
+    // ── Conversation persistence and token budgeting ───────────────
+
+    private void TryLoadPersistedConversation()
+    {
+        var key = _projectConversationKeyProvider?.Invoke();
+        if (string.IsNullOrWhiteSpace(key))
+        {
+            return;
+        }
+
+        try
+        {
+            var loaded = AiConversationStore.Load(key);
+            _conversationHistory.Clear();
+            _conversationHistory.AddRange(loaded);
+
+            if (loaded.Count > 0)
+            {
+                AppendSystemMessage($"Loaded {loaded.Count} prior messages for this project.");
+            }
+        }
+        catch (IOException ex)
+        {
+            AppendSystemMessage($"Could not load saved conversation history: {ex.Message}");
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            AppendSystemMessage($"Could not load saved conversation history: {ex.Message}");
+        }
+        catch (InvalidDataException ex)
+        {
+            AppendSystemMessage($"Saved conversation history is invalid: {ex.Message}");
+        }
+        catch (JsonException ex)
+        {
+            AppendSystemMessage($"Saved conversation history JSON is invalid: {ex.Message}");
+        }
+    }
+
+    private void SavePersistedConversation()
+    {
+        var key = _projectConversationKeyProvider?.Invoke();
+        if (string.IsNullOrWhiteSpace(key))
+        {
+            return;
+        }
+
+        try
+        {
+            AiConversationStore.Save(key, _conversationHistory);
+        }
+        catch (IOException ex)
+        {
+            AppendSystemMessage($"Could not save conversation history: {ex.Message}");
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            AppendSystemMessage($"Could not save conversation history: {ex.Message}");
+        }
+    }
+
+    private IReadOnlyList<AiChatMessage> BuildBudgetedContextWindow()
+    {
+        if (_conversationHistory.Count == 0)
+        {
+            return [];
+        }
+
+        var total = 0;
+        var selected = new List<AiChatMessage>();
+
+        for (var i = _conversationHistory.Count - 1; i >= 0; i--)
+        {
+            var message = _conversationHistory[i];
+            var cost = EstimateTokens(message.Content);
+
+            if (selected.Count > 0 && total + cost > OutboundTokenBudget)
+            {
+                break;
+            }
+
+            selected.Add(message);
+            total += cost;
+        }
+
+        selected.Reverse();
+        return selected;
+    }
+
+    private static int EstimateTokens(string text)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return 1;
+        }
+
+        // Heuristic token estimate (roughly 4 chars/token average)
+        return Math.Max(1, text.Length / 4);
     }
 
     // ── Reference management ───────────────────────────────────────
@@ -417,6 +582,25 @@ public partial class AiChatPanel : UserControl
         CancelStreaming();
         _conversationHistory.Clear();
         MessagePanel.Children.Clear();
+        _pendingSelectionContext = null;
+        _projectContextInjected = false;
+
+        var key = _projectConversationKeyProvider?.Invoke();
+        if (!string.IsNullOrWhiteSpace(key))
+        {
+            try
+            {
+                AiConversationStore.Clear(key);
+            }
+            catch (IOException ex)
+            {
+                AppendSystemMessage($"Could not clear conversation history: {ex.Message}");
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                AppendSystemMessage($"Could not clear conversation history: {ex.Message}");
+            }
+        }
     }
 
     private async Task SendMessageAsync()
@@ -443,17 +627,46 @@ public partial class AiChatPanel : UserControl
         // Display user message
         AppendUserMessage(text);
 
-        // Add to history (with reference context injected if any references are attached)
+        // Inject project-wide system context once per conversation
+        if (!_projectContextInjected)
+        {
+            var projectItems = _projectItemsProvider?.Invoke() ?? [];
+            var projectContext = AiProjectContextBuilder.Build(projectItems);
+
+            if (!string.IsNullOrWhiteSpace(projectContext))
+            {
+                _conversationHistory.Add(new AiChatMessage(AiChatRole.System, projectContext));
+            }
+
+            _projectContextInjected = true;
+        }
+
+        // Add to history with context injection (references + one-shot selection context)
         var referenceContext = BuildReferenceContext();
+
+        var combinedContext = new System.Text.StringBuilder();
         if (!string.IsNullOrEmpty(referenceContext))
         {
-            var userMessageWithContext = $"{referenceContext}\n{text}";
+            combinedContext.AppendLine(referenceContext);
+        }
+
+        if (!string.IsNullOrEmpty(_pendingSelectionContext))
+        {
+            combinedContext.AppendLine(_pendingSelectionContext);
+            _pendingSelectionContext = null; // one-shot context
+        }
+
+        if (combinedContext.Length > 0)
+        {
+            var userMessageWithContext = $"{combinedContext}\n{text}";
             _conversationHistory.Add(new AiChatMessage(AiChatRole.User, userMessageWithContext));
         }
         else
         {
             _conversationHistory.Add(new AiChatMessage(AiChatRole.User, text));
         }
+
+        SavePersistedConversation();
 
         // Stream assistant response
         _isStreaming = true;
@@ -479,7 +692,9 @@ public partial class AiChatPanel : UserControl
         {
             var model = _model ?? _provider.AvailableModels.FirstOrDefault() ?? "default";
 
-            await foreach (var token in _provider.StreamCompletionAsync(_conversationHistory, model, ct)
+            var outboundWindow = BuildBudgetedContextWindow();
+
+            await foreach (var token in _provider.StreamCompletionAsync(outboundWindow, model, ct)
                 .ConfigureAwait(false))
             {
                 if (token.Type == AiStreamTokenType.Usage)
@@ -545,6 +760,7 @@ public partial class AiChatPanel : UserControl
 
             // Record final response in history
             _conversationHistory.Add(new AiChatMessage(AiChatRole.Assistant, responseBuilder.ToString()));
+            SavePersistedConversation();
         }
         catch (OperationCanceledException)
         {
@@ -552,6 +768,7 @@ public partial class AiChatPanel : UserControl
             if (responseBuilder.Length > 0)
             {
                 _conversationHistory.Add(new AiChatMessage(AiChatRole.Assistant, responseBuilder.ToString()));
+                SavePersistedConversation();
             }
         }
         catch (Exception ex)

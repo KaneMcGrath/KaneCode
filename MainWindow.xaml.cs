@@ -146,6 +146,9 @@ public partial class MainWindow : Window
                        ?? AiSettingsManager.Load().FirstOrDefault();
         AiChatPanel.Configure(provider, settings?.SelectedModel);
         AiChatPanel.SetProjectItemsProvider(() => _viewModel.ProjectItems);
+        AiChatPanel.SetConversationProjectKeyProvider(() =>
+            _viewModel.ProjectItems.FirstOrDefault(i => i.ItemType is ProjectItemType.Solution or ProjectItemType.Project)?.FullPath
+            ?? _viewModel.ProjectItems.FirstOrDefault()?.FullPath);
     }
 
     /// <summary>
@@ -835,6 +838,39 @@ public partial class MainWindow : Window
     private async void EditorContextMenu_ExtractMethod(object sender, RoutedEventArgs e)
     {
         await _viewModel.ExtractMethodAsync();
+    }
+
+    private void EditorContextMenu_AskAboutSelection(object sender, RoutedEventArgs e)
+    {
+        var selection = CodeEditor.SelectedText;
+        if (string.IsNullOrWhiteSpace(selection))
+        {
+            MessageBox.Show("Select some code first, then try 'Ask AI About Selection'.", "No Selection",
+                MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        var filePath = _viewModel.ActiveTab?.FilePath;
+        if (string.IsNullOrWhiteSpace(filePath))
+        {
+            MessageBox.Show("No active file is open.", "Ask AI About Selection",
+                MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        var selectionStart = CodeEditor.SelectionStart;
+        var selectionEnd = selectionStart + CodeEditor.SelectionLength;
+
+        var diagnostics = _viewModel.DiagnosticItems
+            .Where(d => d.FilePath.Equals(filePath, StringComparison.OrdinalIgnoreCase))
+            .Where(d => d.EndOffset >= selectionStart && d.StartOffset <= selectionEnd)
+            .OrderBy(d => d.StartOffset)
+            .Take(20)
+            .ToList();
+
+        AiChatPanel.AskAboutSelection(filePath, selection, diagnostics);
+        ShowLayoutAnchorable(AiChatAnchorable);
+        AiChatPanel.FocusInput();
     }
 
     // ── Explorer context menu ──────────────────────────────────────────

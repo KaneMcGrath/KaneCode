@@ -334,6 +334,8 @@ Icon="Icons/KaneCode.ico">
                                                           InputGestureText="F2" />
                                                 <MenuItem Header="_Extract Method" Click="EditorContextMenu_ExtractMethod"
                                                           InputGestureText="Ctrl+Shift+M" />
+                                                <Separator />
+                                                <MenuItem Header="Ask AI About _Selection" Click="EditorContextMenu_AskAboutSelection" />
                                             </ContextMenu>
                                         </avalonEdit:TextEditor.ContextMenu>
                                     </avalonEdit:TextEditor>
