@@ -15,7 +15,7 @@
     <SolidColorBrush x:Key="MenuItemDisabledForeground" Color="#656565" />
 
     <!-- Status bar -->
-    <SolidColorBrush x:Key="StatusBarBackground" Color="#007ACC" />
+    <SolidColorBrush x:Key="StatusBarBackground" Color="#BF3000" />
     <SolidColorBrush x:Key="StatusBarForeground" Color="#FFFFFF" />
 
     <!-- Side panels -->
@@ -48,7 +48,7 @@
     <SolidColorBrush x:Key="SyntaxTypeForeground" Color="#4EC9B0" />
 
     <!-- TreeView -->
-    <SolidColorBrush x:Key="TreeViewItemSelectedBackground" Color="#094771" />
+    <SolidColorBrush x:Key="TreeViewItemSelectedBackground" Color="#BF3000" />
     <SolidColorBrush x:Key="TreeViewItemSelectedForeground" Color="#FFFFFF" />
 
     <!-- Roslyn semantic classification -->
@@ -78,11 +78,11 @@
     <!-- Completion popup -->
     <SolidColorBrush x:Key="CompletionBackground" Color="#252526" />
     <SolidColorBrush x:Key="CompletionForeground" Color="#D4D4D4" />
-    <SolidColorBrush x:Key="CompletionSelectedBackground" Color="#094771" />
+    <SolidColorBrush x:Key="CompletionSelectedBackground" Color="#BF3000" />
     <SolidColorBrush x:Key="CompletionBorder" Color="#3E3E42" />
 
     <!-- Options window -->
-    <SolidColorBrush x:Key="OptionsSelectedCategoryBackground" Color="#094771" />
+    <SolidColorBrush x:Key="OptionsSelectedCategoryBackground" Color="#BF3000" />
     <SolidColorBrush x:Key="OptionsSelectedCategoryForeground" Color="#FFFFFF" />
     <SolidColorBrush x:Key="OptionsHoverCategoryBackground" Color="#2A2D2E" />
 
@@ -96,7 +96,7 @@
     <SolidColorBrush x:Key="ErrorListForeground" Color="#D4D4D4" />
     <SolidColorBrush x:Key="ErrorListHeaderBackground" Color="#2D2D2D" />
     <SolidColorBrush x:Key="ErrorListHeaderForeground" Color="#D4D4D4" />
-    <SolidColorBrush x:Key="ErrorListSelectedBackground" Color="#094771" />
+    <SolidColorBrush x:Key="ErrorListSelectedBackground" Color="#BF3000" />
     <SolidColorBrush x:Key="ErrorListGridLine" Color="#3E3E42" />
 
     <!-- AI Chat panel -->
@@ -107,19 +107,19 @@
     <SolidColorBrush x:Key="AiChatHeaderForeground" Color="#D4D4D4" />
     <SolidColorBrush x:Key="AiChatBorder" Color="#3E3E42" />
     <SolidColorBrush x:Key="AiChatInputBackground" Color="#252526" />
-    <SolidColorBrush x:Key="AiChatUserBubble" Color="#264F78" />
+    <SolidColorBrush x:Key="AiChatUserBubble" Color="#BF3000" />
     <SolidColorBrush x:Key="AiChatUserForeground" Color="#FFFFFF" />
     <SolidColorBrush x:Key="AiChatAssistantBubble" Color="#2D2D30" />
     <SolidColorBrush x:Key="AiChatAssistantForeground" Color="#D4D4D4" />
     <SolidColorBrush x:Key="AiChatCodeBlockBackground" Color="#1A1A1A" />
     <SolidColorBrush x:Key="AiChatCodeForeground" Color="#CE9178" />
-    <SolidColorBrush x:Key="AiChatSendButtonBackground" Color="#0E639C" />
+    <SolidColorBrush x:Key="AiChatSendButtonBackground" Color="#BF3000" />
     <SolidColorBrush x:Key="AiChatSendButtonForeground" Color="#FFFFFF" />
-    <SolidColorBrush x:Key="AiChatThinkingBackground" Color="#1A2332" />
-    <SolidColorBrush x:Key="AiChatThinkingForeground" Color="#9CDCFE" />
-    <SolidColorBrush x:Key="AiChatThinkingBorder" Color="#264F78" />
-    <SolidColorBrush x:Key="AiChatRefTagBackground" Color="#2D3748" />
-    <SolidColorBrush x:Key="AiChatRefTagForeground" Color="#A0C4E8" />
+    <SolidColorBrush x:Key="AiChatThinkingBackground" Color="#2A1005" />
+    <SolidColorBrush x:Key="AiChatThinkingForeground" Color="#FFD4C2" />
+    <SolidColorBrush x:Key="AiChatThinkingBorder" Color="#BF3000" />
+    <SolidColorBrush x:Key="AiChatRefTagBackground" Color="#3D1A10" />
+    <SolidColorBrush x:Key="AiChatRefTagForeground" Color="#FFB4A4" />
 
     <!-- AI Chat tool-call blocks -->
     <SolidColorBrush x:Key="AiChatToolCallBackground" Color="#1E2A38" />
