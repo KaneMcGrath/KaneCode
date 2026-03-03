@@ -27,10 +27,12 @@ public partial class AiChatPanel : UserControl
     private AiUsageStats? _lastUsageStats;
     private Func<IReadOnlyList<ProjectItem>>? _projectItemsProvider;
     private Func<string?>? _projectConversationKeyProvider;
+    private AgentToolRegistry? _toolRegistry;
     private ListBox? _mentionPopup;
     private string? _pendingSelectionContext;
     private bool _projectContextInjected;
     private const int OutboundTokenBudget = 12000;
+    private const int MaxToolCallIterations = 20;
 
     public AiChatPanel()
     {
@@ -66,6 +68,14 @@ public partial class AiChatPanel : UserControl
     {
         _projectConversationKeyProvider = provider;
         TryLoadPersistedConversation();
+    }
+
+    /// <summary>
+    /// Sets the tool registry for agent mode tool calling.
+    /// </summary>
+    internal void SetToolRegistry(AgentToolRegistry registry)
+    {
+        _toolRegistry = registry;
     }
 
     /// <summary>
@@ -675,11 +685,6 @@ public partial class AiChatPanel : UserControl
         SendButton.Click -= SendButton_Click;
         SendButton.Click += StopButton_Click;
 
-        var responseBuilder = new System.Text.StringBuilder();
-        var reasoningBuilder = new System.Text.StringBuilder();
-        var assistantBlock = CreateAssistantMessageBlock();
-        Expander? thinkingExpander = null;
-        TextBlock? thinkingTextBlock = null;
         var reasoningTokenCount = 0;
         var contentTokenCount = 0;
         var streamStopwatch = Stopwatch.StartNew();
@@ -691,85 +696,181 @@ public partial class AiChatPanel : UserControl
         try
         {
             var model = _model ?? _provider.AvailableModels.FirstOrDefault() ?? "default";
+            var toolsDef = _toolRegistry is { HasTools: true }
+                ? _toolRegistry.SerializeToolDefinitions()
+                : default;
 
-            var outboundWindow = BuildBudgetedContextWindow();
+            var iteration = 0;
 
-            await foreach (var token in _provider.StreamCompletionAsync(outboundWindow, model, default, ct)
-                .ConfigureAwait(false))
+            while (iteration < MaxToolCallIterations)
             {
-                if (token.Type == AiStreamTokenType.Usage)
+                iteration++;
+                ct.ThrowIfCancellationRequested();
+
+                var responseBuilder = new System.Text.StringBuilder();
+                var reasoningBuilder = new System.Text.StringBuilder();
+                var assistantBlock = CreateAssistantMessageBlock();
+                Expander? thinkingExpander = null;
+                TextBlock? thinkingTextBlock = null;
+                var pendingToolCalls = new List<AiStreamToolCall>();
+
+                var outboundWindow = BuildBudgetedContextWindow();
+
+                await foreach (var token in _provider.StreamCompletionAsync(outboundWindow, model, toolsDef, ct)
+                    .ConfigureAwait(false))
                 {
-                    _lastUsageStats = token.UsageStats;
+                    if (token.Type == AiStreamTokenType.Usage)
+                    {
+                        _lastUsageStats = token.UsageStats;
+                        continue;
+                    }
+
+                    if (token.Type == AiStreamTokenType.ToolCall && token.ToolCall is not null)
+                    {
+                        pendingToolCalls.Add(token.ToolCall);
+                        continue;
+                    }
+
+                    if (token.Type == AiStreamTokenType.Reasoning)
+                    {
+                        reasoningBuilder.Append(token.Text);
+                        reasoningTokenCount++;
+
+                        await Dispatcher.InvokeAsync(() =>
+                        {
+                            var shouldStickToBottom = IsMessageScrollerNearBottom();
+
+                            if (thinkingExpander is null)
+                            {
+                                (thinkingExpander, thinkingTextBlock) = CreateThinkingExpander(assistantBlock);
+                            }
+
+                            thinkingTextBlock!.Text = reasoningBuilder.ToString();
+                            thinkingExpander.Header = $"💭 Thinking ({reasoningTokenCount:N0} tokens)...";
+
+                            UpdateStatsBar(reasoningTokenCount + contentTokenCount, streamStopwatch);
+
+                            if (shouldStickToBottom)
+                            {
+                                MessageScroller.ScrollToEnd();
+                            }
+                        });
+                    }
+                    else
+                    {
+                        responseBuilder.Append(token.Text);
+                        contentTokenCount++;
+
+                        await Dispatcher.InvokeAsync(() =>
+                        {
+                            var shouldStickToBottom = IsMessageScrollerNearBottom();
+
+                            // Finalize the thinking header once content starts
+                            if (thinkingExpander is not null &&
+                                thinkingExpander.Header is string header &&
+                                header.EndsWith("...", StringComparison.Ordinal))
+                            {
+                                thinkingExpander.Header = $"💭 Thought for {reasoningTokenCount:N0} tokens";
+                            }
+
+                            RenderMarkdownInto(assistantBlock, responseBuilder.ToString());
+                            UpdateStatsBar(reasoningTokenCount + contentTokenCount, streamStopwatch);
+
+                            if (shouldStickToBottom)
+                            {
+                                MessageScroller.ScrollToEnd();
+                            }
+                        });
+                    }
+                }
+
+                // If tool calls were requested, execute them and loop
+                if (pendingToolCalls.Count > 0 && _toolRegistry is not null)
+                {
+                    // Record the assistant message with its tool calls
+                    var toolCallRequests = pendingToolCalls
+                        .Select(tc => new AiToolCallRequest(tc.Id, tc.FunctionName, tc.ArgumentsJson))
+                        .ToList();
+
+                    _conversationHistory.Add(new AiChatMessage(AiChatRole.Assistant, responseBuilder.ToString())
+                    {
+                        ToolCalls = toolCallRequests
+                    });
+
+                    // Execute each tool call and append results
+                    foreach (var toolCall in pendingToolCalls)
+                    {
+                        ct.ThrowIfCancellationRequested();
+
+                        var tool = _toolRegistry.Get(toolCall.FunctionName);
+                        ToolCallResult result;
+
+                        if (tool is null)
+                        {
+                            result = ToolCallResult.Fail($"Unknown tool: {toolCall.FunctionName}");
+                        }
+                        else
+                        {
+                            try
+                            {
+                                var args = string.IsNullOrWhiteSpace(toolCall.ArgumentsJson)
+                                    ? default
+                                    : JsonDocument.Parse(toolCall.ArgumentsJson).RootElement;
+
+                                await Dispatcher.InvokeAsync(() =>
+                                    AppendSystemMessage($"🔧 Calling {toolCall.FunctionName}..."));
+
+                                result = await tool.ExecuteAsync(args, ct).ConfigureAwait(false);
+                            }
+                            catch (OperationCanceledException)
+                            {
+                                throw;
+                            }
+                            catch (Exception ex)
+                            {
+                                result = ToolCallResult.Fail($"Tool execution error: {ex.Message}");
+                            }
+                        }
+
+                        var resultContent = result.Success
+                            ? result.Output
+                            : $"Error: {result.Error}";
+
+                        _conversationHistory.Add(new AiChatMessage(AiChatRole.Tool, resultContent)
+                        {
+                            ToolCallId = toolCall.Id
+                        });
+
+                        await Dispatcher.InvokeAsync(() =>
+                        {
+                            var status = result.Success ? "✅" : "❌";
+                            AppendSystemMessage($"{status} {toolCall.FunctionName}: {Truncate(resultContent, 200)}");
+                        });
+                    }
+
+                    SavePersistedConversation();
+
+                    // Continue the loop — the next iteration will re-send to the model
                     continue;
                 }
 
-                if (token.Type == AiStreamTokenType.Reasoning)
-                {
-                    reasoningBuilder.Append(token.Text);
-                    reasoningTokenCount++;
+                // No tool calls — this is the final content response
+                _conversationHistory.Add(new AiChatMessage(AiChatRole.Assistant, responseBuilder.ToString()));
+                SavePersistedConversation();
+                break;
+            }
 
-                    await Dispatcher.InvokeAsync(() =>
-                    {
-                        var shouldStickToBottom = IsMessageScrollerNearBottom();
-
-                        if (thinkingExpander is null)
-                        {
-                            (thinkingExpander, thinkingTextBlock) = CreateThinkingExpander(assistantBlock);
-                        }
-
-                        thinkingTextBlock!.Text = reasoningBuilder.ToString();
-                        thinkingExpander.Header = $"💭 Thinking ({reasoningTokenCount:N0} tokens)...";
-
-                        UpdateStatsBar(reasoningTokenCount + contentTokenCount, streamStopwatch);
-
-                        if (shouldStickToBottom)
-                        {
-                            MessageScroller.ScrollToEnd();
-                        }
-                    });
-                }
-                else
-                {
-                    responseBuilder.Append(token.Text);
-                    contentTokenCount++;
-
-                    await Dispatcher.InvokeAsync(() =>
-                    {
-                        var shouldStickToBottom = IsMessageScrollerNearBottom();
-
-                        // Finalize the thinking header once content starts
-                        if (thinkingExpander is not null &&
-                            thinkingExpander.Header is string header &&
-                            header.EndsWith("...", StringComparison.Ordinal))
-                        {
-                            thinkingExpander.Header = $"💭 Thought for {reasoningTokenCount:N0} tokens";
-                        }
-
-                        RenderMarkdownInto(assistantBlock, responseBuilder.ToString());
-                        UpdateStatsBar(reasoningTokenCount + contentTokenCount, streamStopwatch);
-
-                        if (shouldStickToBottom)
-                        {
-                            MessageScroller.ScrollToEnd();
-                        }
-                    });
-                }
+            if (iteration >= MaxToolCallIterations)
+            {
+                await Dispatcher.InvokeAsync(() =>
+                    AppendSystemMessage($"⚠️ Tool-call loop reached maximum iterations ({MaxToolCallIterations})."));
             }
 
             streamStopwatch.Stop();
-
-            // Record final response in history
-            _conversationHistory.Add(new AiChatMessage(AiChatRole.Assistant, responseBuilder.ToString()));
-            SavePersistedConversation();
         }
         catch (OperationCanceledException)
         {
-            // User cancelled — keep what was streamed so far
-            if (responseBuilder.Length > 0)
-            {
-                _conversationHistory.Add(new AiChatMessage(AiChatRole.Assistant, responseBuilder.ToString()));
-                SavePersistedConversation();
-            }
+            // User cancelled — nothing extra to record
         }
         catch (Exception ex)
         {
@@ -791,6 +892,16 @@ public partial class AiChatPanel : UserControl
                 UpdateStatsBarFinal(finalTokenCount, reasoningTokenCount, contentTokenCount, streamStopwatch);
             });
         }
+    }
+
+    private static string Truncate(string value, int maxLength)
+    {
+        if (string.IsNullOrEmpty(value) || value.Length <= maxLength)
+        {
+            return value;
+        }
+
+        return value[..maxLength] + "…";
     }
 
     private void StopButton_Click(object sender, RoutedEventArgs e)

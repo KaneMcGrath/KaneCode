@@ -28,6 +28,7 @@ public partial class MainWindow : Window
     private readonly MainViewModel _viewModel = new();
     private readonly TemplateEngineService _templateEngine = new();
     private readonly AiProviderRegistry _aiProviderRegistry = new();
+    private readonly AgentToolRegistry _agentToolRegistry = new();
     private Popup? _quickInfoPopup;
 
     public MainWindow()
@@ -149,6 +150,7 @@ public partial class MainWindow : Window
         AiChatPanel.SetConversationProjectKeyProvider(() =>
             _viewModel.ProjectItems.FirstOrDefault(i => i.ItemType is ProjectItemType.Solution or ProjectItemType.Project)?.FullPath
             ?? _viewModel.ProjectItems.FirstOrDefault()?.FullPath);
+        AiChatPanel.SetToolRegistry(_agentToolRegistry);
     }
 
     /// <summary>

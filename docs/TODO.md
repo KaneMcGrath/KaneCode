@@ -40,7 +40,7 @@
   - QA: Verify `ToolCallResult.Ok("output")` and `ToolCallResult.Fail("error")` factory methods work
   - QA: Register tools into `AgentToolRegistry`, call `Get(name)` → returns correct tool
   - QA: Call `SerializeToolDefinitions()` → returns valid JSON array with type/function/name/description/parameters
-- [~] **7.2** Tool-call message flow — extend `IAiProvider` and `AiChatMessage` for tool calls
+- [O] **7.2** Tool-call message flow — extend `IAiProvider` and `AiChatMessage` for tool calls
     - Add `AiChatRole.Tool` and `ToolCallId` to `AiChatMessage`
     - Extend `AiStreamToken` with `AiStreamTokenType.ToolCall` carrying function name + arguments JSON
     - Update `LlamaCppProvider` to parse `tool_calls` from SSE deltas and send `tools` in the request body
@@ -49,11 +49,16 @@
   - QA: Send a chat with tools defined → request body includes `tools` array
   - QA: Model responds with tool_calls → `AiStreamToolCall` tokens are emitted after stream ends
   - QA: Sending tool result messages back includes `tool_call_id` and `role: "tool"` in the request
-- [ ] **7.3** Tool-call loop in `AiChatPanel` — detect tool calls, execute, feed results back
+- [O] **7.3** Tool-call loop in `AiChatPanel` — detect tool calls, execute, feed results back
     - After streaming completes, check if the response contains tool calls instead of content
     - Execute each tool call via the registry, collect results
     - Append tool results as `AiChatRole.Tool` messages and re-send to the model
     - Loop until the model returns a content response (with a max-iteration safety limit)
+  - QA: Chat with no tools registered → normal assistant flow, no tool-call loop
+  - QA: Chat with tools registered and model invokes a tool → tool executes, result appended, model re-called
+  - QA: Model chains multiple tool calls → each is executed and result shown before next model call
+  - QA: Tool-call loop reaches 20 iterations → stops and shows safety-limit warning
+  - QA: User cancels during tool execution → streaming stops cleanly
 - [ ] **7.4** Tool-call UI rendering — show tool invocations and results in chat
     - Render each tool call as a collapsible block (like thinking) showing tool name, arguments, and result
     - Show a spinner/status indicator while a tool is executing
