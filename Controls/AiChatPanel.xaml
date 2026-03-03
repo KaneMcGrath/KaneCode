@@ -110,6 +110,11 @@
                       VerticalScrollBarVisibility="Auto"
                       HorizontalScrollBarVisibility="Disabled"
                       Background="{DynamicResource AiChatBackground}">
+            <ScrollViewer.ContextMenu>
+                <ContextMenu>
+                    <MenuItem Header="Save Conversation..." Click="MessageArea_SaveConversation" />
+                </ContextMenu>
+            </ScrollViewer.ContextMenu>
             <StackPanel x:Name="MessagePanel"
                         Margin="8,8,8,8" />
         </ScrollViewer>

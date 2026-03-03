@@ -861,15 +861,33 @@ public partial class AiChatPanel : UserControl
             HorizontalAlignment = HorizontalAlignment.Right
         };
 
-        var tb = new TextBlock
+        var rtb = new RichTextBox
         {
-            Text = text,
-            TextWrapping = TextWrapping.Wrap,
+            IsReadOnly = true,
+            Background = Brushes.Transparent,
+            BorderThickness = new Thickness(0),
             Foreground = FindBrush("AiChatUserForeground"),
-            FontSize = 13
+            FontSize = 13,
+            Padding = new Thickness(0),
+            IsDocumentEnabled = true
         };
 
-        border.Child = tb;
+        var doc = new FlowDocument
+        {
+            PagePadding = new Thickness(0),
+            LineHeight = 18
+        };
+
+        var paragraph = new Paragraph
+        {
+            Margin = new Thickness(0),
+            Foreground = FindBrush("AiChatUserForeground")
+        };
+        paragraph.Inlines.Add(new Run(text));
+        doc.Blocks.Add(paragraph);
+
+        rtb.Document = doc;
+        border.Child = rtb;
         MessagePanel.Children.Add(border);
         MessageScroller.ScrollToEnd();
     }
@@ -1298,5 +1316,68 @@ public partial class AiChatPanel : UserControl
     private Brush FindBrush(string key)
     {
         return TryFindResource(key) is Brush b ? b : Brushes.Gray;
+    }
+
+    // ── Conversation export ───────────────────────────────────────
+
+    private void MessageArea_SaveConversation(object sender, RoutedEventArgs e)
+    {
+        if (_conversationHistory.Count == 0)
+        {
+            AppendSystemMessage("No conversation to save.");
+            return;
+        }
+
+        try
+        {
+            var timestamp = DateTime.Now.ToString("yyyy-MM-dd_HH-mm-ss");
+            var fileName = $"ai-conversation_{timestamp}.txt";
+            var tempPath = Path.Combine(Path.GetTempPath(), fileName);
+
+            var sb = new System.Text.StringBuilder();
+            sb.AppendLine("═══════════════════════════════════════════════════════════════");
+            sb.AppendLine($"AI Chat Conversation Export — {DateTime.Now:g}");
+            sb.AppendLine("═══════════════════════════════════════════════════════════════");
+            sb.AppendLine();
+
+            if (!string.IsNullOrWhiteSpace(ProviderLabel.Text))
+            {
+                sb.AppendLine($"Provider: {ProviderLabel.Text}");
+                sb.AppendLine();
+            }
+
+            var messageCount = 0;
+            foreach (var message in _conversationHistory)
+            {
+                sb.AppendLine($"[{message.Role}]");
+                sb.AppendLine("───────────────────────────────────────────────────────────────");
+                sb.AppendLine(message.Content);
+                sb.AppendLine();
+                messageCount++;
+            }
+
+            sb.AppendLine("═══════════════════════════════════════════════════════════════");
+            sb.AppendLine($"Total messages: {messageCount}");
+            sb.AppendLine($"Exported: {DateTime.Now:g}");
+            sb.AppendLine("═══════════════════════════════════════════════════════════════");
+
+            File.WriteAllText(tempPath, sb.ToString(), System.Text.Encoding.UTF8);
+
+            using var process = new Process
+            {
+                StartInfo = new ProcessStartInfo
+                {
+                    FileName = tempPath,
+                    UseShellExecute = true
+                }
+            };
+            process.Start();
+
+            AppendSystemMessage($"Conversation saved and opened: {fileName}");
+        }
+        catch (Exception ex)
+        {
+            AppendSystemMessage($"Failed to save conversation: {ex.Message}");
+        }
     }
 }
