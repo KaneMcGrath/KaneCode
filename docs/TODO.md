@@ -89,7 +89,7 @@
 - [X] **8.5** `SearchFilesTool` — search file contents with text or regex
     - Parameters: `query` (string), `directory` (string, optional), `isRegex` (bool, optional)
     - Returns matching file paths with line numbers and snippets
-- [ ] **8.6** `RunBuildTool` — trigger a build and return diagnostics
+- [X] **8.6** `RunBuildTool` — trigger a build and return diagnostics
     - Invokes `BuildService.BuildAsync`, returns build output and error list
     - Streams build output lines back as partial results if possible
 - [ ] **8.7** `GetDiagnosticsTool` — get Roslyn diagnostics for a file

@@ -170,6 +170,7 @@ public partial class MainWindow : Window
         _agentToolRegistry.Register(new EditFileTool(projectRoot));
         _agentToolRegistry.Register(new ListFilesTool(projectRoot));
         _agentToolRegistry.Register(new SearchFilesTool(projectRoot));
+        _agentToolRegistry.Register(new RunBuildTool(_viewModel.BuildService, projectRoot));
     }
 
     /// <summary>
