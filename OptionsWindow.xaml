@@ -56,7 +56,7 @@
             <ListBoxItem Content="General" />
             <ListBoxItem Content="Appearance" />
             <ListBoxItem Content="Hotkeys" />
-            <ListBoxItem Content="AI Providers" />
+            <ListBoxItem Content="AI Settings" />
         </ListBox>
 
         <!-- Separator -->
@@ -113,7 +113,7 @@
                 Visibility="Collapsed">
             <DockPanel>
                 <TextBlock DockPanel.Dock="Top"
-                           Text="AI Providers"
+                           Text="AI Settings"
                            FontSize="18" FontWeight="SemiBold"
                            Foreground="{DynamicResource WindowForeground}"
                            Margin="0,0,0,12" />

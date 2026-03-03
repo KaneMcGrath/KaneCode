@@ -1,5 +1,6 @@
 using KaneCode.Theming;
 using KaneCode.ViewModels;
+using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -11,12 +12,16 @@ namespace KaneCode;
 /// </summary>
 public partial class OptionsWindow : Window
 {
+    internal const string AiSettingsCategoryName = "AI Settings";
+
     private bool _isInitializing = true;
     private readonly HotkeySettingsViewModel _hotkeyViewModel = new();
     private readonly AiSettingsViewModel _aiSettingsViewModel = new();
+    private readonly string? _initialCategory;
 
-    public OptionsWindow()
+    public OptionsWindow(string? initialCategory = null)
     {
+        _initialCategory = initialCategory;
         InitializeComponent();
         Loaded += OnLoaded;
     }
@@ -45,6 +50,11 @@ public partial class OptionsWindow : Window
         };
 
         _isInitializing = false;
+
+        if (!string.IsNullOrWhiteSpace(_initialCategory))
+        {
+            SelectCategory(_initialCategory);
+        }
     }
 
     private void CategoryList_SelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -75,9 +85,21 @@ public partial class OptionsWindow : Window
             case "Hotkeys":
                 HotkeysPageBorder.Visibility = Visibility.Visible;
                 break;
-            case "AI Providers":
+            case AiSettingsCategoryName:
                 AiProvidersPageBorder.Visibility = Visibility.Visible;
                 break;
+        }
+    }
+
+    private void SelectCategory(string categoryName)
+    {
+        var item = CategoryList.Items
+            .OfType<ListBoxItem>()
+            .FirstOrDefault(i => string.Equals(i.Content?.ToString(), categoryName, StringComparison.Ordinal));
+
+        if (item is not null)
+        {
+            CategoryList.SelectedItem = item;
         }
     }
 

@@ -89,7 +89,7 @@ internal sealed class LlamaCppProvider : IAiProvider, IDisposable
         using var reader = new StreamReader(stream, Encoding.UTF8);
 
         // Tool calls are streamed incrementally across multiple SSE chunks.
-        // We accumulate them here and emit completed calls at the end.
+        // We accumulate state by index and emit live updates while streaming.
         var pendingToolCalls = new Dictionary<int, (string? Id, string? Name, System.Text.StringBuilder Args)>();
 
         while (!reader.EndOfStream)
@@ -121,17 +121,6 @@ internal sealed class LlamaCppProvider : IAiProvider, IDisposable
             }
         }
 
-        // Emit any accumulated tool calls
-        foreach (var (_, tc) in pendingToolCalls.OrderBy(kv => kv.Key))
-        {
-            if (!string.IsNullOrEmpty(tc.Name))
-            {
-                yield return new AiStreamToken(
-                    AiStreamTokenType.ToolCall,
-                    string.Empty,
-                    ToolCall: new AiStreamToolCall(tc.Id ?? string.Empty, tc.Name, tc.Args.ToString()));
-            }
-        }
     }
 
     /// <summary>
@@ -260,18 +249,28 @@ internal sealed class LlamaCppProvider : IAiProvider, IDisposable
                                     pendingToolCalls[index] = entry;
                                 }
 
+                                var changed = false;
+
                                 if (tc.TryGetProperty("id", out var idProp))
                                 {
-                                    entry.Id = idProp.GetString();
-                                    pendingToolCalls[index] = entry;
+                                    var id = idProp.GetString();
+                                    if (!string.Equals(entry.Id, id, StringComparison.Ordinal))
+                                    {
+                                        entry.Id = id;
+                                        changed = true;
+                                    }
                                 }
 
                                 if (tc.TryGetProperty("function", out var fn))
                                 {
                                     if (fn.TryGetProperty("name", out var name))
                                     {
-                                        entry.Name = name.GetString();
-                                        pendingToolCalls[index] = entry;
+                                        var functionName = name.GetString();
+                                        if (!string.Equals(entry.Name, functionName, StringComparison.Ordinal))
+                                        {
+                                            entry.Name = functionName;
+                                            changed = true;
+                                        }
                                     }
 
                                     if (fn.TryGetProperty("arguments", out var args))
@@ -280,8 +279,19 @@ internal sealed class LlamaCppProvider : IAiProvider, IDisposable
                                         if (!string.IsNullOrEmpty(argsText))
                                         {
                                             entry.Args.Append(argsText);
+                                            changed = true;
                                         }
                                     }
+                                }
+
+                                pendingToolCalls[index] = entry;
+
+                                if (changed && !string.IsNullOrWhiteSpace(entry.Name))
+                                {
+                                    yield return new AiStreamToken(
+                                        AiStreamTokenType.ToolCall,
+                                        string.Empty,
+                                        ToolCall: new AiStreamToolCall(index, entry.Id ?? string.Empty, entry.Name, entry.Args.ToString()));
                                 }
                             }
                         }

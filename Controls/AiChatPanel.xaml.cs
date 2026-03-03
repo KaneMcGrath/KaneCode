@@ -614,6 +614,16 @@ public partial class AiChatPanel : UserControl
         }
     }
 
+    private void AiSettingsButton_Click(object sender, RoutedEventArgs e)
+    {
+        var optionsWindow = new OptionsWindow(OptionsWindow.AiSettingsCategoryName)
+        {
+            Owner = Window.GetWindow(this)
+        };
+
+        optionsWindow.ShowDialog();
+    }
+
     private async Task SendMessageAsync()
     {
         var text = InputBox.Text?.Trim();
@@ -712,7 +722,8 @@ public partial class AiChatPanel : UserControl
                 var reasoningBuilder = new System.Text.StringBuilder();
                 Expander? thinkingExpander = null;
                 TextBlock? thinkingTextBlock = null;
-                var pendingToolCalls = new List<AiStreamToolCall>();
+                var streamedToolCalls = new Dictionary<int, AiStreamToolCall>();
+                var toolCallBlocks = new Dictionary<int, (Expander expander, TextBlock argumentsBlock, TextBlock resultBlock)>();
 
                 // UI element creation must happen on the dispatcher thread.
                 // After the first iteration, we may be on a thread-pool thread
@@ -732,7 +743,29 @@ public partial class AiChatPanel : UserControl
 
                     if (token.Type == AiStreamTokenType.ToolCall && token.ToolCall is not null)
                     {
-                        pendingToolCalls.Add(token.ToolCall);
+                        var toolCall = token.ToolCall!;
+                        streamedToolCalls[toolCall.Index] = toolCall;
+
+                        await Dispatcher.InvokeAsync(() =>
+                        {
+                            var shouldStickToBottom = IsMessageScrollerNearBottom();
+
+                            if (!toolCallBlocks.TryGetValue(toolCall.Index, out var block))
+                            {
+                                block = CreateToolCallBlock(toolCall.FunctionName, toolCall.ArgumentsJson);
+                                toolCallBlocks[toolCall.Index] = block;
+                            }
+                            else
+                            {
+                                UpdateToolCallBlock(block.expander, block.argumentsBlock, toolCall.FunctionName, toolCall.ArgumentsJson);
+                            }
+
+                            if (shouldStickToBottom)
+                            {
+                                MessageScroller.ScrollToEnd();
+                            }
+                        });
+
                         continue;
                     }
 
@@ -790,11 +823,31 @@ public partial class AiChatPanel : UserControl
                 }
 
                 // If tool calls were requested, execute them and loop
-                if (pendingToolCalls.Count > 0 && _toolRegistry is not null)
+                if (streamedToolCalls.Count > 0 && _toolRegistry is not null)
                 {
+                    var pendingToolCalls = streamedToolCalls
+                        .OrderBy(kv => kv.Key)
+                        .Select(kv => kv.Value)
+                        .Where(tc => !string.IsNullOrWhiteSpace(tc.FunctionName))
+                        .ToList();
+
+                    if (pendingToolCalls.Count == 0)
+                    {
+                        _conversationHistory.Add(new AiChatMessage(AiChatRole.Assistant, responseBuilder.ToString()));
+                        SavePersistedConversation();
+                        break;
+                    }
+
                     // Record the assistant message with its tool calls
                     var toolCallRequests = pendingToolCalls
-                        .Select(tc => new AiToolCallRequest(tc.Id, tc.FunctionName, tc.ArgumentsJson))
+                        .Select(tc =>
+                        {
+                            var toolCallId = string.IsNullOrWhiteSpace(tc.Id)
+                                ? $"tool_call_{tc.Index}"
+                                : tc.Id;
+
+                            return new AiToolCallRequest(toolCallId, tc.FunctionName, tc.ArgumentsJson);
+                        })
                         .ToList();
 
                     _conversationHistory.Add(new AiChatMessage(AiChatRole.Assistant, responseBuilder.ToString())
@@ -807,13 +860,26 @@ public partial class AiChatPanel : UserControl
                     {
                         ct.ThrowIfCancellationRequested();
 
+                        var toolCallId = string.IsNullOrWhiteSpace(toolCall.Id)
+                            ? $"tool_call_{toolCall.Index}"
+                            : toolCall.Id;
+
                         Expander? toolExpander = null;
                         TextBlock? toolResultBlock = null;
-
                         await Dispatcher.InvokeAsync(() =>
                         {
-                            (toolExpander, toolResultBlock) = CreateToolCallBlock(
-                                toolCall.FunctionName, toolCall.ArgumentsJson);
+                            if (!toolCallBlocks.TryGetValue(toolCall.Index, out var block))
+                            {
+                                block = CreateToolCallBlock(toolCall.FunctionName, toolCall.ArgumentsJson);
+                                toolCallBlocks[toolCall.Index] = block;
+                            }
+                            else
+                            {
+                                UpdateToolCallBlock(block.expander, block.argumentsBlock, toolCall.FunctionName, toolCall.ArgumentsJson);
+                            }
+
+                            toolExpander = block.expander;
+                            toolResultBlock = block.resultBlock;
                         });
 
                         var tool = _toolRegistry.Get(toolCall.FunctionName);
@@ -849,7 +915,7 @@ public partial class AiChatPanel : UserControl
 
                         _conversationHistory.Add(new AiChatMessage(AiChatRole.Tool, resultContent)
                         {
-                            ToolCallId = toolCall.Id
+                            ToolCallId = toolCallId
                         });
 
                         await Dispatcher.InvokeAsync(() =>
@@ -1122,7 +1188,7 @@ public partial class AiChatPanel : UserControl
     /// Returns the expander, the status TextBlock (for updating header), and the result TextBlock
     /// (for filling in when the tool finishes).
     /// </summary>
-    private (Expander expander, TextBlock resultBlock) CreateToolCallBlock(string toolName, string argumentsJson)
+    private (Expander expander, TextBlock argumentsBlock, TextBlock resultBlock) CreateToolCallBlock(string toolName, string argumentsJson)
     {
         var argsDisplay = FormatToolArgs(argumentsJson);
 
@@ -1173,7 +1239,16 @@ public partial class AiChatPanel : UserControl
             MessageScroller.ScrollToEnd();
         }
 
-        return (expander, resultBlock);
+        return (expander, argsBlock, resultBlock);
+    }
+
+    /// <summary>
+    /// Updates a tool-call block while the call arguments are still streaming.
+    /// </summary>
+    private void UpdateToolCallBlock(Expander expander, TextBlock argumentsBlock, string toolName, string argumentsJson)
+    {
+        expander.Header = $"⏳ {toolName}";
+        argumentsBlock.Text = FormatToolArgs(argumentsJson);
     }
 
     /// <summary>
@@ -1184,7 +1259,7 @@ public partial class AiChatPanel : UserControl
         if (result.Success)
         {
             expander.Header = $"✅ {toolName}";
-            resultBlock.Text = Truncate(result.Output, 500);
+            resultBlock.Text = result.Output;
             resultBlock.Foreground = FindBrush(ThemeResourceKeys.AiChatToolCallSuccessForeground);
         }
         else
@@ -1221,14 +1296,14 @@ public partial class AiChatPanel : UserControl
                     ? prop.Value.GetString()
                     : prop.Value.GetRawText();
 
-                entries.Add($"{prop.Name}: {Truncate(value ?? "", 120)}");
+                entries.Add($"{prop.Name}: {value ?? ""}");
             }
 
             return string.Join("\n", entries);
         }
         catch (JsonException)
         {
-            return Truncate(argumentsJson, 200);
+            return argumentsJson;
         }
     }
 

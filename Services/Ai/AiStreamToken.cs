@@ -41,4 +41,4 @@ internal sealed record AiUsageStats(
 /// <summary>
 /// A tool/function call parsed from a streamed assistant response.
 /// </summary>
-internal sealed record AiStreamToolCall(string Id, string FunctionName, string ArgumentsJson);
+internal sealed record AiStreamToolCall(int Index, string Id, string FunctionName, string ArgumentsJson);
