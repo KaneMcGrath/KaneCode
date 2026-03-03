@@ -59,7 +59,7 @@
   - QA: Model chains multiple tool calls → each is executed and result shown before next model call
   - QA: Tool-call loop reaches 20 iterations → stops and shows safety-limit warning
   - QA: User cancels during tool execution → streaming stops cleanly
-- [~] **7.4** Tool-call UI rendering — show tool invocations and results in chat
+- [O] **7.4** Tool-call UI rendering — show tool invocations and results in chat
     - Render each tool call as a collapsible block (like thinking) showing tool name, arguments, and result
     - Show a spinner/status indicator while a tool is executing
     - Color-code success (green) vs error (red) results
@@ -71,7 +71,7 @@
 
 ### Phase 8 — Built-in Agent Tools
 
-- [ ] **8.1** `ReadFileTool` — read a file's contents by path
+- [X] **8.1** `ReadFileTool` — read a file's contents by path
     - Parameters: `filePath` (string)
     - Returns the file text, or error if not found / too large
     - Respects a max file size limit (e.g. 100 KB) to protect context budget

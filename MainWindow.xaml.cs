@@ -2,6 +2,7 @@ using KaneCode.Infrastructure;
 using KaneCode.Models;
 using KaneCode.Services;
 using KaneCode.Services.Ai;
+using KaneCode.Services.Ai.Tools;
 using KaneCode.Theming;
 using KaneCode.ViewModels;
 using ICSharpCode.AvalonEdit.Rendering;
@@ -37,6 +38,7 @@ public partial class MainWindow : Window
         DataContext = _viewModel;
         Loaded += OnLoaded;
         Closed += OnClosed;
+        RegisterAgentTools();
     }
 
     private void OnLoaded(object sender, RoutedEventArgs e)
@@ -151,6 +153,19 @@ public partial class MainWindow : Window
             _viewModel.ProjectItems.FirstOrDefault(i => i.ItemType is ProjectItemType.Solution or ProjectItemType.Project)?.FullPath
             ?? _viewModel.ProjectItems.FirstOrDefault()?.FullPath);
         AiChatPanel.SetToolRegistry(_agentToolRegistry);
+    }
+
+    /// <summary>
+    /// Registers all built-in agent tools into the tool registry.
+    /// Called once at startup.
+    /// </summary>
+    private void RegisterAgentTools()
+    {
+        Func<string?> projectRoot = () =>
+            _viewModel.ProjectItems.FirstOrDefault(i => i.ItemType is ProjectItemType.Solution or ProjectItemType.Project)?.FullPath
+            ?? _viewModel.ProjectItems.FirstOrDefault()?.FullPath;
+
+        _agentToolRegistry.Register(new ReadFileTool(projectRoot));
     }
 
     /// <summary>

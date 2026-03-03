@@ -710,10 +710,14 @@ public partial class AiChatPanel : UserControl
 
                 var responseBuilder = new System.Text.StringBuilder();
                 var reasoningBuilder = new System.Text.StringBuilder();
-                var assistantBlock = CreateAssistantMessageBlock();
                 Expander? thinkingExpander = null;
                 TextBlock? thinkingTextBlock = null;
                 var pendingToolCalls = new List<AiStreamToolCall>();
+
+                // UI element creation must happen on the dispatcher thread.
+                // After the first iteration, we may be on a thread-pool thread
+                // due to ConfigureAwait(false) in tool execution.
+                var assistantBlock = await Dispatcher.InvokeAsync(CreateAssistantMessageBlock);
 
                 var outboundWindow = BuildBudgetedContextWindow();
 
