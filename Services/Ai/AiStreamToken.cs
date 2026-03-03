@@ -13,14 +13,22 @@ internal enum AiStreamTokenType
     Reasoning,
 
     /// <summary>Usage statistics emitted in the final SSE chunk.</summary>
-    Usage
+    Usage,
+
+    /// <summary>A completed tool call emitted when the model requests a function invocation.</summary>
+    ToolCall
 }
 
 /// <summary>
 /// A single streamed token from an AI provider, tagged with its type.
 /// For <see cref="AiStreamTokenType.Usage"/> tokens, <see cref="UsageStats"/> is populated.
+/// For <see cref="AiStreamTokenType.ToolCall"/> tokens, <see cref="ToolCall"/> is populated.
 /// </summary>
-internal readonly record struct AiStreamToken(AiStreamTokenType Type, string Text, AiUsageStats? UsageStats = null);
+internal readonly record struct AiStreamToken(
+    AiStreamTokenType Type,
+    string Text,
+    AiUsageStats? UsageStats = null,
+    AiStreamToolCall? ToolCall = null);
 
 /// <summary>
 /// Token usage statistics reported by the API in the final streaming chunk.
@@ -29,3 +37,8 @@ internal sealed record AiUsageStats(
     int PromptTokens,
     int CompletionTokens,
     int TotalTokens);
+
+/// <summary>
+/// A tool/function call parsed from a streamed assistant response.
+/// </summary>
+internal sealed record AiStreamToolCall(string Id, string FunctionName, string ArgumentsJson);

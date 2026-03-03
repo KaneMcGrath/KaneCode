@@ -79,6 +79,7 @@ internal static class AiConversationStore
             nameof(AiChatRole.System) => AiChatRole.System,
             nameof(AiChatRole.User) => AiChatRole.User,
             nameof(AiChatRole.Assistant) => AiChatRole.Assistant,
+            nameof(AiChatRole.Tool) => AiChatRole.Tool,
             _ => throw new InvalidDataException($"Unknown chat role '{role}'.")
         };
     }

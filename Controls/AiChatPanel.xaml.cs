@@ -694,7 +694,7 @@ public partial class AiChatPanel : UserControl
 
             var outboundWindow = BuildBudgetedContextWindow();
 
-            await foreach (var token in _provider.StreamCompletionAsync(outboundWindow, model, ct)
+            await foreach (var token in _provider.StreamCompletionAsync(outboundWindow, model, default, ct)
                 .ConfigureAwait(false))
             {
                 if (token.Type == AiStreamTokenType.Usage)

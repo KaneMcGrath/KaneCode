@@ -40,10 +40,15 @@
   - QA: Verify `ToolCallResult.Ok("output")` and `ToolCallResult.Fail("error")` factory methods work
   - QA: Register tools into `AgentToolRegistry`, call `Get(name)` → returns correct tool
   - QA: Call `SerializeToolDefinitions()` → returns valid JSON array with type/function/name/description/parameters
-- [ ] **7.2** Tool-call message flow — extend `IAiProvider` and `AiChatMessage` for tool calls
+- [~] **7.2** Tool-call message flow — extend `IAiProvider` and `AiChatMessage` for tool calls
     - Add `AiChatRole.Tool` and `ToolCallId` to `AiChatMessage`
     - Extend `AiStreamToken` with `AiStreamTokenType.ToolCall` carrying function name + arguments JSON
     - Update `LlamaCppProvider` to parse `tool_calls` from SSE deltas and send `tools` in the request body
+  - QA: Verify `AiChatRole.Tool` exists and `AiChatMessage` has `ToolCallId` and `ToolCalls` properties
+  - QA: Verify `AiStreamTokenType.ToolCall` and `AiStreamToolCall` record compile
+  - QA: Send a chat with tools defined → request body includes `tools` array
+  - QA: Model responds with tool_calls → `AiStreamToolCall` tokens are emitted after stream ends
+  - QA: Sending tool result messages back includes `tool_call_id` and `role: "tool"` in the request
 - [ ] **7.3** Tool-call loop in `AiChatPanel` — detect tool calls, execute, feed results back
     - After streaming completes, check if the response contains tool calls instead of content
     - Execute each tool call via the registry, collect results

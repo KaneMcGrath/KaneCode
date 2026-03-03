@@ -1,3 +1,5 @@
+using System.Text.Json;
+
 namespace KaneCode.Services.Ai;
 
 /// <summary>
@@ -26,14 +28,20 @@ internal interface IAiProvider
     /// Sends a chat completion request and streams response tokens as they arrive.
     /// Reasoning models may emit <see cref="AiStreamTokenType.Reasoning"/> tokens
     /// before the main <see cref="AiStreamTokenType.Content"/> tokens.
+    /// When tools are provided, the model may emit <see cref="AiStreamTokenType.ToolCall"/> tokens.
     /// </summary>
     /// <param name="messages">The conversation messages to send.</param>
     /// <param name="model">The model identifier to use (e.g. "gpt-4o").</param>
+    /// <param name="tools">
+    /// Optional serialized tools array in OpenAI format.
+    /// Pass <c>default</c> to omit tools from the request.
+    /// </param>
     /// <param name="cancellationToken">Token to cancel the request.</param>
     /// <returns>An async enumerable of streamed tokens.</returns>
     IAsyncEnumerable<AiStreamToken> StreamCompletionAsync(
         IReadOnlyList<AiChatMessage> messages,
         string model,
+        JsonElement tools = default,
         CancellationToken cancellationToken = default);
 
     /// <summary>
