@@ -167,6 +167,7 @@ public partial class MainWindow : Window
 
         _agentToolRegistry.Register(new ReadFileTool(projectRoot));
         _agentToolRegistry.Register(new WriteFileTool(projectRoot));
+        _agentToolRegistry.Register(new EditFileTool(projectRoot));
     }
 
     /// <summary>

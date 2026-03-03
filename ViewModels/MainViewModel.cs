@@ -48,6 +48,8 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
     private CancellationTokenSource? _codeActionsCts;
     private CancellationTokenSource? _renameCts;
     private CancellationTokenSource? _loadCts;
+    private FileSystemWatcher? _explorerWatcher;
+    private CancellationTokenSource? _explorerRefreshCts;
     private bool _isLoadingProject;
     private bool _isUpdatingSelectedBranch;
     private readonly TimeSpan _analysisDelay = TimeSpan.FromMilliseconds(500);
@@ -590,6 +592,115 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
         return result;
     }
 
+    private void ConfigureExplorerWatcher(string rootPath)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(rootPath);
+
+        DisposeExplorerWatcher();
+
+        if (!Directory.Exists(rootPath))
+        {
+            return;
+        }
+
+        try
+        {
+            _explorerWatcher = new FileSystemWatcher(rootPath)
+            {
+                IncludeSubdirectories = true,
+                NotifyFilter = NotifyFilters.FileName | NotifyFilters.DirectoryName
+            };
+
+            _explorerWatcher.Created += OnExplorerWatcherChanged;
+            _explorerWatcher.Deleted += OnExplorerWatcherChanged;
+            _explorerWatcher.Renamed += OnExplorerWatcherRenamed;
+            _explorerWatcher.EnableRaisingEvents = true;
+        }
+        catch (IOException ex)
+        {
+            MessageBox.Show($"Could not watch folder:\n{ex.Message}", "File Explorer",
+                MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            MessageBox.Show($"Access denied while watching folder:\n{ex.Message}", "File Explorer",
+                MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+    }
+
+    private void DisposeExplorerWatcher()
+    {
+        if (_explorerWatcher is null)
+        {
+            return;
+        }
+
+        _explorerWatcher.EnableRaisingEvents = false;
+        _explorerWatcher.Created -= OnExplorerWatcherChanged;
+        _explorerWatcher.Deleted -= OnExplorerWatcherChanged;
+        _explorerWatcher.Renamed -= OnExplorerWatcherRenamed;
+        _explorerWatcher.Dispose();
+        _explorerWatcher = null;
+    }
+
+    private void OnExplorerWatcherChanged(object sender, FileSystemEventArgs e)
+    {
+        if (IsGitMetadataPath(e.FullPath))
+        {
+            return;
+        }
+
+        QueueExplorerRefresh();
+    }
+
+    private void OnExplorerWatcherRenamed(object sender, RenamedEventArgs e)
+    {
+        if (IsGitMetadataPath(e.FullPath) && IsGitMetadataPath(e.OldFullPath))
+        {
+            return;
+        }
+
+        QueueExplorerRefresh();
+    }
+
+    private void QueueExplorerRefresh()
+    {
+        _explorerRefreshCts?.Cancel();
+        _explorerRefreshCts?.Dispose();
+        _explorerRefreshCts = new CancellationTokenSource();
+        var ct = _explorerRefreshCts.Token;
+
+        _ = RefreshProjectItemsFromWatcherAsync(ct);
+    }
+
+    private async Task RefreshProjectItemsFromWatcherAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            await Task.Delay(TimeSpan.FromMilliseconds(200), cancellationToken).ConfigureAwait(false);
+            await Application.Current.Dispatcher.InvokeAsync(
+                RefreshProjectItems,
+                System.Windows.Threading.DispatcherPriority.Background,
+                cancellationToken);
+        }
+        catch (OperationCanceledException)
+        {
+            // Superseded by newer filesystem activity.
+        }
+    }
+
+    private static bool IsGitMetadataPath(string path)
+    {
+        if (string.IsNullOrEmpty(path))
+        {
+            return false;
+        }
+
+        var marker = $"{Path.DirectorySeparatorChar}.git{Path.DirectorySeparatorChar}";
+        return path.Contains(marker, StringComparison.OrdinalIgnoreCase)
+            || path.EndsWith($"{Path.DirectorySeparatorChar}.git", StringComparison.OrdinalIgnoreCase);
+    }
+
     private void RefreshProjectItems()
     {
         if (string.IsNullOrWhiteSpace(ProjectRootPath) || !Directory.Exists(ProjectRootPath))
@@ -806,6 +917,7 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
             _loadedProjectOrSolutionPath = projectPath;
             var root = EditorService.BuildProjectTree(projectPath);
             ProjectItems = new ObservableCollection<ProjectItem> { root };
+            ConfigureExplorerWatcher(projectDir);
 
             OpenRepositoryForPath(projectDir);
 
@@ -862,6 +974,7 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
             var projectPaths = result.Projects.Select(p => p.ProjectPath).ToList();
             var root = EditorService.BuildSolutionTree(solutionPath, projectPaths);
             ProjectItems = new ObservableCollection<ProjectItem> { root };
+            ConfigureExplorerWatcher(solutionDir);
 
             OpenRepositoryForPath(solutionDir);
 
@@ -959,8 +1072,10 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
         ArgumentNullException.ThrowIfNull(rootPath);
 
         ProjectRootPath = rootPath;
+        _loadedProjectOrSolutionPath = null;
         var root = EditorService.BuildFileTree(rootPath);
         ProjectItems = new ObservableCollection<ProjectItem>(root.Children);
+        ConfigureExplorerWatcher(rootPath);
 
         OpenRepositoryForPath(rootPath);
     }
@@ -3196,6 +3311,9 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
         _buildService.Dispose();
         _gitService.StatusChanged -= OnGitStatusChanged;
         _gitService.Dispose();
+        DisposeExplorerWatcher();
+        _explorerRefreshCts?.Cancel();
+        _explorerRefreshCts?.Dispose();
         CancelPreviousLoad();
         _loadingStatusClearCts?.Cancel();
         _loadingStatusClearCts?.Dispose();

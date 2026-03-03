@@ -75,19 +75,19 @@
     - Parameters: `filePath` (string)
     - Returns the file text, or error if not found / too large
     - Respects a max file size limit (e.g. 100 KB) to protect context budget
-- [~] **8.2** `WriteFileTool` — create or overwrite a file by path
+- [X] **8.2** `WriteFileTool` — create or overwrite a file by path
     - Parameters: `filePath` (string), `content` (string)
     - Writes the file to disk and opens it in the editor
     - Reports success or IO error
-  - QA: Agent calls write_file with relative path + content → file is created in project and success is returned
-  - QA: Agent calls write_file with existing file path → file content is overwritten
-  - QA: Missing `filePath` or `content` argument → tool returns descriptive error
-  - QA: Invalid path or access denied → tool returns explicit IO/access/path error
-  - QA: Tool is marked as confirmation-required before execution
-- [ ] **8.3** `EditFileTool` — search-and-replace edit within a file
+- [O] **8.3** `EditFileTool` — search-and-replace edit within a file
     - Parameters: `filePath` (string), `oldText` (string), `newText` (string)
     - Applies a single find-and-replace, fails if `oldText` is not found or matches multiple locations
     - Returns the updated region or error
+  - QA: Agent calls edit_file with valid oldText matching exactly once → file is updated, success returned with line number
+  - QA: oldText not present in file → fails with "not found" error and hint about whitespace
+  - QA: oldText appears more than once → fails with "N locations" error and hint to add more context
+  - QA: Empty oldText → fails with explicit validation error
+  - QA: File not found → returns "File not found" error
 - [ ] **8.4** `ListFilesTool` — list files in a directory or the project tree
     - Parameters: `directory` (string, optional — defaults to project root)
     - Returns a flat list of relative file paths
