@@ -79,25 +79,14 @@
     - Parameters: `filePath` (string), `content` (string)
     - Writes the file to disk and opens it in the editor
     - Reports success or IO error
-- [O] **8.3** `EditFileTool` — search-and-replace edit within a file
+- [X] **8.3** `EditFileTool` — search-and-replace edit within a file
     - Parameters: `filePath` (string), `oldText` (string), `newText` (string)
     - Applies a single find-and-replace, fails if `oldText` is not found or matches multiple locations
     - Returns the updated region or error
-  - QA: Agent calls edit_file with valid oldText matching exactly once → file is updated, success returned with line number
-  - QA: oldText not present in file → fails with "not found" error and hint about whitespace
-  - QA: oldText appears more than once → fails with "N locations" error and hint to add more context
-  - QA: Empty oldText → fails with explicit validation error
-  - QA: File not found → returns "File not found" error
-- [O] **8.4** `ListFilesTool` — list files in a directory or the project tree
+- [X] **8.4** `ListFilesTool` — list files in a directory or the project tree
     - Parameters: `directory` (string, optional — defaults to project root)
     - Returns a flat list of relative file paths
-  - QA: Call `list_files` with no `directory` argument → returns flat list of relative paths from project root, excluding bin/obj/.git
-  - QA: Call `list_files` with a valid relative subdirectory (e.g. `"Services"`) → returns only files under that subdirectory
-  - QA: Call `list_files` with an absolute path to an existing directory → returns files relative to that directory
-  - QA: Call `list_files` with a non-existent directory → returns "Directory not found" error
-  - QA: Open a project with more than 2000 files → result is truncated at 2000 entries with a trailing `... (truncated at 2000 files)` note
-  - QA: Directory contains `bin`, `obj`, `.git`, `node_modules` subdirectories → those are excluded from the output
-- [ ] **8.5** `SearchFilesTool` — search file contents with text or regex
+- [X] **8.5** `SearchFilesTool` — search file contents with text or regex
     - Parameters: `query` (string), `directory` (string, optional), `isRegex` (bool, optional)
     - Returns matching file paths with line numbers and snippets
 - [ ] **8.6** `RunBuildTool` — trigger a build and return diagnostics
