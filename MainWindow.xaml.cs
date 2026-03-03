@@ -1,4 +1,4 @@
-﻿using KaneCode.Infrastructure;
+using KaneCode.Infrastructure;
 using KaneCode.Models;
 using KaneCode.Services;
 using KaneCode.Services.Ai;
@@ -206,6 +206,28 @@ public partial class MainWindow : Window
         AddEditorBinding(HotkeyAction.ExtractMethod,
             new RelayInputCommand(async () => await _viewModel.ExtractMethodAsync()));
 
+        // Override AvalonEdit default Ctrl+D (delete line) with duplicate line behavior.
+        // Must remove AvalonEdit's built-in binding from TextArea first,
+        // then add ours to the TextArea so it intercepts at the right level.
+        var textArea = CodeEditor.TextArea;
+        for (var i = textArea.InputBindings.Count - 1; i >= 0; i--)
+        {
+            if (textArea.InputBindings[i] is KeyBinding kb &&
+                kb.Key == Key.D && kb.Modifiers == ModifierKeys.Control)
+            {
+                textArea.InputBindings.RemoveAt(i);
+            }
+        }
+
+        textArea.InputBindings.Add(new KeyBinding(
+            new RelayInputCommand(() =>
+            {
+                DuplicateCurrentLine();
+                return Task.CompletedTask;
+            }),
+            Key.D,
+            ModifierKeys.Control));
+
         // Update menu gesture text displays
         UpdateMenuGestureText();
     }
@@ -230,6 +252,42 @@ public partial class MainWindow : Window
         }
 
         CodeEditor.InputBindings.Add(new KeyBinding(command, binding.Key, binding.Modifiers));
+    }
+
+    private void DuplicateCurrentLine()
+    {
+        if (CodeEditor.Document is null)
+        {
+            return;
+        }
+
+        var document = CodeEditor.Document;
+        var caretOffset = CodeEditor.CaretOffset;
+        var line = document.GetLineByOffset(caretOffset);
+        var columnInLine = caretOffset - line.Offset;
+
+        var lineText = document.GetText(line.Offset, line.Length);
+        var delimiter = line.DelimiterLength > 0
+            ? document.GetText(line.EndOffset, line.DelimiterLength)
+            : Environment.NewLine;
+
+        var insertOffset = line.EndOffset + line.DelimiterLength;
+        var duplicatedText = lineText + delimiter;
+
+        document.BeginUpdate();
+        try
+        {
+            document.Insert(insertOffset, duplicatedText);
+        }
+        finally
+        {
+            document.EndUpdate();
+        }
+
+        var duplicatedLine = document.GetLineByNumber(line.LineNumber + 1);
+        var newCaret = duplicatedLine.Offset + Math.Min(columnInLine, duplicatedLine.Length);
+        CodeEditor.CaretOffset = newCaret;
+        CodeEditor.TextArea.Caret.BringCaretToView();
     }
 
     /// <summary>
