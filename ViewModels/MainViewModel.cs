@@ -36,6 +36,8 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
 
     /// <summary>Exposes the build service for agent tool registration.</summary>
     internal BuildService BuildService => _buildService;
+    /// <summary>Exposes the Roslyn workspace service for agent tool registration.</summary>
+    internal RoslynWorkspaceService RoslynService => _roslynService;
     private readonly TemplateService _templateService = new();
     private RoslynClassificationColorizer? _classificationColorizer;
     private RoslynDiagnosticRenderer? _diagnosticRenderer;

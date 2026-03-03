@@ -92,7 +92,7 @@
 - [X] **8.6** `RunBuildTool` — trigger a build and return diagnostics
     - Invokes `BuildService.BuildAsync`, returns build output and error list
     - Streams build output lines back as partial results if possible
-- [ ] **8.7** `GetDiagnosticsTool` — get Roslyn diagnostics for a file
+- [X] **8.7** `GetDiagnosticsTool` — get Roslyn diagnostics for a file
     - Parameters: `filePath` (string)
     - Returns the list of errors/warnings with line numbers and messages
     - Uses existing `RoslynWorkspaceService.GetDiagnosticsAsync`
@@ -121,31 +121,7 @@
     - Toggle button in the AI Chat header bar
     - When enabled, the system prompt includes tool definitions and agent instructions
     - When disabled, tools are not sent and the model behaves as a plain chat assistant
-- [ ] **9.2** System prompt engineering — agent persona with tool-use instructions
-    - Structured system prompt: role, capabilities, available tools, coding conventions
-    - Include project context (from 6.6): file tree, TFM, packages, language version
-    - Instructions for plan-then-act workflow, when to use which tools
-- [ ] **9.3** Plan/act/observe loop — structured agent reasoning
-    - Agent outputs a plan (numbered steps) before acting
-    - Each step is surfaced in the chat as a collapsible plan block
-    - After each tool call, the agent observes the result and decides the next action
-    - Plan can be revised mid-execution based on observations
-- [ ] **9.4** User confirmation gates — require approval for destructive actions
-    - File writes, command execution, and git operations prompt the user with a diff/preview
-    - Inline approve/reject buttons in the chat for each pending action
-    - Configurable trust levels: "ask always", "auto-approve reads", "auto-approve all"
-- [ ] **9.5** Multi-step task execution — end-to-end coding workflows
-    - Agent can chain: read file → understand → edit → build → check diagnostics → fix → done
-    - Max iteration limit (configurable, default 20) to prevent runaway loops
-    - Automatic cancellation if the agent appears stuck (repeated identical tool calls)
-- [ ] **9.6** Inline diff preview — show proposed edits as diffs before applying
-    - When the agent proposes a file edit, render a unified diff in the chat
-    - Accept/Reject buttons apply or discard the change
-    - Side-by-side or inline diff view using existing `GitDiffPanel` patterns
-- [ ] **9.7** Agent output panel — structured progress view
-    - Separate collapsible section showing: current plan, completed steps, pending steps
-    - Real-time updates as the agent works through its plan
-    - Elapsed time and tool call count displayed
+
 
 
 
