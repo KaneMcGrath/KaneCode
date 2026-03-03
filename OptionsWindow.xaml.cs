@@ -7,12 +7,13 @@ using System.Windows.Input;
 namespace KaneCode;
 
 /// <summary>
-/// Options dialog with categorized settings pages (General, Appearance, Hotkeys).
+/// Options dialog with categorized settings pages (General, Appearance, Hotkeys, AI Providers).
 /// </summary>
 public partial class OptionsWindow : Window
 {
     private bool _isInitializing = true;
     private readonly HotkeySettingsViewModel _hotkeyViewModel = new();
+    private readonly AiSettingsViewModel _aiSettingsViewModel = new();
 
     public OptionsWindow()
     {
@@ -32,6 +33,17 @@ public partial class OptionsWindow : Window
         // Bind the hotkeys page to its view model
         HotkeysPageBorder.DataContext = _hotkeyViewModel;
 
+        // Bind the AI providers page to its view model
+        AiProvidersPageBorder.DataContext = _aiSettingsViewModel;
+        _aiSettingsViewModel.PropertyChanged += (_, args) =>
+        {
+            if (args.PropertyName == nameof(AiSettingsViewModel.SelectedEntry))
+            {
+                AiDetailPanel.IsEnabled = _aiSettingsViewModel.SelectedEntry is not null;
+                SyncApiKeyBox();
+            }
+        };
+
         _isInitializing = false;
     }
 
@@ -49,6 +61,7 @@ public partial class OptionsWindow : Window
         GeneralPageBorder.Visibility = Visibility.Collapsed;
         AppearancePageBorder.Visibility = Visibility.Collapsed;
         HotkeysPageBorder.Visibility = Visibility.Collapsed;
+        AiProvidersPageBorder.Visibility = Visibility.Collapsed;
 
         // Show selected page
         switch (category)
@@ -61,6 +74,9 @@ public partial class OptionsWindow : Window
                 break;
             case "Hotkeys":
                 HotkeysPageBorder.Visibility = Visibility.Visible;
+                break;
+            case "AI Providers":
+                AiProvidersPageBorder.Visibility = Visibility.Visible;
                 break;
         }
     }
@@ -118,5 +134,22 @@ public partial class OptionsWindow : Window
         RecordingIndicator.Visibility = _hotkeyViewModel.IsRecording
             ? Visibility.Visible
             : Visibility.Collapsed;
+    }
+
+    private void ApiKeyBox_PasswordChanged(object sender, RoutedEventArgs e)
+    {
+        if (_aiSettingsViewModel.SelectedEntry is { } entry)
+        {
+            entry.ApiKey = ApiKeyBox.Password;
+        }
+    }
+
+    /// <summary>
+    /// Pushes the stored API key into the PasswordBox when selection changes.
+    /// PasswordBox.Password is not a dependency property, so this is done in code-behind.
+    /// </summary>
+    private void SyncApiKeyBox()
+    {
+        ApiKeyBox.Password = _aiSettingsViewModel.SelectedEntry?.ApiKey ?? string.Empty;
     }
 }
