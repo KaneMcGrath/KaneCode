@@ -1159,4 +1159,16 @@ public partial class MainWindow : Window
             return $"{Info.Name} ({shortName})";
         }
     }
+
+    // ── Quick Build and Run Buttons ────────────────────────────────────
+
+    private void BuildQuick_Click(object? sender, RoutedEventArgs e)
+    {
+        _viewModel.BuildCommand.Execute(null);
+    }
+
+    private void RunQuick_Click(object? sender, RoutedEventArgs e)
+    {
+        _viewModel.RunCommand.Execute(null);
+    }
 }
