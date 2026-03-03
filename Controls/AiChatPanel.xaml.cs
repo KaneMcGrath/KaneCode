@@ -1,4 +1,5 @@
 using KaneCode.Services.Ai;
+using System.Diagnostics;
 using System.Text.RegularExpressions;
 using System.Windows;
 using System.Windows.Controls;
@@ -18,6 +19,7 @@ public partial class AiChatPanel : UserControl
     private string? _model;
     private CancellationTokenSource? _streamCts;
     private bool _isStreaming;
+    private AiUsageStats? _lastUsageStats;
 
     public AiChatPanel()
     {
@@ -114,6 +116,9 @@ public partial class AiChatPanel : UserControl
         var assistantBlock = CreateAssistantMessageBlock();
         Expander? thinkingExpander = null;
         TextBlock? thinkingTextBlock = null;
+        var reasoningTokenCount = 0;
+        var contentTokenCount = 0;
+        var streamStopwatch = Stopwatch.StartNew();
 
         CancelStreaming();
         _streamCts = new CancellationTokenSource();
@@ -126,41 +131,66 @@ public partial class AiChatPanel : UserControl
             await foreach (var token in _provider.StreamCompletionAsync(_conversationHistory, model, ct)
                 .ConfigureAwait(false))
             {
+                if (token.Type == AiStreamTokenType.Usage)
+                {
+                    _lastUsageStats = token.UsageStats;
+                    continue;
+                }
+
                 if (token.Type == AiStreamTokenType.Reasoning)
                 {
                     reasoningBuilder.Append(token.Text);
+                    reasoningTokenCount++;
 
                     await Dispatcher.InvokeAsync(() =>
                     {
+                        var shouldStickToBottom = IsMessageScrollerNearBottom();
+
                         if (thinkingExpander is null)
                         {
                             (thinkingExpander, thinkingTextBlock) = CreateThinkingExpander(assistantBlock);
                         }
 
                         thinkingTextBlock!.Text = reasoningBuilder.ToString();
-                        thinkingExpander.Header = $"💭 Thinking ({reasoningBuilder.Length:N0} chars)...";
-                        MessageScroller.ScrollToEnd();
+                        thinkingExpander.Header = $"💭 Thinking ({reasoningTokenCount:N0} tokens)...";
+
+                        UpdateStatsBar(reasoningTokenCount + contentTokenCount, streamStopwatch);
+
+                        if (shouldStickToBottom)
+                        {
+                            MessageScroller.ScrollToEnd();
+                        }
                     });
                 }
                 else
                 {
                     responseBuilder.Append(token.Text);
+                    contentTokenCount++;
 
                     await Dispatcher.InvokeAsync(() =>
                     {
+                        var shouldStickToBottom = IsMessageScrollerNearBottom();
+
                         // Finalize the thinking header once content starts
                         if (thinkingExpander is not null &&
                             thinkingExpander.Header is string header &&
                             header.EndsWith("...", StringComparison.Ordinal))
                         {
-                            thinkingExpander.Header = $"💭 Thought for {reasoningBuilder.Length:N0} chars";
+                            thinkingExpander.Header = $"💭 Thought for {reasoningTokenCount:N0} tokens";
                         }
 
                         RenderMarkdownInto(assistantBlock, responseBuilder.ToString());
-                        MessageScroller.ScrollToEnd();
+                        UpdateStatsBar(reasoningTokenCount + contentTokenCount, streamStopwatch);
+
+                        if (shouldStickToBottom)
+                        {
+                            MessageScroller.ScrollToEnd();
+                        }
                     });
                 }
             }
+
+            streamStopwatch.Stop();
 
             // Record final response in history
             _conversationHistory.Add(new AiChatMessage(AiChatRole.Assistant, responseBuilder.ToString()));
@@ -179,6 +209,9 @@ public partial class AiChatPanel : UserControl
         }
         finally
         {
+            streamStopwatch.Stop();
+            var finalTokenCount = reasoningTokenCount + contentTokenCount;
+
             await Dispatcher.InvokeAsync(() =>
             {
                 _isStreaming = false;
@@ -186,6 +219,8 @@ public partial class AiChatPanel : UserControl
                 SendButton.IsEnabled = true;
                 SendButton.Click -= StopButton_Click;
                 SendButton.Click += SendButton_Click;
+
+                UpdateStatsBarFinal(finalTokenCount, reasoningTokenCount, contentTokenCount, streamStopwatch);
             });
         }
     }
@@ -203,6 +238,46 @@ public partial class AiChatPanel : UserControl
             _streamCts.Dispose();
             _streamCts = null;
         }
+    }
+
+    // ── Stats bar ──────────────────────────────────────────────────
+
+    /// <summary>
+    /// Updates the stats bar during streaming with live token count and tokens/sec.
+    /// </summary>
+    private void UpdateStatsBar(int totalTokens, Stopwatch stopwatch)
+    {
+        var elapsed = stopwatch.Elapsed.TotalSeconds;
+        var tokPerSec = elapsed > 0.1 ? totalTokens / elapsed : 0;
+        StatsBar.Text = $"{totalTokens:N0} tokens  •  {tokPerSec:F1} tok/s";
+    }
+
+    /// <summary>
+    /// Updates the stats bar with final summary after streaming completes.
+    /// Shows prompt tokens (context), completion breakdown, and tokens/sec.
+    /// </summary>
+    private void UpdateStatsBarFinal(int totalGenerated, int reasoningTokens, int contentTokens, Stopwatch stopwatch)
+    {
+        var elapsed = stopwatch.Elapsed.TotalSeconds;
+        var tokPerSec = elapsed > 0.1 ? totalGenerated / elapsed : 0;
+
+        var parts = new List<string>();
+
+        if (_lastUsageStats is { } usage)
+        {
+            parts.Add($"ctx: {usage.PromptTokens:N0}");
+        }
+
+        if (reasoningTokens > 0)
+        {
+            parts.Add($"think: {reasoningTokens:N0}");
+        }
+
+        parts.Add($"out: {contentTokens:N0}");
+        parts.Add($"{tokPerSec:F1} tok/s");
+        parts.Add($"{elapsed:F1}s");
+
+        StatsBar.Text = string.Join("  •  ", parts);
     }
 
     // ── Message rendering ──────────────────────────────────────────
@@ -333,6 +408,18 @@ public partial class AiChatPanel : UserControl
 
         MessagePanel.Children.Add(tb);
         MessageScroller.ScrollToEnd();
+    }
+
+    /// <summary>
+    /// Returns true when the message scroller is at (or near) the bottom.
+    /// This allows users to scroll up during streaming without being forced back down,
+    /// while still auto-following new content when already near the end.
+    /// </summary>
+    private bool IsMessageScrollerNearBottom()
+    {
+        const double autoFollowThreshold = 24.0;
+        var remaining = MessageScroller.ScrollableHeight - MessageScroller.VerticalOffset;
+        return remaining <= autoFollowThreshold;
     }
 
     // ── Markdown rendering ─────────────────────────────────────────

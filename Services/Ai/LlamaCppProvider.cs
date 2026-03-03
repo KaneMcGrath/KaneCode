@@ -114,6 +114,7 @@ internal sealed class LlamaCppProvider : IAiProvider, IDisposable
     /// <summary>
     /// Extracts content and reasoning tokens from an SSE chat completion chunk.
     /// Reasoning models emit <c>reasoning_content</c> in the delta alongside or instead of <c>content</c>.
+    /// The final chunk may include a <c>usage</c> object with token counts.
     /// </summary>
     private static IAsyncEnumerable<AiStreamToken> ExtractStreamTokens(string json)
     {
@@ -135,35 +136,45 @@ internal sealed class LlamaCppProvider : IAiProvider, IDisposable
             {
                 var root = doc.RootElement;
 
-                if (!root.TryGetProperty("choices", out var choices) || choices.GetArrayLength() == 0)
+                if (root.TryGetProperty("choices", out var choices) && choices.GetArrayLength() > 0)
                 {
-                    yield break;
-                }
-
-                var firstChoice = choices[0];
-                if (!firstChoice.TryGetProperty("delta", out var delta))
-                {
-                    yield break;
-                }
-
-                // Reasoning tokens (chain-of-thought from reasoning models)
-                if (delta.TryGetProperty("reasoning_content", out var reasoning))
-                {
-                    var text = reasoning.GetString();
-                    if (!string.IsNullOrEmpty(text))
+                    var firstChoice = choices[0];
+                    if (firstChoice.TryGetProperty("delta", out var delta))
                     {
-                        yield return new AiStreamToken(AiStreamTokenType.Reasoning, text);
+                        // Reasoning tokens (chain-of-thought from reasoning models)
+                        if (delta.TryGetProperty("reasoning_content", out var reasoning))
+                        {
+                            var text = reasoning.GetString();
+                            if (!string.IsNullOrEmpty(text))
+                            {
+                                yield return new AiStreamToken(AiStreamTokenType.Reasoning, text);
+                            }
+                        }
+
+                        // Normal content tokens
+                        if (delta.TryGetProperty("content", out var content))
+                        {
+                            var text = content.GetString();
+                            if (!string.IsNullOrEmpty(text))
+                            {
+                                yield return new AiStreamToken(AiStreamTokenType.Content, text);
+                            }
+                        }
                     }
                 }
 
-                // Normal content tokens
-                if (delta.TryGetProperty("content", out var content))
+                // Usage stats from the final chunk
+                if (root.TryGetProperty("usage", out var usage) &&
+                    usage.ValueKind == JsonValueKind.Object)
                 {
-                    var text = content.GetString();
-                    if (!string.IsNullOrEmpty(text))
-                    {
-                        yield return new AiStreamToken(AiStreamTokenType.Content, text);
-                    }
+                    var promptTokens = usage.TryGetProperty("prompt_tokens", out var pt) ? pt.GetInt32() : 0;
+                    var completionTokens = usage.TryGetProperty("completion_tokens", out var ct) ? ct.GetInt32() : 0;
+                    var totalTokens = usage.TryGetProperty("total_tokens", out var tt) ? tt.GetInt32() : 0;
+
+                    yield return new AiStreamToken(
+                        AiStreamTokenType.Usage,
+                        string.Empty,
+                        new AiUsageStats(promptTokens, completionTokens, totalTokens));
                 }
             }
 

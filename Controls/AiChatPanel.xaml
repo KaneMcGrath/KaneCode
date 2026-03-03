@@ -33,7 +33,19 @@
             </Grid>
         </Border>
 
-        <!-- Input area at the bottom -->
+        <!-- Stats info bar -->
+        <Border DockPanel.Dock="Bottom"
+                Background="{DynamicResource AiChatHeaderBackground}"
+                Padding="8,2"
+                BorderThickness="0,1,0,0"
+                BorderBrush="{DynamicResource AiChatBorder}">
+            <TextBlock x:Name="StatsBar"
+                       Text=""
+                       FontSize="11"
+                       Foreground="{DynamicResource AiChatSecondaryForeground}" />
+        </Border>
+
+        <!-- Input area -->
         <Border DockPanel.Dock="Bottom"
                 Background="{DynamicResource AiChatInputBackground}"
                 Padding="6"
