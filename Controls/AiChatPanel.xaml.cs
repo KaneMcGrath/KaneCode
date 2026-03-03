@@ -104,7 +104,7 @@ public partial class AiChatPanel : UserControl
 
         // Stream assistant response
         _isStreaming = true;
-        SendButton.IsEnabled = false;
+        SendButton.IsEnabled = true;
         SendButton.Content = "⏹ Stop";
         SendButton.Click -= SendButton_Click;
         SendButton.Click += StopButton_Click;
@@ -286,13 +286,6 @@ public partial class AiChatPanel : UserControl
             Margin = new Thickness(0, 4, 0, 0)
         };
 
-        var scrollViewer = new ScrollViewer
-        {
-            MaxHeight = 200,
-            VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
-            Content = textBlock
-        };
-
         var expander = new Expander
         {
             Header = "💭 Thinking...",
@@ -307,7 +300,7 @@ public partial class AiChatPanel : UserControl
                 Padding = new Thickness(8, 6, 8, 6),
                 BorderBrush = FindBrush("AiChatThinkingBorder"),
                 BorderThickness = new Thickness(1),
-                Child = scrollViewer
+                Child = textBlock
             }
         };
 
