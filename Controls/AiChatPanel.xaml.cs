@@ -134,7 +134,7 @@ public partial class AiChatPanel : UserControl
                     {
                         if (thinkingExpander is null)
                         {
-                            (thinkingExpander, thinkingTextBlock) = CreateThinkingExpander(assistantBlock.Parent as UIElement);
+                            (thinkingExpander, thinkingTextBlock) = CreateThinkingExpander(assistantBlock);
                         }
 
                         thinkingTextBlock!.Text = reasoningBuilder.ToString();
@@ -232,39 +232,34 @@ public partial class AiChatPanel : UserControl
     }
 
     /// <summary>
-    /// Creates an empty assistant message block and returns the inner RichTextBox for progressive rendering.
+    /// Creates an empty assistant message block and returns the RichTextBox for progressive rendering.
+    /// Assistant content is rendered full-width (no bubble) for readability in narrow panels.
     /// </summary>
     private RichTextBox CreateAssistantMessageBlock()
     {
-        var border = new Border
-        {
-            Background = FindBrush("AiChatAssistantBubble"),
-            CornerRadius = new CornerRadius(6),
-            Padding = new Thickness(10, 6, 10, 6),
-            Margin = new Thickness(4, 4, 40, 4),
-            HorizontalAlignment = HorizontalAlignment.Left
-        };
-
         var rtb = new RichTextBox
         {
             IsReadOnly = true,
             Background = Brushes.Transparent,
             BorderThickness = new Thickness(0),
             Foreground = FindBrush("AiChatAssistantForeground"),
-            FontSize = 13,
+            FontSize = 14,
             FontFamily = new FontFamily("Segoe UI"),
             IsDocumentEnabled = true,
-            Padding = new Thickness(0)
+            Padding = new Thickness(0),
+            Margin = new Thickness(4, 4, 4, 6),
+            HorizontalAlignment = HorizontalAlignment.Stretch
         };
 
-        // Disable the default min height for RichTextBox
+        // Single-column flow and tighter padding for readable assistant output in narrow panes
         rtb.Document = new FlowDocument
         {
-            PagePadding = new Thickness(0)
+            PagePadding = new Thickness(0),
+            ColumnWidth = double.PositiveInfinity,
+            LineHeight = 20
         };
 
-        border.Child = rtb;
-        MessagePanel.Children.Add(border);
+        MessagePanel.Children.Add(rtb);
         return rtb;
     }
 
@@ -542,7 +537,7 @@ public partial class AiChatPanel : UserControl
             FontFamily = new FontFamily("Cascadia Code, Consolas, Courier New"),
             FontSize = 12,
             Padding = new Thickness(8, 6, 8, 6),
-            Margin = new Thickness(0, 4, 0, 4),
+            Margin = new Thickness(0, 6, 0, 6),
             Foreground = FindBrush("AiChatCodeForeground")
         };
 
@@ -557,7 +552,8 @@ public partial class AiChatPanel : UserControl
     {
         var paragraph = new Paragraph
         {
-            Margin = new Thickness(0, 2, 0, 2),
+            Margin = new Thickness(0, 3, 0, 3),
+            LineHeight = 20,
             Foreground = FindBrush("AiChatAssistantForeground")
         };
 
