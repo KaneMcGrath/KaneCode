@@ -402,16 +402,19 @@ Icon="Icons/KaneCode.ico">
                                                       Commits="{Binding GitCommitHistory}"
                                                       PanelStatusText="{Binding GitLogStatusText}" />
                             </avalonDock:LayoutAnchorable>
-                            <avalonDock:LayoutAnchorable x:Name="AiChatAnchorable" Title="AI Chat"
-                                                         CanClose="False"
-                                                         CanHide="True"
-                                                         CanAutoHide="True"
-                                                         ContentId="AiChatPane">
-                                <controls:AiChatPanel x:Name="AiChatPanel" />
-                            </avalonDock:LayoutAnchorable>
                         </avalonDock:LayoutAnchorablePane>
 
                     </avalonDock:LayoutPanel>
+
+                    <avalonDock:LayoutAnchorablePane DockWidth="280">
+                        <avalonDock:LayoutAnchorable x:Name="AiChatAnchorable" Title="AI Chat"
+                                                     CanClose="False"
+                                                     CanHide="True"
+                                                     CanAutoHide="True"
+                                                     ContentId="AiChatPane">
+                            <controls:AiChatPanel x:Name="AiChatPanel" />
+                        </avalonDock:LayoutAnchorable>
+                    </avalonDock:LayoutAnchorablePane>
 
                 </avalonDock:LayoutPanel>
             </avalonDock:LayoutRoot>

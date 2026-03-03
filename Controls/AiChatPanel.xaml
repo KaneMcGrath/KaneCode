@@ -65,7 +65,7 @@
                          BorderThickness="1"
                          BorderBrush="{DynamicResource AiChatBorder}"
                          Padding="6,4"
-                         KeyDown="InputBox_KeyDown" />
+                         PreviewKeyDown="InputBox_PreviewKeyDown" />
             </DockPanel>
         </Border>
 

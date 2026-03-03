@@ -41,11 +41,27 @@ public partial class AiChatPanel : UserControl
         await SendMessageAsync();
     }
 
-    private async void InputBox_KeyDown(object sender, System.Windows.Input.KeyEventArgs e)
+    private async void InputBox_PreviewKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
     {
-        // Enter sends, Shift+Enter inserts newline
-        if (e.Key == System.Windows.Input.Key.Enter &&
-            System.Windows.Input.Keyboard.Modifiers != System.Windows.Input.ModifierKeys.Shift)
+        if (e.Key != System.Windows.Input.Key.Enter)
+        {
+            return;
+        }
+
+        var modifiers = System.Windows.Input.Keyboard.Modifiers;
+
+        // Shift+Enter inserts a newline
+        if ((modifiers & System.Windows.Input.ModifierKeys.Shift) == System.Windows.Input.ModifierKeys.Shift)
+        {
+            e.Handled = true;
+            var caretIndex = InputBox.CaretIndex;
+            InputBox.Text = InputBox.Text.Insert(caretIndex, Environment.NewLine);
+            InputBox.CaretIndex = caretIndex + Environment.NewLine.Length;
+            return;
+        }
+
+        // Enter sends (without Shift)
+        if (modifiers == System.Windows.Input.ModifierKeys.None)
         {
             e.Handled = true;
             await SendMessageAsync();
@@ -243,7 +259,7 @@ public partial class AiChatPanel : UserControl
 
     /// <summary>
     /// Parses markdown text and renders it into the given <see cref="RichTextBox"/>.
-    /// Supports fenced code blocks, inline code, and bold text.
+    /// Supports fenced code blocks, tables, inline code, and bold text.
     /// </summary>
     private void RenderMarkdownInto(RichTextBox rtb, string markdown)
     {
@@ -253,6 +269,7 @@ public partial class AiChatPanel : UserControl
         var inCodeBlock = false;
         var codeLanguage = string.Empty;
         var codeLines = new List<string>();
+        var tableLines = new List<string>();
 
         foreach (var rawLine in lines)
         {
@@ -261,6 +278,8 @@ public partial class AiChatPanel : UserControl
             // Fenced code block toggle
             if (line.TrimStart().StartsWith("```", StringComparison.Ordinal))
             {
+                FlushTable(doc, tableLines);
+
                 if (!inCodeBlock)
                 {
                     inCodeBlock = true;
@@ -284,18 +303,147 @@ public partial class AiChatPanel : UserControl
                 continue;
             }
 
+            // Table row detection — lines that start and end with '|'
+            if (IsTableRow(line))
+            {
+                tableLines.Add(line);
+                continue;
+            }
+
+            // Non-table line encountered — flush any accumulated table first
+            FlushTable(doc, tableLines);
+
             // Normal paragraph
             var paragraph = CreateMarkdownParagraph(line);
             doc.Blocks.Add(paragraph);
         }
 
-        // If a code block was not closed, render what we have so far
+        // Flush any trailing table or unclosed code block
+        FlushTable(doc, tableLines);
+
         if (inCodeBlock && codeLines.Count > 0)
         {
             doc.Blocks.Add(CreateCodeBlock(string.Join('\n', codeLines)));
         }
 
         rtb.Document = doc;
+    }
+
+    // ── Table rendering ───────────────────────────────────────────
+
+    /// <summary>
+    /// Returns true if the line looks like a markdown table row (starts and contains '|').
+    /// </summary>
+    private static bool IsTableRow(string line)
+    {
+        var trimmed = line.Trim();
+        return trimmed.StartsWith('|') && trimmed.Contains('|', StringComparison.Ordinal) && trimmed.Length > 1;
+    }
+
+    /// <summary>
+    /// Returns true if the line is a separator row (e.g. "|---|---|").
+    /// </summary>
+    private static bool IsTableSeparator(string line)
+    {
+        var trimmed = line.Trim().Trim('|');
+        return trimmed.Length > 0 && trimmed.Replace("-", "").Replace("|", "").Replace(":", "").Replace(" ", "").Length == 0;
+    }
+
+    /// <summary>
+    /// Splits a markdown table row into cell values, trimming outer pipes and whitespace.
+    /// </summary>
+    private static string[] SplitTableRow(string line)
+    {
+        var trimmed = line.Trim();
+
+        // Strip leading and trailing '|'
+        if (trimmed.StartsWith('|'))
+        {
+            trimmed = trimmed[1..];
+        }
+
+        if (trimmed.EndsWith('|'))
+        {
+            trimmed = trimmed[..^1];
+        }
+
+        return trimmed.Split('|').Select(c => c.Trim()).ToArray();
+    }
+
+    /// <summary>
+    /// If <paramref name="tableLines"/> has accumulated rows, renders them as a
+    /// <see cref="Table"/> block and clears the list.
+    /// </summary>
+    private void FlushTable(FlowDocument doc, List<string> tableLines)
+    {
+        if (tableLines.Count == 0)
+        {
+            return;
+        }
+
+        var borderBrush = FindBrush("AiChatBorder");
+        var headerBg = FindBrush("AiChatCodeBlockBackground");
+        var foreground = FindBrush("AiChatAssistantForeground");
+
+        var table = new Table
+        {
+            CellSpacing = 0,
+            BorderBrush = borderBrush,
+            BorderThickness = new Thickness(1),
+            Margin = new Thickness(0, 4, 0, 4),
+            Foreground = foreground
+        };
+
+        // Determine column count from the first row
+        var firstRowCells = SplitTableRow(tableLines[0]);
+        foreach (var _ in firstRowCells)
+        {
+            table.Columns.Add(new TableColumn());
+        }
+
+        var rowGroup = new TableRowGroup();
+        var isFirstDataRow = true;
+
+        foreach (var rowLine in tableLines)
+        {
+            // Skip separator rows (|---|---|)
+            if (IsTableSeparator(rowLine))
+            {
+                continue;
+            }
+
+            var cells = SplitTableRow(rowLine);
+            var tableRow = new TableRow();
+
+            for (var i = 0; i < firstRowCells.Length; i++)
+            {
+                var cellText = i < cells.Length ? cells[i] : string.Empty;
+                var paragraph = new Paragraph { Margin = new Thickness(0), Foreground = foreground };
+                ParseInlineMarkdown(paragraph, cellText);
+
+                var cell = new TableCell(paragraph)
+                {
+                    Padding = new Thickness(6, 3, 6, 3),
+                    BorderBrush = borderBrush,
+                    BorderThickness = new Thickness(0, 0, 1, 1)
+                };
+
+                if (isFirstDataRow)
+                {
+                    cell.Background = headerBg;
+                    paragraph.FontWeight = FontWeights.SemiBold;
+                }
+
+                tableRow.Cells.Add(cell);
+            }
+
+            rowGroup.Rows.Add(tableRow);
+            isFirstDataRow = false;
+        }
+
+        table.RowGroups.Add(rowGroup);
+        doc.Blocks.Add(table);
+        tableLines.Clear();
     }
 
     /// <summary>

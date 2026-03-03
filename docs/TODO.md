@@ -24,7 +24,7 @@
 
 - [x] **6.1** `IAiProvider` abstraction + provider/API-key settings in Options (encrypted storage)
 - [x] **6.2** Llama.cpp (local) provider implementation, talks to a local Llama.cpp HTTP endpoint.
-- [~] **6.3** AI Chat panel — AvalonDock anchorable, markdown rendering, streaming tokens
+- [x] **6.3** AI Chat panel — AvalonDock anchorable, markdown rendering, streaming tokens
   - QA: View → AI Chat → panel appears in the bottom dock group
   - QA: With no provider configured → type a message → system message says "No AI provider configured"
   - QA: Configure a llama.cpp provider → relaunch → AI Chat shows provider name in header
