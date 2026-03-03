@@ -186,12 +186,17 @@ internal static class EditorService
             }
 
             var projectDir = Path.GetDirectoryName(projectPath)!;
-            var projectNode = new ProjectItem(projectPath, ProjectItemType.Project) { IsExpanded = false };
+            // Auto-expand project nodes that live in the same directory as the solution
+            // (common case when solution and project are colocated) to improve discoverability.
+            var projectNode = new ProjectItem(projectPath, ProjectItemType.Project)
+            {
+                IsExpanded = string.Equals(projectDir, solutionDir, StringComparison.OrdinalIgnoreCase)
+            };
             PopulateChildren(projectNode, new DirectoryInfo(projectDir));
             root.Children.Add(projectNode);
         }
 
-        // Add solution-level files that aren't inside any project directory
+        // Add solution-level files that aren't already represented under a project node.
         var projectDirs = projectPaths
             .Where(File.Exists)
             .Select(p => Path.GetDirectoryName(p)!)
@@ -207,7 +212,17 @@ internal static class EditorService
                     continue;
                 }
 
-                // Only include files directly in the solution directory (not in project subdirs)
+                if (string.Equals(file.FullName, solutionPath, StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                var fileDirectory = file.DirectoryName ?? string.Empty;
+                if (projectDirs.Contains(fileDirectory))
+                {
+                    continue;
+                }
+
                 root.Children.Add(new ProjectItem(file.FullName, isDirectory: false));
             }
         }

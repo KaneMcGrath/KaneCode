@@ -3329,12 +3329,55 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
             return;
         }
 
+        var runnableProjectPath = ResolveRunnableProjectPath();
+
         BuildOutputLines.Clear();
+        if (string.IsNullOrEmpty(runnableProjectPath))
+        {
+            BuildSummary = "Run failed";
+            BuildOutputLines.Add("No runnable project (.csproj) could be resolved from the current selection.");
+            BuildOutputLines.Add("Load a project directly or ensure the solution contains at least one C# project.");
+            return;
+        }
+
         BuildSummary = "Running...";
-        BuildOutputLines.Add($"> dotnet run --project \"{_loadedProjectOrSolutionPath}\"");
+        BuildOutputLines.Add($"> dotnet run --project \"{runnableProjectPath}\"");
         BuildOutputLines.Add(string.Empty);
 
-        await _buildService.RunAsync(_loadedProjectOrSolutionPath).ConfigureAwait(false);
+        await _buildService.RunAsync(runnableProjectPath).ConfigureAwait(false);
+    }
+
+    private string? ResolveRunnableProjectPath()
+    {
+        if (string.IsNullOrWhiteSpace(_loadedProjectOrSolutionPath))
+        {
+            return null;
+        }
+
+        var extension = Path.GetExtension(_loadedProjectOrSolutionPath);
+        if (extension.Equals(".csproj", StringComparison.OrdinalIgnoreCase))
+        {
+            return _loadedProjectOrSolutionPath;
+        }
+
+        if (!extension.Equals(".sln", StringComparison.OrdinalIgnoreCase))
+        {
+            return null;
+        }
+
+        try
+        {
+            return DiscoverProjectPaths(_loadedProjectOrSolutionPath)
+                .FirstOrDefault(File.Exists);
+        }
+        catch (IOException)
+        {
+            return null;
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return null;
+        }
     }
 
     /// <summary>
