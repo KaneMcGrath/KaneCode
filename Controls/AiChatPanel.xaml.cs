@@ -1021,24 +1021,60 @@ public partial class AiChatPanel : UserControl
     }
 
     /// <summary>
-    /// Prepends the active mode's system prompt (if any) to the outbound messages.
+    /// Merges the active mode's system prompt (if any) with any existing system
+    /// messages from the context window into a single system message at position 0.
+    /// Many inference servers (e.g. llama.cpp) require exactly one system message
+    /// at the beginning of the conversation.
     /// </summary>
     private IReadOnlyList<AiChatMessage> BuildOutboundMessages(IReadOnlyList<AiChatMessage> outboundWindow, JsonElement toolsDef)
     {
         ArgumentNullException.ThrowIfNull(outboundWindow);
 
         var modePrompt = _activeMode?.BuildSystemPrompt(toolsDef);
-        if (string.IsNullOrWhiteSpace(modePrompt))
+
+        // Collect all leading system messages from the context window so we can
+        // merge them with the mode prompt into a single system message.
+        var systemParts = new List<string>();
+        var nonSystemStartIndex = 0;
+
+        if (!string.IsNullOrWhiteSpace(modePrompt))
+        {
+            systemParts.Add(modePrompt);
+        }
+
+        for (var i = 0; i < outboundWindow.Count; i++)
+        {
+            if (outboundWindow[i].Role == AiChatRole.System)
+            {
+                if (!string.IsNullOrWhiteSpace(outboundWindow[i].Content))
+                {
+                    systemParts.Add(outboundWindow[i].Content);
+                }
+
+                nonSystemStartIndex = i + 1;
+            }
+            else
+            {
+                break;
+            }
+        }
+
+        if (systemParts.Count == 0)
         {
             return outboundWindow;
         }
 
-        var messages = new List<AiChatMessage>(outboundWindow.Count + 1)
+        var mergedSystem = string.Join("\n\n", systemParts);
+        var messages = new List<AiChatMessage>(outboundWindow.Count - nonSystemStartIndex + 1)
         {
-            new(AiChatRole.System, modePrompt)
+            new(AiChatRole.System, mergedSystem)
         };
 
-        messages.AddRange(outboundWindow);
+        for (var i = nonSystemStartIndex; i < outboundWindow.Count; i++)
+        {
+            messages.Add(outboundWindow[i]);
+        }
+
         return messages;
     }
 
