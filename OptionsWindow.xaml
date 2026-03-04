@@ -225,7 +225,7 @@
                 <TextBlock DockPanel.Dock="Bottom"
                            x:Name="RecordingIndicator"
                            Text="{Binding RecordingText}"
-                           Foreground="Orange"
+                           Foreground="{DynamicResource DiagnosticWarningForeground}"
                            FontSize="13" FontWeight="SemiBold"
                            Margin="0,6,0,0"
                            Visibility="Collapsed" />

@@ -23,6 +23,15 @@ internal static class ThemeResourceKeys
     public const string ButtonPressedBackground = nameof(ButtonPressedBackground);
     public const string ButtonPressedForeground = nameof(ButtonPressedForeground);
 
+    // Inputs / common controls
+    public const string ControlBackground = nameof(ControlBackground);
+    public const string ControlForeground = nameof(ControlForeground);
+    public const string ControlBorder = nameof(ControlBorder);
+    public const string ControlDisabledForeground = nameof(ControlDisabledForeground);
+    public const string ControlHoverBackground = nameof(ControlHoverBackground);
+    public const string ControlSelectionBackground = nameof(ControlSelectionBackground);
+    public const string ControlSelectionForeground = nameof(ControlSelectionForeground);
+
     // Status bar
     public const string StatusBarBackground = nameof(StatusBarBackground);
     public const string StatusBarForeground = nameof(StatusBarForeground);
@@ -84,6 +93,13 @@ internal static class ThemeResourceKeys
     public const string DiagnosticErrorForeground = nameof(DiagnosticErrorForeground);
     public const string DiagnosticWarningForeground = nameof(DiagnosticWarningForeground);
     public const string DiagnosticInfoForeground = nameof(DiagnosticInfoForeground);
+
+    // Git status badges
+    public const string GitModifiedForeground = nameof(GitModifiedForeground);
+    public const string GitAddedForeground = nameof(GitAddedForeground);
+    public const string GitUntrackedForeground = nameof(GitUntrackedForeground);
+    public const string GitDeletedForeground = nameof(GitDeletedForeground);
+    public const string GitConflictForeground = nameof(GitConflictForeground);
 
     // Completion popup
     public const string CompletionBackground = nameof(CompletionBackground);

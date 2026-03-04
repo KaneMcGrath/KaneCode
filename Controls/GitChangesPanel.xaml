@@ -127,19 +127,19 @@
                                         <Style TargetType="TextBlock">
                                             <Style.Triggers>
                                                 <DataTrigger Binding="{Binding Badge}" Value="Modified">
-                                                    <Setter Property="Foreground" Value="#FFCC66" />
+                                                    <Setter Property="Foreground" Value="{DynamicResource GitModifiedForeground}" />
                                                 </DataTrigger>
                                                 <DataTrigger Binding="{Binding Badge}" Value="Added">
-                                                    <Setter Property="Foreground" Value="#73C991" />
+                                                    <Setter Property="Foreground" Value="{DynamicResource GitAddedForeground}" />
                                                 </DataTrigger>
                                                 <DataTrigger Binding="{Binding Badge}" Value="Untracked">
-                                                    <Setter Property="Foreground" Value="#C8C8C8" />
+                                                    <Setter Property="Foreground" Value="{DynamicResource GitUntrackedForeground}" />
                                                 </DataTrigger>
                                                 <DataTrigger Binding="{Binding Badge}" Value="Deleted">
-                                                    <Setter Property="Foreground" Value="#F44747" />
+                                                    <Setter Property="Foreground" Value="{DynamicResource GitDeletedForeground}" />
                                                 </DataTrigger>
                                                 <DataTrigger Binding="{Binding Badge}" Value="Conflict">
-                                                    <Setter Property="Foreground" Value="#F48771" />
+                                                    <Setter Property="Foreground" Value="{DynamicResource GitConflictForeground}" />
                                                 </DataTrigger>
                                             </Style.Triggers>
                                         </Style>
@@ -225,13 +225,13 @@
                                         <Style TargetType="TextBlock">
                                             <Style.Triggers>
                                                 <DataTrigger Binding="{Binding Badge}" Value="Modified">
-                                                    <Setter Property="Foreground" Value="#FFCC66" />
+                                                    <Setter Property="Foreground" Value="{DynamicResource GitModifiedForeground}" />
                                                 </DataTrigger>
                                                 <DataTrigger Binding="{Binding Badge}" Value="Added">
-                                                    <Setter Property="Foreground" Value="#73C991" />
+                                                    <Setter Property="Foreground" Value="{DynamicResource GitAddedForeground}" />
                                                 </DataTrigger>
                                                 <DataTrigger Binding="{Binding Badge}" Value="Deleted">
-                                                    <Setter Property="Foreground" Value="#F44747" />
+                                                    <Setter Property="Foreground" Value="{DynamicResource GitDeletedForeground}" />
                                                 </DataTrigger>
                                             </Style.Triggers>
                                         </Style>

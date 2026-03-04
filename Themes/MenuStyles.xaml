@@ -188,7 +188,16 @@
 
     <Style TargetType="Button">
         <Setter Property="Template" Value="{StaticResource ButtonTemplate}" />
+        <Setter Property="Background" Value="{DynamicResource ControlBackground}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource ControlBorder}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="Padding" Value="8,3" />
         <Setter Property="Foreground" Value="{DynamicResource MenuForeground}" />
+        <Style.Triggers>
+            <Trigger Property="IsEnabled" Value="False">
+                <Setter Property="Foreground" Value="{DynamicResource ControlDisabledForeground}" />
+            </Trigger>
+        </Style.Triggers>
     </Style>
 
 </ResourceDictionary>

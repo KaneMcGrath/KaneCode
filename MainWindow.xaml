@@ -200,23 +200,23 @@ Icon="Icons/KaneCode.ico">
                                                             <Style.Triggers>
                                                                 <DataTrigger Binding="{Binding GitBadge}" Value="Modified">
                                                                     <Setter Property="Visibility" Value="Visible" />
-                                                                    <Setter Property="Foreground" Value="#FFCC66" />
+                                                                    <Setter Property="Foreground" Value="{DynamicResource GitModifiedForeground}" />
                                                                 </DataTrigger>
                                                                 <DataTrigger Binding="{Binding GitBadge}" Value="Added">
                                                                     <Setter Property="Visibility" Value="Visible" />
-                                                                    <Setter Property="Foreground" Value="#73C991" />
+                                                                    <Setter Property="Foreground" Value="{DynamicResource GitAddedForeground}" />
                                                                 </DataTrigger>
                                                                 <DataTrigger Binding="{Binding GitBadge}" Value="Untracked">
                                                                     <Setter Property="Visibility" Value="Visible" />
-                                                                    <Setter Property="Foreground" Value="#C8C8C8" />
+                                                                    <Setter Property="Foreground" Value="{DynamicResource GitUntrackedForeground}" />
                                                                 </DataTrigger>
                                                                 <DataTrigger Binding="{Binding GitBadge}" Value="Deleted">
                                                                     <Setter Property="Visibility" Value="Visible" />
-                                                                    <Setter Property="Foreground" Value="#F44747" />
+                                                                    <Setter Property="Foreground" Value="{DynamicResource GitDeletedForeground}" />
                                                                 </DataTrigger>
                                                                 <DataTrigger Binding="{Binding GitBadge}" Value="Conflict">
                                                                     <Setter Property="Visibility" Value="Visible" />
-                                                                    <Setter Property="Foreground" Value="#F48771" />
+                                                                    <Setter Property="Foreground" Value="{DynamicResource GitConflictForeground}" />
                                                                 </DataTrigger>
                                                             </Style.Triggers>
                                                         </Style>

@@ -19,6 +19,15 @@
     <SolidColorBrush x:Key="ButtonPressedBackground" Color="#9B2400" />
     <SolidColorBrush x:Key="ButtonPressedForeground" Color="#FFFFFF" />
 
+    <!-- Inputs / common controls -->
+    <SolidColorBrush x:Key="ControlBackground" Color="#252526" />
+    <SolidColorBrush x:Key="ControlForeground" Color="#D4D4D4" />
+    <SolidColorBrush x:Key="ControlBorder" Color="#3E3E42" />
+    <SolidColorBrush x:Key="ControlDisabledForeground" Color="#7A7A7A" />
+    <SolidColorBrush x:Key="ControlHoverBackground" Color="#2A2D2E" />
+    <SolidColorBrush x:Key="ControlSelectionBackground" Color="#BF3000" />
+    <SolidColorBrush x:Key="ControlSelectionForeground" Color="#FFFFFF" />
+
     <!-- Status bar -->
     <SolidColorBrush x:Key="StatusBarBackground" Color="#BF3000" />
     <SolidColorBrush x:Key="StatusBarForeground" Color="#FFFFFF" />
@@ -80,6 +89,13 @@
     <SolidColorBrush x:Key="DiagnosticErrorForeground" Color="#F44747" />
     <SolidColorBrush x:Key="DiagnosticWarningForeground" Color="#CCA700" />
     <SolidColorBrush x:Key="DiagnosticInfoForeground" Color="#75BEFF" />
+
+    <!-- Git status badges -->
+    <SolidColorBrush x:Key="GitModifiedForeground" Color="#FFCC66" />
+    <SolidColorBrush x:Key="GitAddedForeground" Color="#73C991" />
+    <SolidColorBrush x:Key="GitUntrackedForeground" Color="#C8C8C8" />
+    <SolidColorBrush x:Key="GitDeletedForeground" Color="#F44747" />
+    <SolidColorBrush x:Key="GitConflictForeground" Color="#F48771" />
 
     <!-- Completion popup -->
     <SolidColorBrush x:Key="CompletionBackground" Color="#252526" />
