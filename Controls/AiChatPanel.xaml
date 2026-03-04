@@ -43,20 +43,6 @@
                     </ComboBox.Resources>
                 </ComboBox>
                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
-                    <Button x:Name="ToolSelectorButton"
-                            Content="🧰"
-                            Click="ToolSelectorButton_Click"
-                            Width="24"
-                            Height="22"
-                            Padding="0"
-                            Margin="0,0,6,0"
-                            FontSize="11"
-                            Foreground="{DynamicResource AiChatForeground}"
-                            Background="{DynamicResource AiChatInputBackground}"
-                            BorderBrush="{DynamicResource AiChatBorder}"
-                            BorderThickness="1"
-                            Cursor="Hand"
-                            ToolTip="Choose enabled tools" />
                     <Button x:Name="AiSettingsButton"
                             Content="⚙"
                             Click="AiSettingsButton_Click"

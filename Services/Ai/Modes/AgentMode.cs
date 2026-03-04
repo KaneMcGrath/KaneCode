@@ -15,12 +15,12 @@ internal sealed class AgentMode : IAiChatMode
     public bool ToolsEnabled => true;
 
     /// <inheritdoc />
-    public JsonElement GetToolDefinitions(AgentToolRegistry registry, IReadOnlyCollection<string>? enabledToolNames)
+    public JsonElement GetToolDefinitions(AgentToolRegistry registry)
     {
         ArgumentNullException.ThrowIfNull(registry);
 
         return registry.HasTools
-            ? registry.SerializeToolDefinitions(enabledToolNames)
+            ? registry.SerializeToolDefinitions()
             : default;
     }
 

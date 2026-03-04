@@ -31,8 +31,7 @@ internal interface IAiChatMode
     /// <c>default</c> if this mode does not use tools. Called once per send.
     /// </summary>
     /// <param name="registry">The full tool registry.</param>
-    /// <param name="enabledToolNames">Optional tool name filter. Null means all tools are enabled.</param>
-    JsonElement GetToolDefinitions(AgentToolRegistry registry, IReadOnlyCollection<string>? enabledToolNames);
+    JsonElement GetToolDefinitions(AgentToolRegistry registry);
 
     /// <summary>
     /// Returns an optional system prompt to prepend to the outbound messages.

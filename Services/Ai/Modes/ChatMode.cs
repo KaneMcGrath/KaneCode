@@ -15,7 +15,7 @@ internal sealed class ChatMode : IAiChatMode
     public bool ToolsEnabled => false;
 
     /// <inheritdoc />
-    public JsonElement GetToolDefinitions(AgentToolRegistry registry, IReadOnlyCollection<string>? enabledToolNames) => default;
+    public JsonElement GetToolDefinitions(AgentToolRegistry registry) => default;
 
     /// <inheritdoc />
     public string? BuildSystemPrompt(JsonElement toolsDef) => null;
