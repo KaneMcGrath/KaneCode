@@ -13,6 +13,18 @@
                            Foreground="{DynamicResource AiChatHeaderForeground}"
                            VerticalAlignment="Center" />
                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                    <ComboBox x:Name="ModeSelector"
+                              SelectionChanged="ModeSelector_SelectionChanged"
+                              DisplayMemberPath="DisplayName"
+                              FontSize="11"
+                              MinWidth="70"
+                              VerticalAlignment="Center"
+                              Margin="0,0,8,0"
+                              Foreground="{DynamicResource AiChatForeground}"
+                              Background="{DynamicResource AiChatInputBackground}"
+                              BorderBrush="{DynamicResource AiChatBorder}"
+                              BorderThickness="1"
+                              ToolTip="AI chat mode" />
                     <TextBlock x:Name="ProviderLabel"
                                Text="No provider"
                                FontSize="11"

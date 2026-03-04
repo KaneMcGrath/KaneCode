@@ -106,10 +106,16 @@
 
 ### Phase 9 — Agent Mode
 
-- [ ] **9.1** Agent mode toggle — UI switch in chat header to enable agent/tool mode
-    - Toggle button in the AI Chat header bar
-    - When enabled, the system prompt includes tool definitions and agent instructions
-    - When disabled, tools are not sent and the model behaves as a plain chat assistant
+- [O] **9.1** AI chat mode infrastructure — mode dropdown with pluggable `IAiChatMode` system
+    - `IAiChatMode` interface with `Id`, `DisplayName`, `ToolsEnabled`, `GetToolDefinitions`, `BuildSystemPrompt`
+    - `AiChatModeRegistry` to register/enumerate modes with ordered display and default selection
+    - Built-in modes: `ChatMode` (plain assistant, no tools) and `AgentMode` (all tools + agent prompt)
+    - Mode selector dropdown (ComboBox) in the AI Chat header bar replacing the toggle checkbox
+    - Active mode controls tool definitions sent, system prompt injection, and tool-call loop gating
+  - QA: Verify mode dropdown appears in the AI Chat header and defaults to "Chat"
+  - QA: Select "Agent" mode → send prompt → tool definitions included, tool-calling works
+  - QA: Select "Chat" mode → send prompt → no `tools` payload, no tool-call loop
+  - QA: Switching mode mid-conversation shows status message in chat
 
 
 

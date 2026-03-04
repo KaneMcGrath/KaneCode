@@ -29,6 +29,8 @@ public partial class AiChatPanel : UserControl
     private Func<IReadOnlyList<ProjectItem>>? _projectItemsProvider;
     private Func<string?>? _projectConversationKeyProvider;
     private AgentToolRegistry? _toolRegistry;
+    private AiChatModeRegistry? _modeRegistry;
+    private IAiChatMode? _activeMode;
     private ListBox? _mentionPopup;
     private string? _pendingSelectionContext;
     private bool _projectContextInjected;
@@ -77,6 +79,23 @@ public partial class AiChatPanel : UserControl
     internal void SetToolRegistry(AgentToolRegistry registry)
     {
         _toolRegistry = registry;
+    }
+
+    /// <summary>
+    /// Sets the available chat modes and populates the mode selector dropdown.
+    /// The first registered mode is selected by default.
+    /// </summary>
+    internal void SetModeRegistry(AiChatModeRegistry registry)
+    {
+        ArgumentNullException.ThrowIfNull(registry);
+        _modeRegistry = registry;
+        ModeSelector.ItemsSource = registry.Modes;
+        _activeMode = registry.Default;
+
+        if (_activeMode is not null)
+        {
+            ModeSelector.SelectedItem = _activeMode;
+        }
     }
 
     /// <summary>
@@ -189,7 +208,7 @@ public partial class AiChatPanel : UserControl
         }
     }
 
-    private IReadOnlyList<AiChatMessage> BuildBudgetedContextWindow()
+    private IReadOnlyList<AiChatMessage> BuildBudgetedContextWindow(bool includeToolMessages)
     {
         if (_conversationHistory.Count == 0)
         {
@@ -202,6 +221,14 @@ public partial class AiChatPanel : UserControl
         for (var i = _conversationHistory.Count - 1; i >= 0; i--)
         {
             var message = _conversationHistory[i];
+
+            if (!includeToolMessages &&
+                (message.Role == AiChatRole.Tool ||
+                 (message.Role == AiChatRole.Assistant && message.ToolCalls is { Count: > 0 })))
+            {
+                continue;
+            }
+
             var cost = EstimateTokens(message.Content);
 
             if (selected.Count > 0 && total + cost > OutboundTokenBudget)
@@ -624,6 +651,17 @@ public partial class AiChatPanel : UserControl
         optionsWindow.ShowDialog();
     }
 
+    private void ModeSelector_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (ModeSelector.SelectedItem is not IAiChatMode mode)
+        {
+            return;
+        }
+
+        _activeMode = mode;
+        AppendSystemMessage($"Switched to {mode.DisplayName} mode.");
+    }
+
     private async Task SendMessageAsync()
     {
         var text = InputBox.Text?.Trim();
@@ -707,8 +745,8 @@ public partial class AiChatPanel : UserControl
         try
         {
             var model = _model ?? _provider.AvailableModels.FirstOrDefault() ?? "default";
-            var toolsDef = _toolRegistry is { HasTools: true }
-                ? _toolRegistry.SerializeToolDefinitions()
+            var toolsDef = _activeMode is not null && _activeMode.ToolsEnabled && _toolRegistry is not null
+                ? _activeMode.GetToolDefinitions(_toolRegistry)
                 : default;
 
             var iteration = 0;
@@ -730,9 +768,11 @@ public partial class AiChatPanel : UserControl
                 // due to ConfigureAwait(false) in tool execution.
                 var assistantBlock = await Dispatcher.InvokeAsync(CreateAssistantMessageBlock);
 
-                var outboundWindow = BuildBudgetedContextWindow();
+                var toolsEnabled = _activeMode?.ToolsEnabled == true;
+                var outboundWindow = BuildBudgetedContextWindow(includeToolMessages: toolsEnabled);
+                var outboundMessages = BuildOutboundMessages(outboundWindow, toolsDef);
 
-                await foreach (var token in _provider.StreamCompletionAsync(outboundWindow, model, toolsDef, ct)
+                await foreach (var token in _provider.StreamCompletionAsync(outboundMessages, model, toolsDef, ct)
                     .ConfigureAwait(false))
                 {
                     if (token.Type == AiStreamTokenType.Usage)
@@ -823,7 +863,7 @@ public partial class AiChatPanel : UserControl
                 }
 
                 // If tool calls were requested, execute them and loop
-                if (streamedToolCalls.Count > 0 && _toolRegistry is not null)
+                if (_activeMode?.ToolsEnabled == true && streamedToolCalls.Count > 0 && _toolRegistry is not null)
                 {
                     var pendingToolCalls = streamedToolCalls
                         .OrderBy(kv => kv.Key)
@@ -978,6 +1018,28 @@ public partial class AiChatPanel : UserControl
         }
 
         return value[..maxLength] + "…";
+    }
+
+    /// <summary>
+    /// Prepends the active mode's system prompt (if any) to the outbound messages.
+    /// </summary>
+    private IReadOnlyList<AiChatMessage> BuildOutboundMessages(IReadOnlyList<AiChatMessage> outboundWindow, JsonElement toolsDef)
+    {
+        ArgumentNullException.ThrowIfNull(outboundWindow);
+
+        var modePrompt = _activeMode?.BuildSystemPrompt(toolsDef);
+        if (string.IsNullOrWhiteSpace(modePrompt))
+        {
+            return outboundWindow;
+        }
+
+        var messages = new List<AiChatMessage>(outboundWindow.Count + 1)
+        {
+            new(AiChatRole.System, modePrompt)
+        };
+
+        messages.AddRange(outboundWindow);
+        return messages;
     }
 
     private void StopButton_Click(object sender, RoutedEventArgs e)

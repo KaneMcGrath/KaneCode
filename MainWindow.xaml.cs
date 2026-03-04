@@ -2,6 +2,7 @@ using KaneCode.Infrastructure;
 using KaneCode.Models;
 using KaneCode.Services;
 using KaneCode.Services.Ai;
+using KaneCode.Services.Ai.Modes;
 using KaneCode.Services.Ai.Tools;
 using KaneCode.Theming;
 using KaneCode.ViewModels;
@@ -30,6 +31,7 @@ public partial class MainWindow : Window
     private readonly TemplateEngineService _templateEngine = new();
     private readonly AiProviderRegistry _aiProviderRegistry = new();
     private readonly AgentToolRegistry _agentToolRegistry = new();
+    private readonly AiChatModeRegistry _aiChatModeRegistry = new();
     private Popup? _quickInfoPopup;
 
     public MainWindow()
@@ -38,6 +40,7 @@ public partial class MainWindow : Window
         DataContext = _viewModel;
         Loaded += OnLoaded;
         Closed += OnClosed;
+        RegisterAiChatModes();
         RegisterAgentTools();
     }
 
@@ -153,12 +156,17 @@ public partial class MainWindow : Window
             _viewModel.ProjectItems.FirstOrDefault(i => i.ItemType is ProjectItemType.Solution or ProjectItemType.Project)?.FullPath
             ?? _viewModel.ProjectItems.FirstOrDefault()?.FullPath);
         AiChatPanel.SetToolRegistry(_agentToolRegistry);
+        AiChatPanel.SetModeRegistry(_aiChatModeRegistry);
+    }    /// Registers the built-in AI chat modes. Called once at startup.
+    /// </summary>
+    private void RegisterAiChatModes()
+    {
+        _aiChatModeRegistry.Register(new ChatMode());
+        _aiChatModeRegistry.Register(new AgentMode());
     }
 
     /// <summary>
-    /// Registers all built-in agent tools into the tool registry.
-    /// Called once at startup.
-    /// </summary>
+
     private void RegisterAgentTools()
     {
         Func<string?> projectRoot = () =>
