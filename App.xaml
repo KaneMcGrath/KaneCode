@@ -6,6 +6,7 @@
     <Application.Resources>
         <ResourceDictionary>
             <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="Themes/ControlColours.xaml" />
                 <ResourceDictionary Source="Themes/MenuStyles.xaml" />
                 <ResourceDictionary Source="Themes/ControlStyles.xaml" />
                 <ResourceDictionary Source="Themes/AvalonDockStyles.xaml" />
