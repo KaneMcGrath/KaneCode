@@ -50,7 +50,7 @@ internal sealed class AgentToolRegistry
     /// Each entry has <c>type: "function"</c> and a <c>function</c> object
     /// with <c>name</c>, <c>description</c>, and <c>parameters</c>.
     /// </summary>
-    public JsonElement SerializeToolDefinitions()
+    public JsonElement SerializeToolDefinitions(IReadOnlyCollection<string>? enabledToolNames = null)
     {
         if (_tools.Count == 0)
         {
@@ -64,6 +64,11 @@ internal sealed class AgentToolRegistry
 
             foreach (var tool in _tools.Values)
             {
+                if (enabledToolNames is not null && !enabledToolNames.Contains(tool.Name))
+                {
+                    continue;
+                }
+
                 writer.WriteStartObject();
                 writer.WriteString("type", "function");
 

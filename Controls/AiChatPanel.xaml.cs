@@ -31,6 +31,7 @@ public partial class AiChatPanel : UserControl
     private AgentToolRegistry? _toolRegistry;
     private AiChatModeRegistry? _modeRegistry;
     private IAiChatMode? _activeMode;
+    private readonly HashSet<string> _enabledToolNames = new(StringComparer.Ordinal);
     private ListBox? _mentionPopup;
     private string? _pendingSelectionContext;
     private bool _projectContextInjected;
@@ -78,7 +79,27 @@ public partial class AiChatPanel : UserControl
     /// </summary>
     internal void SetToolRegistry(AgentToolRegistry registry)
     {
+        ArgumentNullException.ThrowIfNull(registry);
         _toolRegistry = registry;
+        _enabledToolNames.Clear();
+
+        foreach (var tool in registry.Tools)
+        {
+            _enabledToolNames.Add(tool.Name);
+        }
+
+        UpdateToolSelectorButtonState();
+    }
+
+    private void UpdateToolSelectorButtonState()
+    {
+        var totalCount = _toolRegistry?.Tools.Count ?? 0;
+        var enabledCount = _enabledToolNames.Count;
+
+        ToolSelectorButton.IsEnabled = totalCount > 0;
+        ToolSelectorButton.ToolTip = totalCount == 0
+            ? "No tools available"
+            : $"Tools enabled: {enabledCount}/{totalCount}";
     }
 
     /// <summary>
@@ -651,6 +672,74 @@ public partial class AiChatPanel : UserControl
         optionsWindow.ShowDialog();
     }
 
+    private void ToolSelectorButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (_toolRegistry is null || !_toolRegistry.HasTools)
+        {
+            return;
+        }
+
+        var menu = new ContextMenu
+        {
+            PlacementTarget = ToolSelectorButton,
+            Placement = System.Windows.Controls.Primitives.PlacementMode.Bottom,
+            StaysOpen = false
+        };
+
+        var enableAllItem = new MenuItem { Header = "Enable all tools" };
+        enableAllItem.Click += (_, _) =>
+        {
+            _enabledToolNames.Clear();
+            foreach (var tool in _toolRegistry.Tools)
+            {
+                _enabledToolNames.Add(tool.Name);
+            }
+
+            UpdateToolSelectorButtonState();
+        };
+
+        var disableAllItem = new MenuItem { Header = "Disable all tools" };
+        disableAllItem.Click += (_, _) =>
+        {
+            _enabledToolNames.Clear();
+            UpdateToolSelectorButtonState();
+        };
+
+        menu.Items.Add(enableAllItem);
+        menu.Items.Add(disableAllItem);
+        menu.Items.Add(new Separator());
+
+        foreach (var tool in _toolRegistry.Tools.OrderBy(t => t.Name, StringComparer.Ordinal))
+        {
+            var toolName = tool.Name;
+            var item = new MenuItem
+            {
+                Header = toolName,
+                IsCheckable = true,
+                IsChecked = _enabledToolNames.Contains(toolName),
+                ToolTip = tool.Description
+            };
+
+            item.Click += (_, _) =>
+            {
+                if (item.IsChecked)
+                {
+                    _enabledToolNames.Add(toolName);
+                }
+                else
+                {
+                    _enabledToolNames.Remove(toolName);
+                }
+
+                UpdateToolSelectorButtonState();
+            };
+
+            menu.Items.Add(item);
+        }
+
+        menu.IsOpen = true;
+    }
+
     private void ModeSelector_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         if (ModeSelector.SelectedItem is not IAiChatMode mode)
@@ -746,7 +835,7 @@ public partial class AiChatPanel : UserControl
         {
             var model = _model ?? _provider.AvailableModels.FirstOrDefault() ?? "default";
             var toolsDef = _activeMode is not null && _activeMode.ToolsEnabled && _toolRegistry is not null
-                ? _activeMode.GetToolDefinitions(_toolRegistry)
+                ? _activeMode.GetToolDefinitions(_toolRegistry, _enabledToolNames)
                 : default;
 
             var iteration = 0;
@@ -928,6 +1017,10 @@ public partial class AiChatPanel : UserControl
                         if (tool is null)
                         {
                             result = ToolCallResult.Fail($"Unknown tool: {toolCall.FunctionName}");
+                        }
+                        else if (!_enabledToolNames.Contains(toolCall.FunctionName))
+                        {
+                            result = ToolCallResult.Fail($"Tool is disabled: {toolCall.FunctionName}");
                         }
                         else
                         {
