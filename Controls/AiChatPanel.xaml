@@ -7,30 +7,42 @@
         <Border DockPanel.Dock="Top"
                 Background="{DynamicResource AiChatHeaderBackground}"
                 Padding="8,4">
-            <Grid>
-                <TextBlock Text="AI Chat"
-                           FontWeight="SemiBold"
-                           Foreground="{DynamicResource AiChatHeaderForeground}"
-                           VerticalAlignment="Center" />
+            <DockPanel>
+                <ComboBox x:Name="ModeSelector"
+                          DockPanel.Dock="Left"
+                          SelectionChanged="ModeSelector_SelectionChanged"
+                          DisplayMemberPath="DisplayName"
+                          FontSize="11"
+                          MinWidth="80"
+                          VerticalAlignment="Center"
+                          Margin="0,0,8,0"
+                          Foreground="{DynamicResource AiChatForeground}"
+                          Background="{DynamicResource AiChatInputBackground}"
+                          BorderBrush="{DynamicResource AiChatBorder}"
+                          BorderThickness="1"
+                          ToolTip="AI chat mode">
+                    <ComboBox.Resources>
+                        <SolidColorBrush x:Key="{x:Static SystemColors.WindowBrushKey}"
+                                         Color="{Binding Color, Source={DynamicResource AiChatInputBackground}}" />
+                        <SolidColorBrush x:Key="{x:Static SystemColors.ControlBrushKey}"
+                                         Color="{Binding Color, Source={DynamicResource AiChatInputBackground}}" />
+                        <Style TargetType="ComboBoxItem">
+                            <Setter Property="Background" Value="{DynamicResource AiChatInputBackground}" />
+                            <Setter Property="Foreground" Value="{DynamicResource AiChatForeground}" />
+                            <Style.Triggers>
+                                <Trigger Property="IsHighlighted" Value="True">
+                                    <Setter Property="Background" Value="{DynamicResource ButtonMouseOverBackground}" />
+                                    <Setter Property="Foreground" Value="{DynamicResource AiChatSendButtonForeground}" />
+                                </Trigger>
+                                <Trigger Property="IsSelected" Value="True">
+                                    <Setter Property="Background" Value="{DynamicResource ButtonPressedBackground}" />
+                                    <Setter Property="Foreground" Value="{DynamicResource AiChatSendButtonForeground}" />
+                                </Trigger>
+                            </Style.Triggers>
+                        </Style>
+                    </ComboBox.Resources>
+                </ComboBox>
                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
-                    <ComboBox x:Name="ModeSelector"
-                              SelectionChanged="ModeSelector_SelectionChanged"
-                              DisplayMemberPath="DisplayName"
-                              FontSize="11"
-                              MinWidth="70"
-                              VerticalAlignment="Center"
-                              Margin="0,0,8,0"
-                              Foreground="{DynamicResource AiChatForeground}"
-                              Background="{DynamicResource AiChatInputBackground}"
-                              BorderBrush="{DynamicResource AiChatBorder}"
-                              BorderThickness="1"
-                              ToolTip="AI chat mode" />
-                    <TextBlock x:Name="ProviderLabel"
-                               Text="No provider"
-                               FontSize="11"
-                               Foreground="{DynamicResource AiChatSecondaryForeground}"
-                               VerticalAlignment="Center"
-                               Margin="0,0,8,0" />
                     <Button x:Name="AiSettingsButton"
                             Content="⚙"
                             Click="AiSettingsButton_Click"
@@ -56,7 +68,7 @@
                             BorderThickness="1"
                             Cursor="Hand" />
                 </StackPanel>
-            </Grid>
+            </DockPanel>
         </Border>
 
         <!-- Stats info bar -->
@@ -65,10 +77,17 @@
                 Padding="8,2"
                 BorderThickness="0,1,0,0"
                 BorderBrush="{DynamicResource AiChatBorder}">
-            <TextBlock x:Name="StatsBar"
-                       Text=""
-                       FontSize="11"
-                       Foreground="{DynamicResource AiChatSecondaryForeground}" />
+            <Grid>
+                <TextBlock x:Name="StatsBar"
+                           Text=""
+                           FontSize="11"
+                           Foreground="{DynamicResource AiChatSecondaryForeground}" />
+                <TextBlock x:Name="ProviderLabel"
+                           Text="No provider"
+                           FontSize="11"
+                           Foreground="{DynamicResource AiChatSecondaryForeground}"
+                           HorizontalAlignment="Right" />
+            </Grid>
         </Border>
 
         <!-- Reference bar -->
