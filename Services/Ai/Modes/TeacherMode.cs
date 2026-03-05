@@ -8,14 +8,12 @@ namespace KaneCode.Services.Ai.Modes;
 /// </summary>
 internal sealed class TeacherMode : IAiChatMode
 {
-    private static readonly HashSet<string> AllowedTools = new(StringComparer.Ordinal)
+    private static readonly HashSet<string> BlockedTools = new(StringComparer.Ordinal)
     {
-        "list_files",
-        "read_file",
-        "search_files",
-        "presentation_new",
-        "presentation_find_line",
-        "presentation_add_slide"
+        "edit_file",
+        "write_file",
+        "get_diagnostics",
+        "run_build"
     };
 
     public string Id => "teacher";
@@ -29,9 +27,16 @@ internal sealed class TeacherMode : IAiChatMode
     {
         ArgumentNullException.ThrowIfNull(registry);
 
-        return registry.HasTools
-            ? registry.SerializeToolDefinitions(AllowedTools)
-            : default;
+        if (!registry.HasTools)
+        {
+            return default;
+        }
+
+        var allowedTools = registry.Tools
+            .Select(t => t.Name)
+            .Where(name => !BlockedTools.Contains(name));
+
+        return registry.SerializeToolDefinitions(allowedTools);
     }
 
     /// <inheritdoc />
@@ -44,7 +49,7 @@ internal sealed class TeacherMode : IAiChatMode
         return """
             You are operating in teacher mode. 
             Your role is to guide, explain, and assist the user in understanding their codebase. 
-            You can read and search files to gather context, but you must NOT write or edit code directly for the user.
+            You can inspect and analyze the project with available tools, but you must NOT write or edit files directly.
             Instead, provide clear explanations, suggest approaches, and let the user implement the solutions.
 
             You have presentation tools to create interactive step-by-step walkthroughs:
@@ -54,13 +59,13 @@ internal sealed class TeacherMode : IAiChatMode
             The user can navigate between slides using Back and Next buttons.
             Use presentations when the user asks you to explain how code works or walk through a codebase.
 
-            Available reading tools (OpenAI format JSON):
+            Available tools (OpenAI format JSON):
             """ + toolsJson;
     }
 
     /// <inheritdoc />
     public bool IsToolAllowed(string toolName)
     {
-        return AllowedTools.Contains(toolName);
+        return !BlockedTools.Contains(toolName);
     }
 }

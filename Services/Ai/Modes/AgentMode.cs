@@ -8,6 +8,13 @@ namespace KaneCode.Services.Ai.Modes;
 /// </summary>
 internal sealed class AgentMode : IAiChatMode
 {
+    private static readonly HashSet<string> BlockedTools = new(StringComparer.Ordinal)
+    {
+        "presentation_new",
+        "presentation_find_line",
+        "presentation_add_slide"
+    };
+
     public string Id => "agent";
 
     public string DisplayName => "Agent";
@@ -19,9 +26,22 @@ internal sealed class AgentMode : IAiChatMode
     {
         ArgumentNullException.ThrowIfNull(registry);
 
-        return registry.HasTools
-            ? registry.SerializeToolDefinitions()
-            : default;
+        if (!registry.HasTools)
+        {
+            return default;
+        }
+
+        var allowedTools = registry.Tools
+            .Select(t => t.Name)
+            .Where(name => !BlockedTools.Contains(name));
+
+        return registry.SerializeToolDefinitions(allowedTools);
+    }
+
+    /// <inheritdoc />
+    public bool IsToolAllowed(string toolName)
+    {
+        return !BlockedTools.Contains(toolName);
     }
 
     /// <inheritdoc />
