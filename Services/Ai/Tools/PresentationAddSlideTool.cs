@@ -46,7 +46,8 @@ internal sealed class PresentationAddSlideTool : IAgentTool
 
     public string Description =>
         "Adds a slide to the active presentation. The slide navigates the editor to the specified file " +
-        "and line, and displays explanatory text in an overlay. Call presentation_new first to create a presentation.";
+        "and line, and displays explanatory text in an overlay. Call presentation_new first to create a presentation. " +
+        "It is recommended to call presentation_find_line first to get the exact line to highlight.";
 
     public JsonElement ParametersSchema => Schema;
 

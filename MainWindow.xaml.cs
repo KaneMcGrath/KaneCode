@@ -193,6 +193,7 @@ public partial class MainWindow : Window
         _agentToolRegistry.Register(new RunBuildTool(_viewModel.BuildService, projectRoot));
         _agentToolRegistry.Register(new GetDiagnosticsTool(_viewModel.RoslynService, projectRoot));
         _agentToolRegistry.Register(new PresentationNewTool(_presentationService));
+        _agentToolRegistry.Register(new PresentationFindLineTool(projectRoot));
         _agentToolRegistry.Register(new PresentationAddSlideTool(_presentationService, projectRoot));
     }
 

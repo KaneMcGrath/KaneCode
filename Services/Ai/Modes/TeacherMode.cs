@@ -14,6 +14,7 @@ internal sealed class TeacherMode : IAiChatMode
         "read_file",
         "search_files",
         "presentation_new",
+        "presentation_find_line",
         "presentation_add_slide"
     };
 
@@ -48,7 +49,8 @@ internal sealed class TeacherMode : IAiChatMode
 
             You have presentation tools to create interactive step-by-step walkthroughs:
             1. Call presentation_new with a title to start a new presentation.
-            2. Call presentation_add_slide for each step, specifying the file, line number, and explanatory text.
+            2. Call presentation_find_line to locate an exact line in a file from a search string.
+            3. Call presentation_add_slide for each step, specifying the file, line number, and explanatory text.
             The user can navigate between slides using Back and Next buttons.
             Use presentations when the user asks you to explain how code works or walk through a codebase.
 
