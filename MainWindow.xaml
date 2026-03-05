@@ -329,8 +329,9 @@ Icon="Icons/KaneCode.ico">
                                                                   DockPanel.Dock="Top"
                                                                   ActionSelected="CodeActionLightBulb_ActionSelected" />
 
-                                    <!-- Editor -->
-                                    <avalonEdit:TextEditor x:Name="CodeEditor"
+                                    <!-- Editor + Presentation Overlay -->
+                                    <Grid>
+                                        <avalonEdit:TextEditor x:Name="CodeEditor"
                                                            FontFamily="Cascadia Code, Consolas, Courier New"
                                                            FontSize="14"
                                                            ShowLineNumbers="True"
@@ -339,35 +340,37 @@ Icon="Icons/KaneCode.ico">
                                                            Foreground="{DynamicResource EditorForeground}"
                                                            HorizontalScrollBarVisibility="Auto"
                                                            VerticalScrollBarVisibility="Auto">
-                                        <avalonEdit:TextEditor.ContextMenu>
-                                            <ContextMenu>
-                                                <MenuItem Header="Cu_t" Click="EditorContextMenu_Cut"
-                                                          InputGestureText="Ctrl+X" />
-                                                <MenuItem Header="_Copy" Click="EditorContextMenu_Copy"
-                                                          InputGestureText="Ctrl+C" />
-                                                <MenuItem Header="_Paste" Click="EditorContextMenu_Paste"
-                                                          InputGestureText="Ctrl+V" />
-                                                <Separator />
-                                                <MenuItem Header="_Undo" Click="EditorContextMenu_Undo"
-                                                          InputGestureText="Ctrl+Z" />
-                                                <MenuItem Header="_Redo" Click="EditorContextMenu_Redo"
-                                                          InputGestureText="Ctrl+Y" />
-                                                <Separator />
-                                                <MenuItem Header="Go to _Definition" Click="EditorContextMenu_GoToDefinition"
-                                                          InputGestureText="F12" />
-                                                <MenuItem Header="Find _References" Click="EditorContextMenu_FindReferences"
-                                                          InputGestureText="Shift+F12" />
-                                                <MenuItem Header="Code _Actions" Click="EditorContextMenu_CodeActions"
-                                                          InputGestureText="Ctrl+." />
-                                                <MenuItem Header="_Rename" Click="EditorContextMenu_Rename"
-                                                          InputGestureText="F2" />
-                                                <MenuItem Header="_Extract Method" Click="EditorContextMenu_ExtractMethod"
-                                                          InputGestureText="Ctrl+Shift+M" />
-                                                <Separator />
-                                                <MenuItem Header="Ask AI About _Selection" Click="EditorContextMenu_AskAboutSelection" />
-                                            </ContextMenu>
-                                        </avalonEdit:TextEditor.ContextMenu>
-                                    </avalonEdit:TextEditor>
+                                            <avalonEdit:TextEditor.ContextMenu>
+                                                <ContextMenu>
+                                                    <MenuItem Header="Cu_t" Click="EditorContextMenu_Cut"
+                                                              InputGestureText="Ctrl+X" />
+                                                    <MenuItem Header="_Copy" Click="EditorContextMenu_Copy"
+                                                              InputGestureText="Ctrl+C" />
+                                                    <MenuItem Header="_Paste" Click="EditorContextMenu_Paste"
+                                                              InputGestureText="Ctrl+V" />
+                                                    <Separator />
+                                                    <MenuItem Header="_Undo" Click="EditorContextMenu_Undo"
+                                                              InputGestureText="Ctrl+Z" />
+                                                    <MenuItem Header="_Redo" Click="EditorContextMenu_Redo"
+                                                              InputGestureText="Ctrl+Y" />
+                                                    <Separator />
+                                                    <MenuItem Header="Go to _Definition" Click="EditorContextMenu_GoToDefinition"
+                                                              InputGestureText="F12" />
+                                                    <MenuItem Header="Find _References" Click="EditorContextMenu_FindReferences"
+                                                              InputGestureText="Shift+F12" />
+                                                    <MenuItem Header="Code _Actions" Click="EditorContextMenu_CodeActions"
+                                                              InputGestureText="Ctrl+." />
+                                                    <MenuItem Header="_Rename" Click="EditorContextMenu_Rename"
+                                                              InputGestureText="F2" />
+                                                    <MenuItem Header="_Extract Method" Click="EditorContextMenu_ExtractMethod"
+                                                              InputGestureText="Ctrl+Shift+M" />
+                                                    <Separator />
+                                                    <MenuItem Header="Ask AI About _Selection" Click="EditorContextMenu_AskAboutSelection" />
+                                                </ContextMenu>
+                                            </avalonEdit:TextEditor.ContextMenu>
+                                        </avalonEdit:TextEditor>
+                                        <controls:PresentationOverlay x:Name="PresentationOverlay" />
+                                    </Grid>
                                 </DockPanel>
                             </avalonDock:LayoutAnchorable>
                         </avalonDock:LayoutAnchorablePane>

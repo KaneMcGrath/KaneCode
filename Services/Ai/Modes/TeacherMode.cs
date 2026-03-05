@@ -12,7 +12,9 @@ internal sealed class TeacherMode : IAiChatMode
     {
         "list_files",
         "read_file",
-        "search_files"
+        "search_files",
+        "presentation_new",
+        "presentation_add_slide"
     };
 
     public string Id => "teacher";
@@ -43,6 +45,12 @@ internal sealed class TeacherMode : IAiChatMode
             Your role is to guide, explain, and assist the user in understanding their codebase. 
             You can read and search files to gather context, but you must NOT write or edit code directly for the user.
             Instead, provide clear explanations, suggest approaches, and let the user implement the solutions.
+
+            You have presentation tools to create interactive step-by-step walkthroughs:
+            1. Call presentation_new with a title to start a new presentation.
+            2. Call presentation_add_slide for each step, specifying the file, line number, and explanatory text.
+            The user can navigate between slides using Back and Next buttons.
+            Use presentations when the user asks you to explain how code works or walk through a codebase.
 
             Available reading tools (OpenAI format JSON):
             """ + toolsJson;

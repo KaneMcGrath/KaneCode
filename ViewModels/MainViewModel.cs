@@ -2090,6 +2090,44 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
     }
 
     /// <summary>
+    /// Opens a file (if not already open) and scrolls the editor to the specified line.
+    /// Used by the presentation system to navigate between slides.
+    /// </summary>
+    public void NavigateToFileLine(string filePath, int line)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(filePath);
+
+        if (_editor is null)
+        {
+            return;
+        }
+
+        var tab = OpenTabs.FirstOrDefault(t =>
+            string.Equals(t.FilePath, filePath, StringComparison.OrdinalIgnoreCase));
+
+        if (tab is null)
+        {
+            OpenFileByPath(filePath);
+            tab = ActiveTab;
+        }
+        else if (tab != ActiveTab)
+        {
+            ActivateTab(tab);
+        }
+
+        if (tab is null)
+        {
+            return;
+        }
+
+        int clampedLine = Math.Max(1, Math.Min(line, _editor.Document.LineCount));
+        var documentLine = _editor.Document.GetLineByNumber(clampedLine);
+        _editor.CaretOffset = documentLine.Offset;
+        _editor.ScrollToLine(clampedLine);
+        _editor.TextArea.Focus();
+    }
+
+    /// <summary>
     /// Navigates to the source definition for the symbol at the caret (or provided offset).
     /// </summary>
     public async Task GoToDefinitionAsync(int? offset = null)

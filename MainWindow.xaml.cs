@@ -32,6 +32,7 @@ public partial class MainWindow : Window
     private readonly AiProviderRegistry _aiProviderRegistry = new();
     private readonly AgentToolRegistry _agentToolRegistry = new();
     private readonly AiChatModeRegistry _aiChatModeRegistry = new();
+    private readonly PresentationService _presentationService = new();
     private Popup? _quickInfoPopup;
 
     public MainWindow()
@@ -42,6 +43,7 @@ public partial class MainWindow : Window
         Closed += OnClosed;
         RegisterAiChatModes();
         RegisterAgentTools();
+        WirePresentationOverlay();
     }
 
     private void OnLoaded(object sender, RoutedEventArgs e)
@@ -183,6 +185,20 @@ public partial class MainWindow : Window
         _agentToolRegistry.Register(new SearchFilesTool(projectRoot));
         _agentToolRegistry.Register(new RunBuildTool(_viewModel.BuildService, projectRoot));
         _agentToolRegistry.Register(new GetDiagnosticsTool(_viewModel.RoslynService, projectRoot));
+        _agentToolRegistry.Register(new PresentationNewTool(_presentationService));
+        _agentToolRegistry.Register(new PresentationAddSlideTool(_presentationService, projectRoot));
+    }
+
+    /// <summary>
+    /// Binds the presentation overlay to the service and handles navigation events.
+    /// </summary>
+    private void WirePresentationOverlay()
+    {
+        PresentationOverlay.Bind(_presentationService);
+        PresentationOverlay.NavigateRequested += (_, slide) =>
+        {
+            _viewModel.NavigateToFileLine(slide.FilePath, slide.Line);
+        };
     }
 
     /// <summary>
