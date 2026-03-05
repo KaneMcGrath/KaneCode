@@ -215,12 +215,13 @@ public partial class AiChatPanel : UserControl
             return [];
         }
 
-        var total = 0;
-        var selected = new List<AiChatMessage>();
+        int total = 0;
+        List<AiChatMessage> selected = [];
+        bool hasUserMessage = false;
 
-        for (var i = _conversationHistory.Count - 1; i >= 0; i--)
+        for (int i = _conversationHistory.Count - 1; i >= 0; i--)
         {
-            var message = _conversationHistory[i];
+            AiChatMessage message = _conversationHistory[i];
 
             if (!includeToolMessages &&
                 (message.Role == AiChatRole.Tool ||
@@ -229,7 +230,7 @@ public partial class AiChatPanel : UserControl
                 continue;
             }
 
-            var cost = EstimateTokens(message.Content);
+            int cost = EstimateTokens(message.Content);
 
             if (selected.Count > 0 && total + cost > OutboundTokenBudget)
             {
@@ -238,6 +239,39 @@ public partial class AiChatPanel : UserControl
 
             selected.Add(message);
             total += cost;
+
+            if (message.Role == AiChatRole.User)
+            {
+                hasUserMessage = true;
+            }
+        }
+
+        if (!hasUserMessage)
+        {
+            AiChatMessage? latestUser = _conversationHistory
+                .LastOrDefault(m => m.Role == AiChatRole.User);
+
+            if (latestUser is not null)
+            {
+                int latestUserCost = EstimateTokens(latestUser.Content);
+
+                while (selected.Count > 0 && total + latestUserCost > OutboundTokenBudget)
+                {
+                    int removeIndex = selected.FindLastIndex(m => m.Role != AiChatRole.User);
+                    if (removeIndex < 0)
+                    {
+                        break;
+                    }
+
+                    total -= EstimateTokens(selected[removeIndex].Content);
+                    selected.RemoveAt(removeIndex);
+                }
+
+                if (!selected.Any(m => ReferenceEquals(m, latestUser)))
+                {
+                    selected.Add(latestUser);
+                }
+            }
         }
 
         selected.Reverse();

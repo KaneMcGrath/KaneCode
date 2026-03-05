@@ -83,11 +83,18 @@
                            FontFamily="Consolas"
                            TextTrimming="CharacterEllipsis"
                            Margin="0,0,0,6" />
-                <TextBlock x:Name="SlideText"
-                           TextWrapping="Wrap"
-                           FontSize="13"
-                           Foreground="{DynamicResource PanelForeground}"
-                           MaxHeight="200" />
+                <RichTextBox x:Name="SlideTextBox"
+                             IsReadOnly="True"
+                             IsDocumentEnabled="True"
+                             Background="Transparent"
+                             BorderThickness="0"
+                             Padding="0"
+                             FontSize="13"
+                             FontFamily="Segoe UI"
+                             Foreground="{DynamicResource PanelForeground}"
+                             VerticalScrollBarVisibility="Auto"
+                             HorizontalScrollBarVisibility="Disabled"
+                             MaxHeight="220" />
             </StackPanel>
         </DockPanel>
     </Border>
