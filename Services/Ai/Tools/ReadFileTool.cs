@@ -10,7 +10,7 @@ namespace KaneCode.Services.Ai.Tools;
 /// </summary>
 internal sealed class ReadFileTool : IAgentTool
 {
-    private const int MaxFileSizeBytes = 100 * 1024; // 100 KB
+    private const int MaxFileSizeBytes = 200 * 1024; // 200 KB
 
     private static readonly JsonElement Schema = JsonDocument.Parse("""
         {
@@ -35,7 +35,7 @@ internal sealed class ReadFileTool : IAgentTool
 
     public string Name => "read_file";
 
-    public string Description => "Read the contents of a file by path. Returns the file text or an error if the file is not found or too large (>100 KB).";
+    public string Description => "Read the contents of a file by path. Returns the file text or an error if the file is not found or too large (>200 KB).";
 
     public JsonElement ParametersSchema => Schema;
 
