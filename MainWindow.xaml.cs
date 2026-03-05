@@ -163,6 +163,7 @@ public partial class MainWindow : Window
     {
         _aiChatModeRegistry.Register(new ChatMode());
         _aiChatModeRegistry.Register(new AgentMode());
+        _aiChatModeRegistry.Register(new TeacherMode());
     }
 
     /// <summary>

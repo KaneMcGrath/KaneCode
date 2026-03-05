@@ -50,9 +50,13 @@ internal sealed class AgentToolRegistry
     /// Each entry has <c>type: "function"</c> and a <c>function</c> object
     /// with <c>name</c>, <c>description</c>, and <c>parameters</c>.
     /// </summary>
-    public JsonElement SerializeToolDefinitions()
+    public JsonElement SerializeToolDefinitions(IEnumerable<string>? allowedToolNames = null)
     {
-        if (_tools.Count == 0)
+        var toolsToSerialize = allowedToolNames != null
+            ? _tools.Values.Where(t => allowedToolNames.Contains(t.Name)).ToList()
+            : _tools.Values.ToList();
+
+        if (toolsToSerialize.Count == 0)
         {
             return default;
         }
@@ -62,7 +66,7 @@ internal sealed class AgentToolRegistry
         {
             writer.WriteStartArray();
 
-            foreach (var tool in _tools.Values)
+            foreach (var tool in toolsToSerialize)
             {
                 writer.WriteStartObject();
                 writer.WriteString("type", "function");

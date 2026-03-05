@@ -39,4 +39,10 @@ internal interface IAiChatMode
     /// </summary>
     /// <param name="toolsDef">The serialized tools array (may be <c>default</c>).</param>
     string? BuildSystemPrompt(JsonElement toolsDef);
+
+    /// <summary>
+    /// Returns true if the tool with the given name is allowed to execute in this mode.
+    /// Default is true.
+    /// </summary>
+    bool IsToolAllowed(string toolName) => true;
 }

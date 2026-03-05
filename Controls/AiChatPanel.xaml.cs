@@ -922,12 +922,14 @@ public partial class AiChatPanel : UserControl
                             toolResultBlock = block.resultBlock;
                         });
 
-                        var tool = _toolRegistry.Get(toolCall.FunctionName);
+                        var tool = _activeMode?.IsToolAllowed(toolCall.FunctionName) == true
+                            ? _toolRegistry.Get(toolCall.FunctionName)
+                            : null;
                         ToolCallResult result;
 
                         if (tool is null)
                         {
-                            result = ToolCallResult.Fail($"Unknown tool: {toolCall.FunctionName}");
+                            result = ToolCallResult.Fail($"Unknown or disallowed tool: {toolCall.FunctionName}");
                         }
                         else
                         {

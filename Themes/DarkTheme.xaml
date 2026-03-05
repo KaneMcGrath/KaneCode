@@ -62,9 +62,9 @@
     <SolidColorBrush x:Key="SyntaxTypeForeground" Color="#4EC9B0" />
 
     <!-- TreeView -->
-    <SolidColorBrush x:Key="TreeViewItemSelectedBackground" Color="#BF3000" />
-    <SolidColorBrush x:Key="TreeViewItemSelectedForeground" Color="#FFFFFF" />
-    <SolidColorBrush x:Key="TreeViewItemMouseOverBackground" Color="#3F3F46" />
+    <SolidColorBrush x:Key="TreeViewItemSelectedBackground" Color="#4F4F4F" />
+    <SolidColorBrush x:Key="TreeViewItemSelectedForeground" Color="#E0E0E0" />
+    <SolidColorBrush x:Key="TreeViewItemMouseOverBackground" Color="#BF3000" />
 
     <!-- Roslyn semantic classification -->
     <SolidColorBrush x:Key="RoslynTypeForeground" Color="#4EC9B0" />
