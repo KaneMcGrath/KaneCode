@@ -35,7 +35,7 @@ public partial class AiChatPanel : UserControl
     private string? _pendingSelectionContext;
     private bool _projectContextInjected;
     private const int OutboundTokenBudget = 12000;
-    private const int MaxToolCallIterations = 20;
+    private const int MaxToolCallIterations = 40;
 
     public AiChatPanel()
     {
