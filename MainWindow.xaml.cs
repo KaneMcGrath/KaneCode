@@ -33,6 +33,7 @@ public partial class MainWindow : Window
     private readonly AgentToolRegistry _agentToolRegistry = new();
     private readonly AiChatModeRegistry _aiChatModeRegistry = new();
     private readonly PresentationService _presentationService = new();
+    private readonly PresentationLineHighlightRenderer _presentationLineHighlightRenderer = new();
     private Popup? _quickInfoPopup;
 
     public MainWindow()
@@ -49,6 +50,7 @@ public partial class MainWindow : Window
     private void OnLoaded(object sender, RoutedEventArgs e)
     {
         _viewModel.AttachEditor(CodeEditor);
+        CodeEditor.TextArea.TextView.BackgroundRenderers.Add(_presentationLineHighlightRenderer);
 
         ApplyHotkeyBindings();
         HotkeyManager.BindingsChanged += ApplyHotkeyBindings;
@@ -111,6 +113,11 @@ public partial class MainWindow : Window
     /// </summary>
     private void OnViewModelPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
     {
+        if (e.PropertyName == nameof(MainViewModel.ActiveTab))
+        {
+            UpdatePresentationLineHighlight();
+        }
+
         if (e.PropertyName == nameof(MainViewModel.FindReferencesStatusText))
         {
             DockManager.ActiveContent = FindReferencesPanel;
@@ -198,7 +205,31 @@ public partial class MainWindow : Window
         PresentationOverlay.NavigateRequested += (_, slide) =>
         {
             _viewModel.NavigateToFileLine(slide.FilePath, slide.Line);
+            UpdatePresentationLineHighlight();
         };
+
+        PresentationOverlay.CloseRequested += (_, _) =>
+        {
+            UpdatePresentationLineHighlight();
+        };
+    }
+
+    private void UpdatePresentationLineHighlight()
+    {
+        PresentationSlide? currentSlide = _presentationService.CurrentSlide;
+        OpenFileTab? activeTab = _viewModel.ActiveTab;
+
+        if (currentSlide is null ||
+            activeTab is null ||
+            !string.Equals(activeTab.FilePath, currentSlide.FilePath, StringComparison.OrdinalIgnoreCase))
+        {
+            _presentationLineHighlightRenderer.SetHighlightedLine(0);
+            CodeEditor.TextArea.TextView.InvalidateLayer(KnownLayer.Selection);
+            return;
+        }
+
+        _presentationLineHighlightRenderer.SetHighlightedLine(currentSlide.Line);
+        CodeEditor.TextArea.TextView.InvalidateLayer(KnownLayer.Selection);
     }
 
     /// <summary>

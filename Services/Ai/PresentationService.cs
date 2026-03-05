@@ -47,7 +47,8 @@ internal sealed class PresentationService
     }
 
     /// <summary>
-    /// Adds a slide to the end of the presentation and navigates to it.
+    /// Adds a slide to the end of the presentation.
+    /// The current slide remains unchanged unless this is the first slide.
     /// </summary>
     public void AddSlide(string filePath, int line, string text)
     {
@@ -56,7 +57,12 @@ internal sealed class PresentationService
 
         PresentationSlide slide = new(filePath, Math.Max(1, line), text);
         _slides.Add(slide);
-        _currentIndex = _slides.Count - 1;
+
+        if (_currentIndex < 0)
+        {
+            _currentIndex = 0;
+        }
+
         SlideChanged?.Invoke(this, EventArgs.Empty);
     }
 
