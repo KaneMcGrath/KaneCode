@@ -7,7 +7,7 @@ namespace KaneCode.Services.Ai.Tools;
 /// Agent tool that finds the first line in a file containing a search string.
 /// Supports absolute paths, project-relative paths, or a file name lookup.
 /// </summary>
-internal sealed class PresentationFindLineTool : IAgentTool
+internal sealed class FindLineTool : IAgentTool
 {
     private static readonly JsonElement Schema = JsonDocument.Parse("""
         {
@@ -33,17 +33,16 @@ internal sealed class PresentationFindLineTool : IAgentTool
 
     private readonly Func<string?> _projectRootProvider;
 
-    public PresentationFindLineTool(Func<string?> projectRootProvider)
+    public FindLineTool(Func<string?> projectRootProvider)
     {
         ArgumentNullException.ThrowIfNull(projectRootProvider);
         _projectRootProvider = projectRootProvider;
     }
 
-    public string Name => "presentation_find_line";
+    public string Name => "find_line";
 
     public string Description =>
-        "Finds the first line in a file containing the provided search string. " +
-        "Use this before presentation_add_slide to get an exact line number for highlighting.";
+        "Finds the first line in a file containing the provided search string.";
 
     public JsonElement ParametersSchema => Schema;
 
