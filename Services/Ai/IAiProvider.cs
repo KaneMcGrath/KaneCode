@@ -3,13 +3,13 @@ using System.Text.Json;
 namespace KaneCode.Services.Ai;
 
 /// <summary>
-/// Abstraction for an AI completion provider (e.g. OpenAI, Azure OpenAI, local Llama.cpp).
+/// Abstraction for an AI completion provider (e.g. OpenAI or Azure OpenAI).
 /// Implementations translate requests into provider-specific HTTP calls and stream tokens back.
 /// </summary>
 internal interface IAiProvider
 {
     /// <summary>
-    /// Human-readable name shown in the UI (e.g. "OpenAI", "Azure OpenAI", "Llama.cpp (local)").
+    /// Human-readable name shown in the UI (e.g. "OpenAI" or "Azure OpenAI").
     /// </summary>
     string DisplayName { get; }
 
@@ -20,7 +20,7 @@ internal interface IAiProvider
 
     /// <summary>
     /// Whether the provider has been configured with the minimum required settings
-    /// (e.g. an API key or endpoint) to make requests.
+    /// (e.g. an endpoint, with an optional API key when required) to make requests.
     /// </summary>
     bool IsConfigured { get; }
 

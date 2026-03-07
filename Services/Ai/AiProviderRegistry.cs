@@ -57,8 +57,8 @@ internal sealed class AiProviderRegistry : IDisposable
     {
         return settings.ProviderId switch
         {
-            "llamacpp" => new LlamaCppProvider(settings),
-            // Future: "openai" => new OpenAiProvider(settings),
+            "openai" => new OpenAiProvider(settings),
+            "llamacpp" => new OpenAiProvider(settings),
             // Future: "azure-openai" => new AzureOpenAiProvider(settings),
             _ => null
         };

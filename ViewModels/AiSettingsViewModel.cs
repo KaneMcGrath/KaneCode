@@ -18,7 +18,7 @@ internal sealed class AiSettingsViewModel : ObservableObject
         var saved = AiSettingsManager.Load();
         foreach (var s in saved)
         {
-            Entries.Add(new AiProviderEntryViewModel(s));
+            Entries.Add(new AiProviderEntryViewModel(NormalizeSettings(s)));
         }
 
         AddCommand = new RelayCommand(_ => AddEntry());
@@ -49,10 +49,26 @@ internal sealed class AiSettingsViewModel : ObservableObject
     /// </summary>
     public static IReadOnlyList<string> ProviderTypes { get; } =
     [
-        "openai",
-        "azure-openai",
-        "llamacpp"
+        "openai"
     ];
+
+    private static AiProviderSettings NormalizeSettings(AiProviderSettings settings)
+    {
+        ArgumentNullException.ThrowIfNull(settings);
+
+        settings.ProviderId = NormalizeProviderId(settings.ProviderId);
+        return settings;
+    }
+
+    private static string NormalizeProviderId(string? providerId)
+    {
+        if (string.Equals(providerId, "llamacpp", StringComparison.OrdinalIgnoreCase))
+        {
+            return "openai";
+        }
+
+        return string.IsNullOrWhiteSpace(providerId) ? "openai" : providerId;
+    }
 
     private void AddEntry()
     {
@@ -116,7 +132,9 @@ internal sealed class AiProviderEntryViewModel : ObservableObject
     public AiProviderEntryViewModel(AiProviderSettings settings)
     {
         ArgumentNullException.ThrowIfNull(settings);
-        _providerId = settings.ProviderId;
+        _providerId = string.Equals(settings.ProviderId, "llamacpp", StringComparison.OrdinalIgnoreCase)
+            ? "openai"
+            : settings.ProviderId;
         _label = settings.Label;
         _endpoint = settings.Endpoint;
         _apiKey = settings.ApiKey;
@@ -165,7 +183,9 @@ internal sealed class AiProviderEntryViewModel : ObservableObject
     /// </summary>
     public AiProviderSettings ToSettings() => new()
     {
-        ProviderId = ProviderId,
+        ProviderId = string.Equals(ProviderId, "llamacpp", StringComparison.OrdinalIgnoreCase)
+            ? "openai"
+            : ProviderId,
         Label = Label,
         Endpoint = Endpoint,
         ApiKey = ApiKey,

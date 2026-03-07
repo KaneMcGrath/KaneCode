@@ -7,7 +7,7 @@ namespace KaneCode.Services.Ai;
 internal sealed class AiProviderSettings
 {
     /// <summary>
-    /// Provider identifier (e.g. "openai", "azure-openai", "llamacpp").
+    /// Provider identifier (e.g. "openai", "azure-openai").
     /// </summary>
     public string ProviderId { get; set; } = string.Empty;
 
@@ -17,13 +17,15 @@ internal sealed class AiProviderSettings
     public string Label { get; set; } = string.Empty;
 
     /// <summary>
-    /// The API endpoint URL. For local providers this is the local server address.
+    /// The API endpoint URL. This can be the service root, a <c>/v1</c> base URL,
+    /// or a full <c>/v1/chat/completions</c> endpoint.
     /// </summary>
     public string Endpoint { get; set; } = string.Empty;
 
     /// <summary>
     /// The API key, stored as a Base64-encoded DPAPI-encrypted blob on disk.
     /// At runtime this property holds the plaintext value after decryption.
+    /// This may be left empty for endpoints that do not require authentication.
     /// </summary>
     public string ApiKey { get; set; } = string.Empty;
 
