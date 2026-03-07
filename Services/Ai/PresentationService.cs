@@ -55,7 +55,7 @@ internal sealed class PresentationService
         ArgumentException.ThrowIfNullOrWhiteSpace(filePath);
         ArgumentException.ThrowIfNullOrWhiteSpace(text);
 
-        PresentationSlide slide = new(filePath, Math.Max(1, line), text);
+        PresentationSlide slide = new(filePath, Math.Max(0, line), text);
         _slides.Add(slide);
 
         if (_currentIndex < 0)
