@@ -63,6 +63,8 @@ internal sealed class OpenAiProvider : IAiProvider, IDisposable
                 tools.WriteTo(writer);
             }
 
+            WriteInferenceParameters(writer, _settings);
+
             writer.WriteEndObject();
         }
 
@@ -144,6 +146,42 @@ internal sealed class OpenAiProvider : IAiProvider, IDisposable
         }
 
         return "default";
+    }
+
+    private static void WriteInferenceParameters(Utf8JsonWriter writer, AiProviderSettings settings)
+    {
+        ArgumentNullException.ThrowIfNull(writer);
+        ArgumentNullException.ThrowIfNull(settings);
+
+        if (settings.Temperature.HasValue)
+        {
+            writer.WriteNumber("temperature", settings.Temperature.Value);
+        }
+
+        if (settings.TopP.HasValue)
+        {
+            writer.WriteNumber("top_p", settings.TopP.Value);
+        }
+
+        if (settings.TopK.HasValue)
+        {
+            writer.WriteNumber("top_k", settings.TopK.Value);
+        }
+
+        if (settings.MinP.HasValue)
+        {
+            writer.WriteNumber("min_p", settings.MinP.Value);
+        }
+
+        if (settings.PresencePenalty.HasValue)
+        {
+            writer.WriteNumber("presence_penalty", settings.PresencePenalty.Value);
+        }
+
+        if (settings.RepetitionPenalty.HasValue)
+        {
+            writer.WriteNumber("repetition_penalty", settings.RepetitionPenalty.Value);
+        }
     }
 
     private static string BuildChatCompletionsUrl(string endpoint)

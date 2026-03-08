@@ -42,6 +42,12 @@ internal static class AiSettingsManager
                 Endpoint = dto.Endpoint,
                 ApiKey = DecryptApiKey(dto.EncryptedApiKey),
                 SelectedModel = dto.SelectedModel,
+                Temperature = dto.Temperature,
+                TopP = dto.TopP,
+                TopK = dto.TopK,
+                MinP = dto.MinP,
+                PresencePenalty = dto.PresencePenalty,
+                RepetitionPenalty = dto.RepetitionPenalty,
                 IsActive = dto.IsActive
             }).ToList();
         }
@@ -69,6 +75,12 @@ internal static class AiSettingsManager
                 Endpoint = s.Endpoint,
                 EncryptedApiKey = EncryptApiKey(s.ApiKey),
                 SelectedModel = s.SelectedModel,
+                Temperature = s.Temperature,
+                TopP = s.TopP,
+                TopK = s.TopK,
+                MinP = s.MinP,
+                PresencePenalty = s.PresencePenalty,
+                RepetitionPenalty = s.RepetitionPenalty,
                 IsActive = s.IsActive
             }).ToList();
 
@@ -130,6 +142,12 @@ internal static class AiSettingsManager
         public string Endpoint { get; set; } = string.Empty;
         public string EncryptedApiKey { get; set; } = string.Empty;
         public string SelectedModel { get; set; } = string.Empty;
+        public double? Temperature { get; set; }
+        public double? TopP { get; set; }
+        public int? TopK { get; set; }
+        public double? MinP { get; set; }
+        public double? PresencePenalty { get; set; }
+        public double? RepetitionPenalty { get; set; }
         public bool IsActive { get; set; }
     }
 }

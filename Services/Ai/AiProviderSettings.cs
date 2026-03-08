@@ -6,6 +6,13 @@ namespace KaneCode.Services.Ai;
 /// </summary>
 internal sealed class AiProviderSettings
 {
+    public const double DefaultTemperature = 0.6;
+    public const double DefaultTopP = 0.95;
+    public const int DefaultTopK = 20;
+    public const double DefaultMinP = 0.0;
+    public const double DefaultPresencePenalty = 0.0;
+    public const double DefaultRepetitionPenalty = 1.0;
+
     /// <summary>
     /// Provider identifier (e.g. "openai", "azure-openai").
     /// </summary>
@@ -33,6 +40,36 @@ internal sealed class AiProviderSettings
     /// The selected model identifier (e.g. "gpt-4o", "gpt-4.1").
     /// </summary>
     public string SelectedModel { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Optional sampling temperature for OpenAI-compatible providers.
+    /// </summary>
+    public double? Temperature { get; set; } = DefaultTemperature;
+
+    /// <summary>
+    /// Optional nucleus sampling value for OpenAI-compatible providers.
+    /// </summary>
+    public double? TopP { get; set; } = DefaultTopP;
+
+    /// <summary>
+    /// Optional top-k sampling value for compatible providers.
+    /// </summary>
+    public int? TopK { get; set; } = DefaultTopK;
+
+    /// <summary>
+    /// Optional minimum probability threshold for compatible providers.
+    /// </summary>
+    public double? MinP { get; set; } = DefaultMinP;
+
+    /// <summary>
+    /// Optional presence penalty for OpenAI-compatible providers.
+    /// </summary>
+    public double? PresencePenalty { get; set; } = DefaultPresencePenalty;
+
+    /// <summary>
+    /// Optional repetition penalty for compatible providers.
+    /// </summary>
+    public double? RepetitionPenalty { get; set; } = DefaultRepetitionPenalty;
 
     /// <summary>
     /// Whether this provider entry is the active/default one.

@@ -1,6 +1,7 @@
 using KaneCode.Infrastructure;
 using KaneCode.Services.Ai;
 using System.Collections.ObjectModel;
+using System.Globalization;
 using System.Windows.Input;
 
 namespace KaneCode.ViewModels;
@@ -57,6 +58,12 @@ internal sealed class AiSettingsViewModel : ObservableObject
         ArgumentNullException.ThrowIfNull(settings);
 
         settings.ProviderId = NormalizeProviderId(settings.ProviderId);
+        settings.Temperature ??= AiProviderSettings.DefaultTemperature;
+        settings.TopP ??= AiProviderSettings.DefaultTopP;
+        settings.TopK ??= AiProviderSettings.DefaultTopK;
+        settings.MinP ??= AiProviderSettings.DefaultMinP;
+        settings.PresencePenalty ??= AiProviderSettings.DefaultPresencePenalty;
+        settings.RepetitionPenalty ??= AiProviderSettings.DefaultRepetitionPenalty;
         return settings;
     }
 
@@ -127,6 +134,12 @@ internal sealed class AiProviderEntryViewModel : ObservableObject
     private string _endpoint;
     private string _apiKey;
     private string _selectedModel;
+    private string _temperature;
+    private string _topP;
+    private string _topK;
+    private string _minP;
+    private string _presencePenalty;
+    private string _repetitionPenalty;
     private bool _isActive;
 
     public AiProviderEntryViewModel(AiProviderSettings settings)
@@ -139,6 +152,12 @@ internal sealed class AiProviderEntryViewModel : ObservableObject
         _endpoint = settings.Endpoint;
         _apiKey = settings.ApiKey;
         _selectedModel = settings.SelectedModel;
+        _temperature = FormatNullableDouble(settings.Temperature);
+        _topP = FormatNullableDouble(settings.TopP);
+        _topK = FormatNullableInt(settings.TopK);
+        _minP = FormatNullableDouble(settings.MinP);
+        _presencePenalty = FormatNullableDouble(settings.PresencePenalty);
+        _repetitionPenalty = FormatNullableDouble(settings.RepetitionPenalty);
         _isActive = settings.IsActive;
     }
 
@@ -172,6 +191,42 @@ internal sealed class AiProviderEntryViewModel : ObservableObject
         set => SetProperty(ref _selectedModel, value);
     }
 
+    public string Temperature
+    {
+        get => _temperature;
+        set => SetProperty(ref _temperature, value);
+    }
+
+    public string TopP
+    {
+        get => _topP;
+        set => SetProperty(ref _topP, value);
+    }
+
+    public string TopK
+    {
+        get => _topK;
+        set => SetProperty(ref _topK, value);
+    }
+
+    public string MinP
+    {
+        get => _minP;
+        set => SetProperty(ref _minP, value);
+    }
+
+    public string PresencePenalty
+    {
+        get => _presencePenalty;
+        set => SetProperty(ref _presencePenalty, value);
+    }
+
+    public string RepetitionPenalty
+    {
+        get => _repetitionPenalty;
+        set => SetProperty(ref _repetitionPenalty, value);
+    }
+
     public bool IsActive
     {
         get => _isActive;
@@ -190,8 +245,52 @@ internal sealed class AiProviderEntryViewModel : ObservableObject
         Endpoint = Endpoint,
         ApiKey = ApiKey,
         SelectedModel = SelectedModel,
+        Temperature = ParseNullableDouble(Temperature),
+        TopP = ParseNullableDouble(TopP),
+        TopK = ParseNullableInt(TopK),
+        MinP = ParseNullableDouble(MinP),
+        PresencePenalty = ParseNullableDouble(PresencePenalty),
+        RepetitionPenalty = ParseNullableDouble(RepetitionPenalty),
         IsActive = IsActive
     };
+
+    private static string FormatNullableDouble(double? value)
+    {
+        return value.HasValue
+            ? value.Value.ToString(CultureInfo.InvariantCulture)
+            : string.Empty;
+    }
+
+    private static string FormatNullableInt(int? value)
+    {
+        return value.HasValue
+            ? value.Value.ToString(CultureInfo.InvariantCulture)
+            : string.Empty;
+    }
+
+    private static double? ParseNullableDouble(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return null;
+        }
+
+        return double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out double parsedValue)
+            ? parsedValue
+            : null;
+    }
+
+    private static int? ParseNullableInt(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return null;
+        }
+
+        return int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out int parsedValue)
+            ? parsedValue
+            : null;
+    }
 
     public override string ToString() => string.IsNullOrWhiteSpace(Label) ? ProviderId : Label;
 }
