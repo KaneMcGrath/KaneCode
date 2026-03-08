@@ -793,6 +793,7 @@ public partial class AiChatPanel : UserControl
                 var responseBuilder = new System.Text.StringBuilder();
                 var reasoningBuilder = new System.Text.StringBuilder();
                 Expander? thinkingExpander = null;
+                StackPanel? thinkingPanel = null;
                 TextBlock? thinkingTextBlock = null;
                 var streamedToolCalls = new Dictionary<int, AiStreamToolCall>();
                 var toolCallBlocks = new Dictionary<int, (Expander expander, TextBlock argumentsBlock, TextBlock resultBlock)>();
@@ -826,7 +827,16 @@ public partial class AiChatPanel : UserControl
 
                             if (!toolCallBlocks.TryGetValue(toolCall.Index, out var block))
                             {
-                                block = CreateToolCallBlock(toolCall.FunctionName, toolCall.ArgumentsJson);
+                                if (thinkingExpander is null)
+                                {
+                                    (thinkingExpander, thinkingPanel, thinkingTextBlock) = CreateThinkingExpander(assistantBlock);
+                                }
+
+                                block = CreateToolCallBlock(
+                                    toolCall.FunctionName,
+                                    toolCall.ArgumentsJson,
+                                    thinkingPanel ?? MessagePanel,
+                                    nestedInThinking: thinkingPanel is not null);
                                 toolCallBlocks[toolCall.Index] = block;
                             }
                             else
@@ -854,10 +864,13 @@ public partial class AiChatPanel : UserControl
 
                             if (thinkingExpander is null)
                             {
-                                (thinkingExpander, thinkingTextBlock) = CreateThinkingExpander(assistantBlock);
+                                (thinkingExpander, thinkingPanel, thinkingTextBlock) = CreateThinkingExpander(assistantBlock);
                             }
 
                             thinkingTextBlock!.Text = reasoningBuilder.ToString();
+                            thinkingTextBlock.Visibility = string.IsNullOrWhiteSpace(thinkingTextBlock.Text)
+                                ? Visibility.Collapsed
+                                : Visibility.Visible;
                             thinkingExpander.Header = $"💭 Thinking ({reasoningTokenCount:N0} tokens)...";
 
                             UpdateStatsBar(reasoningTokenCount + contentTokenCount, streamStopwatch);
@@ -896,6 +909,20 @@ public partial class AiChatPanel : UserControl
                     }
                 }
 
+                if (thinkingExpander is not null)
+                {
+                    await Dispatcher.InvokeAsync(() =>
+                    {
+                        if (thinkingExpander.Header is string thinkingHeader &&
+                            thinkingHeader.EndsWith("...", StringComparison.Ordinal))
+                        {
+                            thinkingExpander.Header = reasoningTokenCount > 0
+                                ? $"💭 Thought for {reasoningTokenCount:N0} tokens"
+                                : "💭 Thought";
+                        }
+                    });
+                }
+
                 // If tool calls were requested, execute them and loop
                 if (_activeMode?.ToolsEnabled == true && streamedToolCalls.Count > 0 && _toolRegistry is not null)
                 {
@@ -907,7 +934,10 @@ public partial class AiChatPanel : UserControl
 
                     if (pendingToolCalls.Count == 0)
                     {
-                        _conversationHistory.Add(new AiChatMessage(AiChatRole.Assistant, responseBuilder.ToString()));
+                        _conversationHistory.Add(new AiChatMessage(AiChatRole.Assistant, responseBuilder.ToString())
+                        {
+                            ThinkingContent = reasoningBuilder.ToString()
+                        });
                         SavePersistedConversation();
                         break;
                     }
@@ -926,6 +956,7 @@ public partial class AiChatPanel : UserControl
 
                     _conversationHistory.Add(new AiChatMessage(AiChatRole.Assistant, responseBuilder.ToString())
                     {
+                        ThinkingContent = reasoningBuilder.ToString(),
                         ToolCalls = toolCallRequests
                     });
 
@@ -944,7 +975,16 @@ public partial class AiChatPanel : UserControl
                         {
                             if (!toolCallBlocks.TryGetValue(toolCall.Index, out var block))
                             {
-                                block = CreateToolCallBlock(toolCall.FunctionName, toolCall.ArgumentsJson);
+                                if (thinkingExpander is null)
+                                {
+                                    (thinkingExpander, thinkingPanel, thinkingTextBlock) = CreateThinkingExpander(assistantBlock);
+                                }
+
+                                block = CreateToolCallBlock(
+                                    toolCall.FunctionName,
+                                    toolCall.ArgumentsJson,
+                                    thinkingPanel ?? MessagePanel,
+                                    nestedInThinking: thinkingPanel is not null);
                                 toolCallBlocks[toolCall.Index] = block;
                             }
                             else
@@ -1007,7 +1047,10 @@ public partial class AiChatPanel : UserControl
                 }
 
                 // No tool calls — this is the final content response
-                _conversationHistory.Add(new AiChatMessage(AiChatRole.Assistant, responseBuilder.ToString()));
+                _conversationHistory.Add(new AiChatMessage(AiChatRole.Assistant, responseBuilder.ToString())
+                {
+                    ThinkingContent = reasoningBuilder.ToString()
+                });
                 SavePersistedConversation();
                 break;
             }
@@ -1252,18 +1295,22 @@ public partial class AiChatPanel : UserControl
     /// Returns both the expander and the inner TextBlock so reasoning tokens
     /// can be appended progressively.
     /// </summary>
-    private (Expander expander, TextBlock textBlock) CreateThinkingExpander(UIElement? insertBefore = null)
+    private (Expander expander, StackPanel contentPanel, TextBlock textBlock) CreateThinkingExpander(UIElement? insertBefore = null)
     {
-        var textBlock = new TextBlock
+        TextBlock textBlock = new()
         {
             TextWrapping = TextWrapping.Wrap,
             Foreground = FindBrush("AiChatThinkingForeground"),
             FontSize = 12,
             FontFamily = new FontFamily("Segoe UI"),
-            Margin = new Thickness(0, 4, 0, 0)
+            Margin = new Thickness(0, 4, 0, 0),
+            Visibility = Visibility.Collapsed
         };
 
-        var expander = new Expander
+        StackPanel contentPanel = new();
+        contentPanel.Children.Add(textBlock);
+
+        Expander expander = new()
         {
             Header = "💭 Thinking...",
             IsExpanded = false,
@@ -1277,7 +1324,7 @@ public partial class AiChatPanel : UserControl
                 Padding = new Thickness(8, 6, 8, 6),
                 BorderBrush = FindBrush("AiChatThinkingBorder"),
                 BorderThickness = new Thickness(1),
-                Child = textBlock
+                Child = contentPanel
             }
         };
 
@@ -1298,7 +1345,7 @@ public partial class AiChatPanel : UserControl
             MessagePanel.Children.Add(expander);
         }
 
-        return (expander, textBlock);
+        return (expander, contentPanel, textBlock);
     }
 
     private void AppendSystemMessage(string text)
@@ -1322,11 +1369,15 @@ public partial class AiChatPanel : UserControl
     /// Returns the expander, the status TextBlock (for updating header), and the result TextBlock
     /// (for filling in when the tool finishes).
     /// </summary>
-    private (Expander expander, TextBlock argumentsBlock, TextBlock resultBlock) CreateToolCallBlock(string toolName, string argumentsJson)
+    private (Expander expander, TextBlock argumentsBlock, TextBlock resultBlock) CreateToolCallBlock(
+        string toolName,
+        string argumentsJson,
+        Panel hostPanel,
+        bool nestedInThinking)
     {
-        var argsDisplay = FormatToolArgs(argumentsJson);
+        string argsDisplay = FormatToolArgs(argumentsJson);
 
-        var argsBlock = new TextBlock
+        TextBlock argsBlock = new()
         {
             Text = argsDisplay,
             TextWrapping = TextWrapping.Wrap,
@@ -1336,24 +1387,26 @@ public partial class AiChatPanel : UserControl
             Margin = new Thickness(0, 2, 0, 4)
         };
 
-        var resultBlock = new TextBlock
+        TextBlock resultBlock = new()
         {
             TextWrapping = TextWrapping.Wrap,
             FontSize = 11,
             Margin = new Thickness(0, 4, 0, 0)
         };
 
-        var contentPanel = new StackPanel();
+        StackPanel contentPanel = new();
         contentPanel.Children.Add(argsBlock);
         contentPanel.Children.Add(resultBlock);
 
-        var expander = new Expander
+        Expander expander = new()
         {
             Header = $"⏳ {toolName}",
             IsExpanded = false,
             Foreground = FindBrush(ThemeResourceKeys.AiChatToolCallForeground),
             FontSize = 12,
-            Margin = new Thickness(4, 4, 40, 0),
+            Margin = nestedInThinking
+                ? new Thickness(0, 4, 0, 0)
+                : new Thickness(4, 4, 40, 0),
             Content = new Border
             {
                 Background = FindBrush(ThemeResourceKeys.AiChatToolCallBackground),
@@ -1365,7 +1418,7 @@ public partial class AiChatPanel : UserControl
             }
         };
 
-        MessagePanel.Children.Add(expander);
+        hostPanel.Children.Add(expander);
 
         var shouldStickToBottom = IsMessageScrollerNearBottom();
         if (shouldStickToBottom)

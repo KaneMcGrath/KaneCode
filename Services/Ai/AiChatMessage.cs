@@ -26,6 +26,12 @@ internal sealed record AiToolCallRequest(string Id, string FunctionName, string 
 internal sealed record AiChatMessage(AiChatRole Role, string Content)
 {
     /// <summary>
+    /// Thinking/reasoning text associated with the assistant message.
+    /// This is retained for UI rendering only and is not sent back to the model.
+    /// </summary>
+    public string? ThinkingContent { get; init; }
+
+    /// <summary>
     /// Tool calls requested by the assistant. Populated when the model
     /// responds with function calls instead of (or alongside) content.
     /// </summary>

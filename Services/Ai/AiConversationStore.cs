@@ -24,17 +24,22 @@ internal static class AiConversationStore
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(projectKey);
 
-        var filePath = GetHistoryFilePath(projectKey);
+        string filePath = GetHistoryFilePath(projectKey);
         if (!File.Exists(filePath))
         {
             return [];
         }
 
-        var json = File.ReadAllText(filePath);
-        var records = JsonSerializer.Deserialize<List<AiChatMessageRecord>>(json) ?? [];
+        string json = File.ReadAllText(filePath);
+        List<AiChatMessageRecord> records = JsonSerializer.Deserialize<List<AiChatMessageRecord>>(json) ?? [];
 
         return records
-            .Select(r => new AiChatMessage(ParseRole(r.Role), r.Content))
+            .Select(r => new AiChatMessage(ParseRole(r.Role), r.Content)
+            {
+                ThinkingContent = r.ThinkingContent,
+                ToolCallId = r.ToolCallId,
+                ToolCalls = r.ToolCalls?.Select(tc => new AiToolCallRequest(tc.Id, tc.FunctionName, tc.ArgumentsJson)).ToList()
+            })
             .ToList();
     }
 
@@ -45,13 +50,25 @@ internal static class AiConversationStore
 
         Directory.CreateDirectory(HistoryDirectory);
 
-        var filePath = GetHistoryFilePath(projectKey);
+        string filePath = GetHistoryFilePath(projectKey);
 
-        var records = messages
-            .Select(m => new AiChatMessageRecord(m.Role.ToString(), m.Content))
+        List<AiChatMessageRecord> records = messages
+            .Select(m => new AiChatMessageRecord
+            {
+                Role = m.Role.ToString(),
+                Content = m.Content,
+                ThinkingContent = m.ThinkingContent,
+                ToolCallId = m.ToolCallId,
+                ToolCalls = m.ToolCalls?.Select(tc => new AiToolCallRequestRecord
+                {
+                    Id = tc.Id,
+                    FunctionName = tc.FunctionName,
+                    ArgumentsJson = tc.ArgumentsJson
+                }).ToList()
+            })
             .ToList();
 
-        var json = JsonSerializer.Serialize(records, JsonOptions);
+        string json = JsonSerializer.Serialize(records, JsonOptions);
         File.WriteAllText(filePath, json);
     }
 
@@ -68,7 +85,7 @@ internal static class AiConversationStore
 
     private static string GetHistoryFilePath(string projectKey)
     {
-        var hash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(projectKey))).ToLowerInvariant();
+        string hash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(projectKey))).ToLowerInvariant();
         return Path.Combine(HistoryDirectory, $"{hash}.json");
     }
 
@@ -84,5 +101,25 @@ internal static class AiConversationStore
         };
     }
 
-    private sealed record AiChatMessageRecord(string Role, string Content);
+    private sealed class AiChatMessageRecord
+    {
+        public string Role { get; init; } = string.Empty;
+
+        public string Content { get; init; } = string.Empty;
+
+        public string? ThinkingContent { get; init; }
+
+        public string? ToolCallId { get; init; }
+
+        public List<AiToolCallRequestRecord>? ToolCalls { get; init; }
+    }
+
+    private sealed class AiToolCallRequestRecord
+    {
+        public string Id { get; init; } = string.Empty;
+
+        public string FunctionName { get; init; } = string.Empty;
+
+        public string ArgumentsJson { get; init; } = string.Empty;
+    }
 }
