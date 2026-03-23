@@ -157,16 +157,16 @@ public partial class MainWindow : Window
     private void ConfigureAiChatPanel()
     {
         var provider = _aiProviderRegistry.ActiveProvider;
-        var settings = AiSettingsManager.Load().FirstOrDefault(s => s.IsActive)
-                       ?? AiSettingsManager.Load().FirstOrDefault();
+        var settings = AiSettingsManager.Load().FirstOrDefault();
         AiChatPanel.Configure(provider, settings?.SelectedModel);
+        AiChatPanel.SetProviderRegistry(_aiProviderRegistry);
         AiChatPanel.SetProjectItemsProvider(() => _viewModel.ProjectItems);
         AiChatPanel.SetConversationProjectKeyProvider(() =>
             _viewModel.ProjectItems.FirstOrDefault(i => i.ItemType is ProjectItemType.Solution or ProjectItemType.Project)?.FullPath
             ?? _viewModel.ProjectItems.FirstOrDefault()?.FullPath);
         AiChatPanel.SetToolRegistry(_agentToolRegistry);
         AiChatPanel.SetModeRegistry(_aiChatModeRegistry);
-    }    /// Registers the built-in AI chat modes. Called once at startup.
+    }
     /// </summary>
     private void RegisterAiChatModes()
     {

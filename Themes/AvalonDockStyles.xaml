@@ -3,9 +3,113 @@
                     xmlns:avalonDock="https://github.com/Dirkster99/AvalonDock"
                     xmlns:avalonDockControls="clr-namespace:AvalonDock.Controls;assembly=AvalonDock">
 
+    <DataTemplate x:Key="AvalonDockDocumentHeaderTemplate">
+        <Border x:Name="DocumentHeaderBorder"
+                Background="{DynamicResource TabStripBackground}"
+                BorderBrush="{DynamicResource TabItem.Static.Border}"
+                BorderThickness="1,1,1,0"
+                Padding="10,4"
+                SnapsToDevicePixels="True">
+            <TextBlock x:Name="DocumentHeaderText"
+                       Foreground="{DynamicResource TabForeground}"
+                       TextTrimming="CharacterEllipsis"
+                       VerticalAlignment="Center">
+                <TextBlock.Text>
+                    <PriorityBinding>
+                        <Binding Path="Model.Title" />
+                        <Binding Path="Title" />
+                    </PriorityBinding>
+                </TextBlock.Text>
+            </TextBlock>
+        </Border>
+        <DataTemplate.Triggers>
+            <DataTrigger Binding="{Binding Model.IsSelected}" Value="True">
+                <Setter TargetName="DocumentHeaderBorder" Property="Background" Value="{DynamicResource TabSelectedBackground}" />
+                <Setter TargetName="DocumentHeaderBorder" Property="BorderBrush" Value="{DynamicResource TabItem.Selected.Border}" />
+                <Setter TargetName="DocumentHeaderText" Property="Foreground" Value="{DynamicResource TabSelectedForeground}" />
+                <Setter TargetName="DocumentHeaderText" Property="FontWeight" Value="SemiBold" />
+            </DataTrigger>
+            <DataTrigger Binding="{Binding IsSelected}" Value="True">
+                <Setter TargetName="DocumentHeaderBorder" Property="Background" Value="{DynamicResource TabSelectedBackground}" />
+                <Setter TargetName="DocumentHeaderBorder" Property="BorderBrush" Value="{DynamicResource TabItem.Selected.Border}" />
+                <Setter TargetName="DocumentHeaderText" Property="Foreground" Value="{DynamicResource TabSelectedForeground}" />
+                <Setter TargetName="DocumentHeaderText" Property="FontWeight" Value="SemiBold" />
+            </DataTrigger>
+        </DataTemplate.Triggers>
+    </DataTemplate>
+
+    <DataTemplate x:Key="AvalonDockAnchorableHeaderTemplate">
+        <Border x:Name="AnchorableHeaderBorder"
+                Background="{DynamicResource TabStripBackground}"
+                BorderBrush="{DynamicResource TabItem.Static.Border}"
+                BorderThickness="1,1,1,0"
+                Padding="10,4"
+                SnapsToDevicePixels="True">
+            <TextBlock x:Name="AnchorableHeaderText"
+                       Foreground="{DynamicResource TabForeground}"
+                       TextTrimming="CharacterEllipsis"
+                       VerticalAlignment="Center">
+                <TextBlock.Text>
+                    <PriorityBinding>
+                        <Binding Path="Model.Title" />
+                        <Binding Path="Title" />
+                    </PriorityBinding>
+                </TextBlock.Text>
+            </TextBlock>
+        </Border>
+        <DataTemplate.Triggers>
+            <DataTrigger Binding="{Binding Model.IsSelected}" Value="True">
+                <Setter TargetName="AnchorableHeaderBorder" Property="Background" Value="{DynamicResource TabSelectedBackground}" />
+                <Setter TargetName="AnchorableHeaderBorder" Property="BorderBrush" Value="{DynamicResource TabItem.Selected.Border}" />
+                <Setter TargetName="AnchorableHeaderText" Property="Foreground" Value="{DynamicResource TabSelectedForeground}" />
+                <Setter TargetName="AnchorableHeaderText" Property="FontWeight" Value="SemiBold" />
+            </DataTrigger>
+            <DataTrigger Binding="{Binding IsSelected}" Value="True">
+                <Setter TargetName="AnchorableHeaderBorder" Property="Background" Value="{DynamicResource TabSelectedBackground}" />
+                <Setter TargetName="AnchorableHeaderBorder" Property="BorderBrush" Value="{DynamicResource TabItem.Selected.Border}" />
+                <Setter TargetName="AnchorableHeaderText" Property="Foreground" Value="{DynamicResource TabSelectedForeground}" />
+                <Setter TargetName="AnchorableHeaderText" Property="FontWeight" Value="SemiBold" />
+            </DataTrigger>
+        </DataTemplate.Triggers>
+    </DataTemplate>
+
+    <DataTemplate x:Key="AvalonDockAnchorableTitleTemplate">
+        <Border x:Name="AnchorableTitleBorder"
+                Background="{DynamicResource PanelBackground}"
+                BorderBrush="{DynamicResource PanelBorderBrush}"
+                BorderThickness="0,0,0,1"
+                Padding="8,4"
+                SnapsToDevicePixels="True">
+            <TextBlock x:Name="AnchorableTitleText"
+                       Foreground="{DynamicResource PanelHeaderForeground}"
+                       TextTrimming="CharacterEllipsis"
+                       VerticalAlignment="Center">
+                <TextBlock.Text>
+                    <PriorityBinding>
+                        <Binding Path="Model.Title" />
+                        <Binding Path="Title" />
+                    </PriorityBinding>
+                </TextBlock.Text>
+            </TextBlock>
+        </Border>
+        <DataTemplate.Triggers>
+            <DataTrigger Binding="{Binding Model.IsActive}" Value="True">
+                <Setter TargetName="AnchorableTitleBorder" Property="Background" Value="{DynamicResource PanelSecondaryBackground}" />
+                <Setter TargetName="AnchorableTitleText" Property="FontWeight" Value="SemiBold" />
+            </DataTrigger>
+            <DataTrigger Binding="{Binding IsActive}" Value="True">
+                <Setter TargetName="AnchorableTitleBorder" Property="Background" Value="{DynamicResource PanelSecondaryBackground}" />
+                <Setter TargetName="AnchorableTitleText" Property="FontWeight" Value="SemiBold" />
+            </DataTrigger>
+        </DataTemplate.Triggers>
+    </DataTemplate>
+
     <!-- DockingManager background -->
     <Style TargetType="{x:Type avalonDock:DockingManager}">
         <Setter Property="Background" Value="{DynamicResource WindowBackground}" />
+        <Setter Property="DocumentHeaderTemplate" Value="{StaticResource AvalonDockDocumentHeaderTemplate}" />
+        <Setter Property="AnchorableHeaderTemplate" Value="{StaticResource AvalonDockAnchorableHeaderTemplate}" />
+        <Setter Property="AnchorableTitleTemplate" Value="{StaticResource AvalonDockAnchorableTitleTemplate}" />
     </Style>
 
     <!-- Anchorable (tool window) pane title styling -->
@@ -28,11 +132,13 @@
     <!-- Dock tabs (shown when multiple panels share a pane) -->
     <Style TargetType="{x:Type avalonDockControls:LayoutAnchorableTabItem}">
         <Setter Property="Background" Value="{DynamicResource TabStripBackground}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource TabItem.Static.Border}" />
         <Setter Property="Foreground" Value="{DynamicResource TabForeground}" />
     </Style>
 
     <Style TargetType="{x:Type avalonDockControls:LayoutDocumentTabItem}">
         <Setter Property="Background" Value="{DynamicResource TabStripBackground}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource TabItem.Static.Border}" />
         <Setter Property="Foreground" Value="{DynamicResource TabForeground}" />
     </Style>
 

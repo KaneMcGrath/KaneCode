@@ -70,9 +70,4 @@ internal sealed class AiProviderSettings
     /// Optional repetition penalty for compatible providers.
     /// </summary>
     public double? RepetitionPenalty { get; set; } = DefaultRepetitionPenalty;
-
-    /// <summary>
-    /// Whether this provider entry is the active/default one.
-    /// </summary>
-    public bool IsActive { get; set; }
 }

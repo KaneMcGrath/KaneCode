@@ -22,7 +22,9 @@ internal sealed class OpenAiProvider : IAiProvider, IDisposable
         _settings = settings;
     }
 
-    public string DisplayName => "OpenAI-compatible";
+    public string DisplayName => string.IsNullOrWhiteSpace(_settings.Label)
+        ? "OpenAI-compatible"
+        : _settings.Label;
 
     public string ProviderId => "openai";
 
@@ -42,9 +44,10 @@ internal sealed class OpenAiProvider : IAiProvider, IDisposable
     {
         ArgumentNullException.ThrowIfNull(messages);
 
-        var url = BuildChatCompletionsUrl(_settings.Endpoint);
-        var resolvedModel = ResolveModel(model, _settings.SelectedModel);
-        var serializedMessages = SerializeMessages(messages);
+        string url = BuildChatCompletionsUrl(_settings.Endpoint);
+        string resolvedModel = ResolveModel(model, _settings.SelectedModel);
+        JsonElement serializedMessages = SerializeMessages(messages);
+        bool isGroqCompatibleEndpoint = IsGroqCompatibleEndpoint(_settings.Endpoint);
 
         using var bodyStream = new MemoryStream();
         using (var writer = new Utf8JsonWriter(bodyStream))
@@ -63,7 +66,7 @@ internal sealed class OpenAiProvider : IAiProvider, IDisposable
                 tools.WriteTo(writer);
             }
 
-            WriteInferenceParameters(writer, _settings);
+            WriteInferenceParameters(writer, _settings, isGroqCompatibleEndpoint);
 
             writer.WriteEndObject();
         }
@@ -86,7 +89,12 @@ internal sealed class OpenAiProvider : IAiProvider, IDisposable
             HttpCompletionOption.ResponseHeadersRead,
             cancellationToken).ConfigureAwait(false);
 
-        response.EnsureSuccessStatusCode();
+        if (!response.IsSuccessStatusCode)
+        {
+            string errorBody = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+            throw new InvalidOperationException(
+                $"AI request failed with {(int)response.StatusCode} ({response.ReasonPhrase}). {errorBody}".Trim());
+        }
 
         var mediaType = response.Content.Headers.ContentType?.MediaType;
         if (!string.Equals(mediaType, "text/event-stream", StringComparison.OrdinalIgnoreCase))
@@ -148,7 +156,7 @@ internal sealed class OpenAiProvider : IAiProvider, IDisposable
         return "default";
     }
 
-    private static void WriteInferenceParameters(Utf8JsonWriter writer, AiProviderSettings settings)
+    private static void WriteInferenceParameters(Utf8JsonWriter writer, AiProviderSettings settings, bool isGroqCompatibleEndpoint)
     {
         ArgumentNullException.ThrowIfNull(writer);
         ArgumentNullException.ThrowIfNull(settings);
@@ -163,25 +171,37 @@ internal sealed class OpenAiProvider : IAiProvider, IDisposable
             writer.WriteNumber("top_p", settings.TopP.Value);
         }
 
-        if (settings.TopK.HasValue)
+        if (!isGroqCompatibleEndpoint && settings.TopK.HasValue)
         {
             writer.WriteNumber("top_k", settings.TopK.Value);
         }
 
-        if (settings.MinP.HasValue)
+        if (!isGroqCompatibleEndpoint && settings.MinP.HasValue)
         {
             writer.WriteNumber("min_p", settings.MinP.Value);
         }
 
-        if (settings.PresencePenalty.HasValue)
+        if (!isGroqCompatibleEndpoint && settings.PresencePenalty.HasValue)
         {
             writer.WriteNumber("presence_penalty", settings.PresencePenalty.Value);
         }
 
-        if (settings.RepetitionPenalty.HasValue)
+        if (!isGroqCompatibleEndpoint && settings.RepetitionPenalty.HasValue)
         {
             writer.WriteNumber("repetition_penalty", settings.RepetitionPenalty.Value);
         }
+    }
+
+    private static bool IsGroqCompatibleEndpoint(string endpoint)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(endpoint);
+
+        if (!Uri.TryCreate(endpoint.Trim(), UriKind.Absolute, out Uri? uri))
+        {
+            return false;
+        }
+
+        return uri.Host.EndsWith("groq.com", StringComparison.OrdinalIgnoreCase);
     }
 
     private static string BuildChatCompletionsUrl(string endpoint)

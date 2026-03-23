@@ -22,6 +22,7 @@ public partial class AiChatPanel : UserControl
     private readonly List<AiChatMessage> _conversationHistory = [];
     private readonly List<AiChatReference> _references = [];
     private IAiProvider? _provider;
+    private AiProviderRegistry? _providerRegistry;
     private string? _model;
     private CancellationTokenSource? _streamCts;
     private bool _isStreaming;
@@ -50,9 +51,17 @@ public partial class AiChatPanel : UserControl
         _provider = provider;
         _model = model;
         _projectContextInjected = false;
-        ProviderLabel.Text = provider is not null
-            ? $"{provider.DisplayName}"
-            : "No provider";
+    }
+
+    /// <summary>
+    /// Sets the provider registry and populates the provider selector dropdown.
+    /// The active provider is pre-selected.
+    /// </summary>
+    internal void SetProviderRegistry(AiProviderRegistry registry)
+    {
+        ArgumentNullException.ThrowIfNull(registry);
+        _providerRegistry = registry;
+        RefreshProviderSelector();
     }
 
     /// <summary>
@@ -683,6 +692,59 @@ public partial class AiChatPanel : UserControl
         };
 
         optionsWindow.ShowDialog();
+
+        // Reload providers after settings may have changed
+        if (_providerRegistry is not null)
+        {
+            _providerRegistry.Reload();
+            RefreshProviderSelector();
+        }
+    }
+
+    private void ProviderSelector_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (ProviderSelector.SelectedItem is not IAiProvider selected)
+        {
+            return;
+        }
+
+        _providerRegistry?.SetActiveProvider(selected);
+
+        AiProviderSettings? matchingSettings = _providerRegistry?.GetSettings(selected);
+        Configure(selected, matchingSettings?.SelectedModel);
+    }
+
+    /// <summary>
+    /// Refreshes the provider selector dropdown from the current registry state.
+    /// </summary>
+    private void RefreshProviderSelector()
+    {
+        if (_providerRegistry is null)
+        {
+            return;
+        }
+
+        ProviderSelector.SelectionChanged -= ProviderSelector_SelectionChanged;
+        ProviderSelector.ItemsSource = _providerRegistry.Providers;
+
+        IAiProvider? active = _providerRegistry.ActiveProvider;
+        if (active is not null)
+        {
+            ProviderSelector.SelectedItem = active;
+            Configure(active);
+        }
+        else if (_providerRegistry.Providers.Count > 0)
+        {
+            ProviderSelector.SelectedIndex = 0;
+            Configure(_providerRegistry.Providers[0]);
+        }
+        else
+        {
+            ProviderSelector.SelectedItem = null;
+            Configure(null);
+        }
+
+        ProviderSelector.SelectionChanged += ProviderSelector_SelectionChanged;
     }
 
     private void ModeSelector_SelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -1838,9 +1900,9 @@ public partial class AiChatPanel : UserControl
             sb.AppendLine("═══════════════════════════════════════════════════════════════");
             sb.AppendLine();
 
-            if (!string.IsNullOrWhiteSpace(ProviderLabel.Text))
+            if (ProviderSelector.SelectedItem is IAiProvider selectedProvider)
             {
-                sb.AppendLine($"Provider: {ProviderLabel.Text}");
+                sb.AppendLine($"Provider: {selectedProvider.DisplayName}");
                 sb.AppendLine();
             }
 

@@ -105,20 +105,6 @@ internal sealed class AiSettingsViewModel : ObservableObject
     /// </summary>
     public void Save()
     {
-        // Ensure only one entry is marked active
-        var activeFound = false;
-        foreach (var entry in Entries)
-        {
-            if (entry.IsActive && !activeFound)
-            {
-                activeFound = true;
-            }
-            else if (entry.IsActive)
-            {
-                entry.IsActive = false;
-            }
-        }
-
         var settings = Entries.Select(e => e.ToSettings()).ToList();
         AiSettingsManager.Save(settings);
     }
@@ -140,7 +126,6 @@ internal sealed class AiProviderEntryViewModel : ObservableObject
     private string _minP;
     private string _presencePenalty;
     private string _repetitionPenalty;
-    private bool _isActive;
 
     public AiProviderEntryViewModel(AiProviderSettings settings)
     {
@@ -158,7 +143,6 @@ internal sealed class AiProviderEntryViewModel : ObservableObject
         _minP = FormatNullableDouble(settings.MinP);
         _presencePenalty = FormatNullableDouble(settings.PresencePenalty);
         _repetitionPenalty = FormatNullableDouble(settings.RepetitionPenalty);
-        _isActive = settings.IsActive;
     }
 
     public string ProviderId
@@ -227,12 +211,6 @@ internal sealed class AiProviderEntryViewModel : ObservableObject
         set => SetProperty(ref _repetitionPenalty, value);
     }
 
-    public bool IsActive
-    {
-        get => _isActive;
-        set => SetProperty(ref _isActive, value);
-    }
-
     /// <summary>
     /// Converts this view model back to a settings model for persistence.
     /// </summary>
@@ -250,8 +228,7 @@ internal sealed class AiProviderEntryViewModel : ObservableObject
         TopK = ParseNullableInt(TopK),
         MinP = ParseNullableDouble(MinP),
         PresencePenalty = ParseNullableDouble(PresencePenalty),
-        RepetitionPenalty = ParseNullableDouble(RepetitionPenalty),
-        IsActive = IsActive
+        RepetitionPenalty = ParseNullableDouble(RepetitionPenalty)
     };
 
     private static string FormatNullableDouble(double? value)

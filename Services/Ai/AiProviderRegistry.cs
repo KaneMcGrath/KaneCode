@@ -7,6 +7,7 @@ namespace KaneCode.Services.Ai;
 internal sealed class AiProviderRegistry : IDisposable
 {
     private readonly List<IAiProvider> _providers = [];
+    private readonly Dictionary<IAiProvider, AiProviderSettings> _settingsMap = [];
     private IAiProvider? _activeProvider;
 
     /// <summary>
@@ -18,6 +19,15 @@ internal sealed class AiProviderRegistry : IDisposable
     /// The provider marked as active/default, or null if none is configured.
     /// </summary>
     public IAiProvider? ActiveProvider => _activeProvider;
+
+    /// <summary>
+    /// Sets the active provider to the specified instance.
+    /// The provider must already be registered.
+    /// </summary>
+    public void SetActiveProvider(IAiProvider? provider)
+    {
+        _activeProvider = provider;
+    }
 
     /// <summary>
     /// Loads (or reloads) providers from the persisted AI settings.
@@ -38,15 +48,10 @@ internal sealed class AiProviderRegistry : IDisposable
             }
 
             _providers.Add(provider);
-
-            if (s.IsActive)
-            {
-                _activeProvider = provider;
-            }
+            _settingsMap[provider] = s;
         }
 
-        // Fall back to the first configured provider if none is explicitly active
-        _activeProvider ??= _providers.FirstOrDefault(p => p.IsConfigured);
+        _activeProvider = _providers.FirstOrDefault(p => p.IsConfigured);
     }
 
     /// <summary>
@@ -64,6 +69,15 @@ internal sealed class AiProviderRegistry : IDisposable
         };
     }
 
+    /// <summary>
+    /// Returns the persisted settings for the given provider, or null if not found.
+    /// </summary>
+    public AiProviderSettings? GetSettings(IAiProvider provider)
+    {
+        ArgumentNullException.ThrowIfNull(provider);
+        return _settingsMap.GetValueOrDefault(provider);
+    }
+
     private void DisposeProviders()
     {
         foreach (var provider in _providers)
@@ -75,6 +89,7 @@ internal sealed class AiProviderRegistry : IDisposable
         }
 
         _providers.Clear();
+        _settingsMap.Clear();
         _activeProvider = null;
     }
 

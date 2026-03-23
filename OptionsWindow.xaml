@@ -216,10 +216,6 @@
                                            Foreground="{DynamicResource WindowForeground}" Margin="0,0,0,4" />
                                 <TextBox Text="{Binding RepetitionPenalty, UpdateSourceTrigger=PropertyChanged}"
                                          Width="120" HorizontalAlignment="Left" Margin="0,0,0,10" />
-
-                                <CheckBox Content="Active (default provider)"
-                                          IsChecked="{Binding IsActive}"
-                                          Foreground="{DynamicResource WindowForeground}" />
                             </StackPanel>
                         </ScrollViewer>
                     </Grid>

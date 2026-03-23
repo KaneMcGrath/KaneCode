@@ -47,8 +47,7 @@ internal static class AiSettingsManager
                 TopK = dto.TopK,
                 MinP = dto.MinP,
                 PresencePenalty = dto.PresencePenalty,
-                RepetitionPenalty = dto.RepetitionPenalty,
-                IsActive = dto.IsActive
+                RepetitionPenalty = dto.RepetitionPenalty
             }).ToList();
         }
         catch (Exception ex) when (ex is IOException or JsonException or CryptographicException)
@@ -80,8 +79,7 @@ internal static class AiSettingsManager
                 TopK = s.TopK,
                 MinP = s.MinP,
                 PresencePenalty = s.PresencePenalty,
-                RepetitionPenalty = s.RepetitionPenalty,
-                IsActive = s.IsActive
+                RepetitionPenalty = s.RepetitionPenalty
             }).ToList();
 
             var json = JsonSerializer.Serialize(entries, JsonOptions);
@@ -148,6 +146,5 @@ internal static class AiSettingsManager
         public double? MinP { get; set; }
         public double? PresencePenalty { get; set; }
         public double? RepetitionPenalty { get; set; }
-        public bool IsActive { get; set; }
     }
 }
