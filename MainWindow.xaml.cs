@@ -118,6 +118,12 @@ public partial class MainWindow : Window
             UpdatePresentationLineHighlight();
         }
 
+        if (e.PropertyName == nameof(MainViewModel.BuildSummary)
+            && _viewModel.BuildSummary == "Building...")
+        {
+            ShowLayoutAnchorable(BuildOutputAnchorable);
+        }
+
         if (e.PropertyName == nameof(MainViewModel.FindReferencesStatusText))
         {
             DockManager.ActiveContent = FindReferencesPanel;

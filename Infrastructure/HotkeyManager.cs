@@ -187,7 +187,7 @@ internal static class HotkeyManager
         Register(HotkeyAction.ExtractMethod, "Extract Method", Key.M, ModifierKeys.Control | ModifierKeys.Shift);
         Register(HotkeyAction.OpenOptions, "Options", Key.None, ModifierKeys.None);
         Register(HotkeyAction.Exit, "Exit", Key.None, ModifierKeys.None);
-        Register(HotkeyAction.BuildProject, "Build Project", Key.B, ModifierKeys.Control | ModifierKeys.Shift);
+        Register(HotkeyAction.BuildProject, "Build Project", Key.B, ModifierKeys.Control);
         Register(HotkeyAction.RunProject, "Run Project", Key.F5, ModifierKeys.None);
         Register(HotkeyAction.CancelBuild, "Cancel Build", Key.None, ModifierKeys.None);
     }
