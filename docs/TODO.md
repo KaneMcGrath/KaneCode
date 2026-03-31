@@ -33,8 +33,8 @@
 
 #### 1.2 Improve Dirty-State Handling
 
-- [ ] Ensure programmatic edits to non-active open tabs set the tab dirty flag so the user is prompted to save
-- [ ] Verify that undo/redo stacks are correct after programmatic multi-file edits
+- [x] Ensure programmatic edits to non-active open tabs set the tab dirty flag so the user is prompted to save
+- [x] Verify that undo/redo stacks are correct after programmatic multi-file edits
 
 #### 1.3 Improve Project Loading Fidelity — Compile References & Language Version
 
