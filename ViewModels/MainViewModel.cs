@@ -3549,8 +3549,9 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
     }
 
     /// <summary>
-    /// Gets Quick Info (hover tooltip) text for the symbol at the given editor offset.
+    /// Gets Quick Info (hover tooltip) for the symbol at the given editor offset.
     /// Returns null if no info is available or the file is not a C# file.
+    /// Includes diagnostic messages when hovering over a squiggle.
     /// </summary>
     public async Task<QuickInfoResult?> GetQuickInfoAsync(int offset)
     {
@@ -3567,7 +3568,11 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
         try
         {
             await _roslynService.UpdateDocumentTextAsync(ActiveTab.FilePath, _editor.Text, ct).ConfigureAwait(true);
-            return await _quickInfoService.GetQuickInfoAsync(ActiveTab.FilePath, offset, ct).ConfigureAwait(true);
+
+            // Pass current diagnostics so hover over squiggles shows messages
+            var diagnosticEntries = _diagnosticRenderer?.Entries;
+            return await _quickInfoService.GetQuickInfoAsync(
+                ActiveTab.FilePath, offset, diagnosticEntries, ct).ConfigureAwait(true);
         }
         catch (OperationCanceledException)
         {

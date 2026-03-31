@@ -16,6 +16,7 @@ using System.Text.Json;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
+using System.Windows.Documents;
 using System.Windows.Input;
 using System.Windows.Media;
 using AvalonDock.Layout;
@@ -35,6 +36,7 @@ public partial class MainWindow : Window
     private readonly PresentationService _presentationService = new();
     private readonly PresentationLineHighlightRenderer _presentationLineHighlightRenderer = new();
     private Popup? _quickInfoPopup;
+    private bool _isQuickInfoPinned;
 
     public MainWindow()
     {
@@ -533,6 +535,11 @@ public partial class MainWindow : Window
 
     private async void TextView_MouseHover(object? sender, MouseEventArgs e)
     {
+        if (_isQuickInfoPinned)
+        {
+            return;
+        }
+
         var textView = CodeEditor.TextArea.TextView;
         var position = textView.GetPositionFloor(e.GetPosition(textView) + textView.ScrollOffset);
         if (position is null)
@@ -547,28 +554,34 @@ public partial class MainWindow : Window
             return;
         }
 
-        ShowQuickInfoPopup(result.Text, e.GetPosition(this));
+        ShowQuickInfoPopup(result, e.GetPosition(this));
     }
 
     private void TextView_MouseHoverStopped(object? sender, MouseEventArgs e)
     {
-        CloseQuickInfoPopup();
+        if (!_isQuickInfoPinned)
+        {
+            CloseQuickInfoPopup();
+        }
     }
 
     private void TextView_VisualLinesChanged(object? sender, EventArgs e)
     {
-        CloseQuickInfoPopup();
+        if (!_isQuickInfoPinned)
+        {
+            CloseQuickInfoPopup();
+        }
     }
 
-    private void ShowQuickInfoPopup(string text, Point position)
+    private void ShowQuickInfoPopup(QuickInfoResult result, Point position)
     {
         CloseQuickInfoPopup();
 
         var border = new Border
         {
-            Padding = new Thickness(8, 4, 8, 4),
+            Padding = new Thickness(8, 6, 8, 6),
             MaxWidth = 600,
-            CornerRadius = new CornerRadius(2)
+            CornerRadius = new CornerRadius(3)
         };
 
         if (Application.Current.TryFindResource(ThemeResourceKeys.TooltipBackground) is Brush bgBrush)
@@ -586,20 +599,160 @@ public partial class MainWindow : Window
             border.BorderThickness = new Thickness(1);
         }
 
-        var textBlock = new TextBlock
-        {
-            Text = text,
-            TextWrapping = TextWrapping.Wrap,
-            FontFamily = new FontFamily("Cascadia Code, Consolas, Courier New"),
-            FontSize = 12
-        };
+        Brush? defaultForeground = Application.Current.TryFindResource(ThemeResourceKeys.TooltipForeground) as Brush;
 
-        if (Application.Current.TryFindResource(ThemeResourceKeys.TooltipForeground) is Brush fgBrush)
+        var contentPanel = new StackPanel();
+
+        // Render Roslyn quick info sections as syntax-colored text
+        foreach (var section in result.Sections)
         {
-            textBlock.Foreground = fgBrush;
+            var textBlock = new TextBlock
+            {
+                TextWrapping = TextWrapping.Wrap,
+                FontFamily = new FontFamily("Cascadia Code, Consolas, Courier New"),
+                FontSize = 12,
+                Margin = contentPanel.Children.Count > 0 ? new Thickness(0, 4, 0, 0) : default
+            };
+
+            if (defaultForeground is not null)
+            {
+                textBlock.Foreground = defaultForeground;
+            }
+
+            foreach (var part in section.TaggedParts)
+            {
+                var run = new Run(part.Text);
+                string? themeKey = RoslynQuickInfoService.GetThemeKeyForTag(part.Tag);
+                if (themeKey is not null && Application.Current.TryFindResource(themeKey) is Brush partBrush)
+                {
+                    run.Foreground = partBrush;
+                }
+
+                textBlock.Inlines.Add(run);
+            }
+
+            contentPanel.Children.Add(textBlock);
         }
 
-        border.Child = textBlock;
+        // Render diagnostic messages with severity coloring
+        if (result.Diagnostics.Count > 0)
+        {
+            if (contentPanel.Children.Count > 0)
+            {
+                contentPanel.Children.Add(new Separator
+                {
+                    Margin = new Thickness(0, 4, 0, 4),
+                    Opacity = 0.3
+                });
+            }
+
+            foreach (var diag in result.Diagnostics)
+            {
+                var diagBlock = new TextBlock
+                {
+                    TextWrapping = TextWrapping.Wrap,
+                    FontFamily = new FontFamily("Cascadia Code, Consolas, Courier New"),
+                    FontSize = 11.5,
+                    Margin = new Thickness(0, 1, 0, 1)
+                };
+
+                string severityIcon = diag.Severity switch
+                {
+                    Microsoft.CodeAnalysis.DiagnosticSeverity.Error => "\u274C ",
+                    Microsoft.CodeAnalysis.DiagnosticSeverity.Warning => "\u26A0\uFE0F ",
+                    _ => "\u2139\uFE0F "
+                };
+
+                string severityThemeKey = diag.Severity switch
+                {
+                    Microsoft.CodeAnalysis.DiagnosticSeverity.Error => ThemeResourceKeys.DiagnosticErrorForeground,
+                    Microsoft.CodeAnalysis.DiagnosticSeverity.Warning => ThemeResourceKeys.DiagnosticWarningForeground,
+                    _ => ThemeResourceKeys.DiagnosticInfoForeground
+                };
+
+                var iconRun = new Run(severityIcon);
+                var idRun = new Run($"{diag.Id}: ") { FontWeight = FontWeights.Bold };
+                var msgRun = new Run(diag.Message);
+
+                if (Application.Current.TryFindResource(severityThemeKey) is Brush diagBrush)
+                {
+                    idRun.Foreground = diagBrush;
+                    iconRun.Foreground = diagBrush;
+                }
+
+                if (defaultForeground is not null)
+                {
+                    msgRun.Foreground = defaultForeground;
+                }
+
+                diagBlock.Inlines.Add(iconRun);
+                diagBlock.Inlines.Add(idRun);
+                diagBlock.Inlines.Add(msgRun);
+                contentPanel.Children.Add(diagBlock);
+            }
+        }
+
+        // Pin and Copy toolbar
+        var plainText = result.ToPlainText();
+        var toolbarPanel = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            HorizontalAlignment = HorizontalAlignment.Right,
+            Margin = new Thickness(0, 4, 0, 0)
+        };
+
+        var pinButton = new Button
+        {
+            Content = "\uD83D\uDCCC",
+            ToolTip = "Pin tooltip",
+            FontSize = 10,
+            Padding = new Thickness(4, 1, 4, 1),
+            Margin = new Thickness(0, 0, 4, 0),
+            Cursor = Cursors.Hand,
+            Background = Brushes.Transparent,
+            BorderThickness = new Thickness(0)
+        };
+        pinButton.Click += (_, _) =>
+        {
+            _isQuickInfoPinned = !_isQuickInfoPinned;
+            pinButton.Content = _isQuickInfoPinned ? "\uD83D\uDCCC\u2714" : "\uD83D\uDCCC";
+            pinButton.ToolTip = _isQuickInfoPinned ? "Unpin tooltip" : "Pin tooltip";
+        };
+
+        var copyButton = new Button
+        {
+            Content = "\uD83D\uDCCB",
+            ToolTip = "Copy to clipboard",
+            FontSize = 10,
+            Padding = new Thickness(4, 1, 4, 1),
+            Cursor = Cursors.Hand,
+            Background = Brushes.Transparent,
+            BorderThickness = new Thickness(0)
+        };
+        copyButton.Click += (_, _) =>
+        {
+            try
+            {
+                Clipboard.SetText(plainText);
+                copyButton.Content = "\u2714";
+            }
+            catch
+            {
+                // Clipboard access can fail if locked by another process
+            }
+        };
+
+        if (defaultForeground is not null)
+        {
+            pinButton.Foreground = defaultForeground;
+            copyButton.Foreground = defaultForeground;
+        }
+
+        toolbarPanel.Children.Add(pinButton);
+        toolbarPanel.Children.Add(copyButton);
+        contentPanel.Children.Add(toolbarPanel);
+
+        border.Child = contentPanel;
 
         _quickInfoPopup = new Popup
         {
@@ -609,6 +762,7 @@ public partial class MainWindow : Window
             HorizontalOffset = position.X,
             VerticalOffset = position.Y + 16,
             AllowsTransparency = true,
+            StaysOpen = true,
             IsOpen = true
         };
     }
@@ -643,6 +797,8 @@ public partial class MainWindow : Window
             _quickInfoPopup.IsOpen = false;
             _quickInfoPopup = null;
         }
+
+        _isQuickInfoPinned = false;
     }
 
     private async void FileMenu_NewProject_Click(object sender, RoutedEventArgs e)

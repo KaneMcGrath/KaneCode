@@ -18,6 +18,11 @@ internal sealed class RoslynDiagnosticRenderer : IBackgroundRenderer
     public KnownLayer Layer => KnownLayer.Selection;
 
     /// <summary>
+    /// Gets the current diagnostic entries for hover tooltip integration.
+    /// </summary>
+    public IReadOnlyList<DiagnosticEntry> Entries => _entries;
+
+    /// <summary>
     /// Updates the diagnostics to render.
     /// </summary>
     public void UpdateDiagnostics(IReadOnlyList<DiagnosticEntry> entries)

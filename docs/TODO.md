@@ -92,9 +92,9 @@
 
 #### 3.3 Quick Info / Hover Formatting
 
-- [ ] Render Roslyn QuickInfo sections as rich formatted content (syntax-colored signatures, XML doc, etc.) instead of plain text
-- [ ] Support pinning or copying tooltip content
-- [ ] Show diagnostic messages inline within the hover tooltip when hovering over a squiggle
+- [x] Render Roslyn QuickInfo sections as rich formatted content (syntax-colored signatures, XML doc, etc.) instead of plain text
+- [x] Support pinning or copying tooltip content
+- [x] Show diagnostic messages inline within the hover tooltip when hovering over a squiggle
 
 #### 3.4 Diagnostics & Error List UX
 
