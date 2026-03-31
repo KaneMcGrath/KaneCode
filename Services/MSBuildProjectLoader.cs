@@ -162,6 +162,20 @@ internal static class MSBuildProjectLoader
 
         // Extract compilation settings
         var targetFramework = project.GetPropertyValue("TargetFramework");
+
+        // Support multi-targeting: when TargetFramework is empty, read TargetFrameworks (plural)
+        // and pick the first TFM, then re-evaluate the project with that specific framework.
+        if (string.IsNullOrWhiteSpace(targetFramework))
+        {
+            string? firstTfm = GetFirstTargetFramework(project.GetPropertyValue("TargetFrameworks"));
+            if (firstTfm is not null)
+            {
+                targetFramework = firstTfm;
+                var globalProperties = new Dictionary<string, string> { ["TargetFramework"] = targetFramework };
+                project = new MSBuildProject(projectPath, globalProperties, null, ProjectCollection.GlobalProjectCollection,
+                    ProjectLoadSettings.IgnoreMissingImports | ProjectLoadSettings.IgnoreInvalidImports);
+            }
+        }
         var outputType = project.GetPropertyValue("OutputType");
         var langVersion = project.GetPropertyValue("LangVersion");
         var nullableStr = project.GetPropertyValue("Nullable");
@@ -183,10 +197,10 @@ internal static class MSBuildProjectLoader
             _ => OutputKind.DynamicallyLinkedLibrary
         };
 
-        // Parse language version
+        // Parse language version — fall back to the TFM default rather than LanguageVersion.Latest
         if (!LanguageVersionFacts.TryParse(langVersion, out var languageVersion))
         {
-            languageVersion = LanguageVersion.Latest;
+            languageVersion = GetDefaultLanguageVersionForTfm(targetFramework);
         }
 
         // Nullable context
@@ -242,8 +256,9 @@ internal static class MSBuildProjectLoader
             projectReferencePaths.Add(refPath);
         }
 
-        // Collect metadata references from resolved assemblies
-        var metadataReferences = ResolveMetadataReferences(project, projectDir, targetFramework);
+        // Collect metadata references — prefer design-time build resolution, fall back to manual scanning
+        var metadataReferences = ResolveMetadataReferencesViaBuild(project, targetFramework)
+            ?? ResolveMetadataReferences(project, projectDir, targetFramework);
 
         // Collect preprocessor symbols
         var defineConstants = project.GetPropertyValue("DefineConstants");
@@ -278,6 +293,144 @@ internal static class MSBuildProjectLoader
             projectId,
             sourceFiles.ToImmutableArray(),
             projectReferencePaths.ToImmutableArray());
+    }
+
+    /// <summary>
+    /// Attempts to resolve metadata references by running the MSBuild <c>ResolveAssemblyReferences</c>
+    /// design-time target. Returns null if the build fails, allowing the caller to fall back.
+    /// </summary>
+    private static List<MetadataReference>? ResolveMetadataReferencesViaBuild(MSBuildProject msbuildProject, string targetFramework)
+    {
+        try
+        {
+            var instance = msbuildProject.CreateProjectInstance();
+            instance.SetProperty("DesignTimeBuild", "true");
+            instance.SetProperty("SkipCompilerExecution", "true");
+
+            bool success = instance.Build(["ResolveAssemblyReferences"], null);
+            if (!success)
+            {
+                return null;
+            }
+
+            var references = new List<MetadataReference>();
+            var addedPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+            foreach (var item in instance.GetItems("ReferencePath"))
+            {
+                string assemblyPath = item.EvaluatedInclude;
+                if (string.IsNullOrEmpty(assemblyPath) || !File.Exists(assemblyPath))
+                {
+                    continue;
+                }
+
+                if (addedPaths.Add(assemblyPath))
+                {
+                    try
+                    {
+                        references.Add(MetadataReference.CreateFromFile(assemblyPath));
+                    }
+                    catch
+                    {
+                        // Skip assemblies that cannot be loaded (e.g., native shims)
+                    }
+                }
+            }
+
+            if (references.Count == 0)
+            {
+                return null;
+            }
+
+            // The design-time build may not include all framework assemblies; ensure they are present.
+            AddFrameworkReferences(references, addedPaths, targetFramework);
+
+            return references;
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            System.Diagnostics.Debug.WriteLine(
+                $"Design-time build failed for ResolveAssemblyReferences: {ex.Message}");
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Returns the first target framework from a semicolon-separated <c>TargetFrameworks</c> value,
+    /// or null if the value is empty.
+    /// </summary>
+    internal static string? GetFirstTargetFramework(string? targetFrameworks)
+    {
+        if (string.IsNullOrWhiteSpace(targetFrameworks))
+        {
+            return null;
+        }
+
+        string[] tfms = targetFrameworks.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        return tfms.Length > 0 ? tfms[0] : null;
+    }
+
+    /// <summary>
+    /// Maps a target framework moniker to the default C# language version defined by the SDK,
+    /// instead of unconditionally using <see cref="LanguageVersion.Latest"/>.
+    /// </summary>
+    internal static LanguageVersion GetDefaultLanguageVersionForTfm(string? targetFramework)
+    {
+        if (string.IsNullOrWhiteSpace(targetFramework))
+        {
+            return LanguageVersion.Latest;
+        }
+
+        int? major = ParseTfmMajorVersion(targetFramework);
+        return major switch
+        {
+            5 => LanguageVersion.CSharp9,
+            6 => LanguageVersion.CSharp10,
+            7 => LanguageVersion.CSharp11,
+            8 => LanguageVersion.CSharp12,
+            9 => LanguageVersion.CSharp13,
+            >= 10 => LanguageVersion.Preview,
+            _ => LanguageVersion.Latest
+        };
+    }
+
+    /// <summary>
+    /// Extracts the major version number from a TFM such as "net8.0" or "net8.0-windows7.0".
+    /// Returns null for non-numeric or legacy TFMs (e.g. "netstandard2.0", "net48").
+    /// </summary>
+    private static int? ParseTfmMajorVersion(string? targetFramework)
+    {
+        if (string.IsNullOrWhiteSpace(targetFramework))
+        {
+            return null;
+        }
+
+        // Only modern .NET TFMs (net5.0+) use the netX.Y format
+        if (!targetFramework.StartsWith("net", StringComparison.OrdinalIgnoreCase))
+        {
+            return null;
+        }
+
+        ReadOnlySpan<char> tfm = targetFramework.AsSpan()[3..];
+
+        // Strip platform suffix (e.g., "8.0-windows7.0" ? "8.0")
+        int dashIndex = tfm.IndexOf('-');
+        if (dashIndex >= 0)
+        {
+            tfm = tfm[..dashIndex];
+        }
+
+        // Modern .NET TFMs always contain a dot (e.g., "net8.0").
+        // .NET Framework TFMs do not (e.g., "net48", "net472").
+        int dotIndex = tfm.IndexOf('.');
+        if (dotIndex < 0)
+        {
+            return null;
+        }
+
+        ReadOnlySpan<char> majorSpan = tfm[..dotIndex];
+
+        return int.TryParse(majorSpan, out int major) && major >= 5 ? major : null;
     }
 
     private static List<MetadataReference> ResolveMetadataReferences(
@@ -442,9 +595,20 @@ internal static class MSBuildProjectLoader
         var generatedFiles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var dir in candidateDirs)
         {
+            // Search all subdirectories for *.g.cs and *.g.i.cs patterns
             foreach (var pattern in s_generatedSourcePatterns)
             {
-                foreach (var file in Directory.EnumerateFiles(dir, pattern, SearchOption.TopDirectoryOnly))
+                foreach (var file in Directory.EnumerateFiles(dir, pattern, SearchOption.AllDirectories))
+                {
+                    generatedFiles.Add(file);
+                }
+            }
+
+            // Include all .cs files under "generated" subdirectories (source generator output)
+            string generatedDir = Path.Combine(dir, "generated");
+            if (Directory.Exists(generatedDir))
+            {
+                foreach (var file in Directory.EnumerateFiles(generatedDir, "*.cs", SearchOption.AllDirectories))
                 {
                     generatedFiles.Add(file);
                 }

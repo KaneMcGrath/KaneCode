@@ -38,10 +38,10 @@
 
 #### 1.3 Improve Project Loading Fidelity — Compile References & Language Version
 
-- [ ] Use resolved compile references from MSBuild evaluation (`ReferencePath` items) instead of manual NuGet `lib` folder scanning
-- [ ] Derive `LanguageVersion` from the TFM default when `LangVersion` is not explicitly set, instead of falling back to `LanguageVersion.Latest`
-- [ ] Support `TargetFrameworks` (plural / multi-targeting) — pick the first or let the user choose
-- [ ] Include generated source files from the `obj` folder more reliably (cover all `*.g.cs` and `*.g.i.cs` patterns)
+- [x] Use resolved compile references from MSBuild evaluation (`ReferencePath` items) instead of manual NuGet `lib` folder scanning
+- [x] Derive `LanguageVersion` from the TFM default when `LangVersion` is not explicitly set, instead of falling back to `LanguageVersion.Latest`
+- [x] Support `TargetFrameworks` (plural / multi-targeting) — pick the first or let the user choose
+- [x] Include generated source files from the `obj` folder more reliably (cover all `*.g.cs` and `*.g.i.cs` patterns)
 
 ---
 
