@@ -453,6 +453,20 @@ internal static class MSBuildProjectLoader
             await workspaceService.AddDocumentToProjectAsync(projectId, sourceFile, text, cancellationToken).ConfigureAwait(false);
         }
 
+        // Add additional (non-compiled) files so analyzers can access them
+        var additionalFiles = CollectAdditionalFiles(project, projectDir);
+        if (additionalFiles.Count > 0)
+        {
+            await workspaceService.AddAdditionalDocumentsToProjectAsync(projectId, additionalFiles, cancellationToken).ConfigureAwait(false);
+        }
+
+        // Add .editorconfig files so style/analyzer severity settings are respected
+        var editorConfigFiles = CollectEditorConfigFiles(projectDir);
+        if (editorConfigFiles.Count > 0)
+        {
+            await workspaceService.AddAnalyzerConfigDocumentsToProjectAsync(projectId, editorConfigFiles, cancellationToken).ConfigureAwait(false);
+        }
+
         return new LoadedProjectInfo(
             projectPath,
             projectName,
@@ -1097,6 +1111,110 @@ internal static class MSBuildProjectLoader
         }
 
         return projectPaths;
+    }
+
+    /// <summary>
+    /// Collects <c>AdditionalFiles</c> items from the MSBuild project evaluation.
+    /// These are non-compiled files passed to analyzers (e.g. <c>PublicAPI.Shipped.txt</c>).
+    /// </summary>
+    internal static IReadOnlyList<string> CollectAdditionalFiles(MSBuildProject msbuildProject, string projectDir)
+    {
+        ArgumentNullException.ThrowIfNull(msbuildProject);
+
+        var files = new List<string>();
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var item in msbuildProject.GetItems("AdditionalFiles"))
+        {
+            var filePath = Path.GetFullPath(Path.Combine(projectDir, item.EvaluatedInclude));
+            if (File.Exists(filePath) && seen.Add(filePath))
+            {
+                files.Add(filePath);
+            }
+        }
+
+        return files;
+    }
+
+    /// <summary>
+    /// Discovers <c>.editorconfig</c> files by walking from <paramref name="projectDir"/>
+    /// up to the filesystem root. Stops early if a file contains <c>root = true</c>.
+    /// </summary>
+    internal static IReadOnlyList<string> CollectEditorConfigFiles(string projectDir)
+    {
+        if (string.IsNullOrWhiteSpace(projectDir))
+        {
+            return [];
+        }
+
+        var files = new List<string>();
+        DirectoryInfo? dir = new DirectoryInfo(projectDir);
+
+        while (dir is not null)
+        {
+            string editorConfigPath = Path.Combine(dir.FullName, ".editorconfig");
+            if (File.Exists(editorConfigPath))
+            {
+                files.Add(editorConfigPath);
+
+                if (IsRootEditorConfig(editorConfigPath))
+                {
+                    break;
+                }
+            }
+
+            dir = dir.Parent;
+        }
+
+        return files;
+    }
+
+    /// <summary>
+    /// Returns true if the <c>.editorconfig</c> file declares <c>root = true</c>.
+    /// </summary>
+    private static bool IsRootEditorConfig(string editorConfigPath)
+    {
+        try
+        {
+            foreach (string line in File.ReadLines(editorConfigPath))
+            {
+                ReadOnlySpan<char> trimmed = line.AsSpan().Trim();
+
+                // Skip comments and empty lines
+                if (trimmed.IsEmpty || trimmed[0] == '#' || trimmed[0] == ';')
+                {
+                    continue;
+                }
+
+                // Section headers end the preamble where root = true is valid
+                if (trimmed[0] == '[')
+                {
+                    break;
+                }
+
+                // Check for "root = true" (case-insensitive, whitespace around '=' allowed)
+                int equalsIndex = trimmed.IndexOf('=');
+                if (equalsIndex < 0)
+                {
+                    continue;
+                }
+
+                ReadOnlySpan<char> key = trimmed[..equalsIndex].Trim();
+                ReadOnlySpan<char> value = trimmed[(equalsIndex + 1)..].Trim();
+
+                if (key.Equals("root", StringComparison.OrdinalIgnoreCase) &&
+                    value.Equals("true", StringComparison.OrdinalIgnoreCase))
+                {
+                    return true;
+                }
+            }
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            System.Diagnostics.Debug.WriteLine($"Failed to read .editorconfig '{editorConfigPath}': {ex.Message}");
+        }
+
+        return false;
     }
 }
 

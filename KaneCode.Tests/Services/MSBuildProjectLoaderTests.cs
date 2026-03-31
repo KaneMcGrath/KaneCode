@@ -215,4 +215,128 @@ public class MSBuildProjectLoaderTests : IDisposable
 
         Assert.Empty(references);
     }
+
+    // --- CollectEditorConfigFiles ---
+
+    [Fact]
+    public void WhenEditorConfigExistsInProjectDirThenItIsCollected()
+    {
+        string projectDir = Path.Combine(_tempDir, "src", "MyProject");
+        Directory.CreateDirectory(projectDir);
+        string editorConfigPath = Path.Combine(projectDir, ".editorconfig");
+        File.WriteAllText(editorConfigPath, "root = true\n[*.cs]\nindent_size = 4");
+
+        IReadOnlyList<string> result = MSBuildProjectLoader.CollectEditorConfigFiles(projectDir);
+
+        Assert.Single(result);
+        Assert.Equal(editorConfigPath, result[0]);
+    }
+
+    [Fact]
+    public void WhenEditorConfigExistsInParentDirsThenAllAreCollected()
+    {
+        string rootDir = Path.Combine(_tempDir, "repo");
+        string srcDir = Path.Combine(rootDir, "src");
+        string projectDir = Path.Combine(srcDir, "MyProject");
+        Directory.CreateDirectory(projectDir);
+
+        // Parent editorconfig without root = true
+        string parentConfig = Path.Combine(srcDir, ".editorconfig");
+        File.WriteAllText(parentConfig, "[*.cs]\nindent_size = 4");
+
+        // Root editorconfig with root = true
+        string rootConfig = Path.Combine(rootDir, ".editorconfig");
+        File.WriteAllText(rootConfig, "root = true\n[*.cs]\nindent_size = 2");
+
+        IReadOnlyList<string> result = MSBuildProjectLoader.CollectEditorConfigFiles(projectDir);
+
+        // Should collect both: parent first (closer to project), root second
+        Assert.Equal(2, result.Count);
+        Assert.Equal(parentConfig, result[0]);
+        Assert.Equal(rootConfig, result[1]);
+    }
+
+    [Fact]
+    public void WhenRootEditorConfigFoundThenWalkStops()
+    {
+        string outerDir = Path.Combine(_tempDir, "outer");
+        string innerDir = Path.Combine(outerDir, "inner");
+        string projectDir = Path.Combine(innerDir, "project");
+        Directory.CreateDirectory(projectDir);
+
+        // This one should NOT be collected (above the root = true file)
+        string outerConfig = Path.Combine(outerDir, ".editorconfig");
+        File.WriteAllText(outerConfig, "[*.cs]\nindent_size = 8");
+
+        // Root editorconfig stops the walk
+        string innerConfig = Path.Combine(innerDir, ".editorconfig");
+        File.WriteAllText(innerConfig, "root = true\n[*.cs]\nindent_size = 4");
+
+        IReadOnlyList<string> result = MSBuildProjectLoader.CollectEditorConfigFiles(projectDir);
+
+        Assert.Single(result);
+        Assert.Equal(innerConfig, result[0]);
+    }
+
+    [Fact]
+    public void WhenNoEditorConfigExistsThenEmptyListIsReturned()
+    {
+        string projectDir = Path.Combine(_tempDir, "empty_project");
+        Directory.CreateDirectory(projectDir);
+
+        IReadOnlyList<string> result = MSBuildProjectLoader.CollectEditorConfigFiles(projectDir);
+
+        Assert.Empty(result);
+    }
+
+    [Fact]
+    public void WhenProjectDirIsNullOrEmptyThenEmptyListIsReturned()
+    {
+        Assert.Empty(MSBuildProjectLoader.CollectEditorConfigFiles(""));
+        Assert.Empty(MSBuildProjectLoader.CollectEditorConfigFiles("   "));
+    }
+
+    [Fact]
+    public void WhenRootEqualsTrue_CaseInsensitive_ThenWalkStops()
+    {
+        string parentDir = Path.Combine(_tempDir, "parent");
+        string projectDir = Path.Combine(parentDir, "child");
+        Directory.CreateDirectory(projectDir);
+
+        // Should NOT be collected
+        string parentConfig = Path.Combine(parentDir, ".editorconfig");
+        File.WriteAllText(parentConfig, "[*.cs]\nindent_size = 8");
+
+        // root = true with different casing/spacing
+        string childConfig = Path.Combine(projectDir, ".editorconfig");
+        File.WriteAllText(childConfig, "  ROOT  =  TRUE  \n[*.cs]\nindent_size = 4");
+
+        IReadOnlyList<string> result = MSBuildProjectLoader.CollectEditorConfigFiles(projectDir);
+
+        Assert.Single(result);
+        Assert.Equal(childConfig, result[0]);
+    }
+
+    [Fact]
+    public void WhenRootTrueIsInsideSectionThenItIsNotTreatedAsRoot()
+    {
+        string parentDir = Path.Combine(_tempDir, "parent2");
+        string projectDir = Path.Combine(parentDir, "child2");
+        Directory.CreateDirectory(projectDir);
+
+        // Should be collected because root=true is inside a section (invalid position)
+        string parentConfig = Path.Combine(parentDir, ".editorconfig");
+        File.WriteAllText(parentConfig, "root = true\n[*.cs]\nindent_size = 2");
+
+        // root = true after a section header — not valid preamble
+        string childConfig = Path.Combine(projectDir, ".editorconfig");
+        File.WriteAllText(childConfig, "[*.cs]\nroot = true\nindent_size = 4");
+
+        IReadOnlyList<string> result = MSBuildProjectLoader.CollectEditorConfigFiles(projectDir);
+
+        // Child is not root (root=true is after [section]), parent has root=true in preamble
+        Assert.Equal(2, result.Count);
+        Assert.Equal(childConfig, result[0]);
+        Assert.Equal(parentConfig, result[1]);
+    }
 }

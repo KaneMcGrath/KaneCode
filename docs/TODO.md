@@ -61,15 +61,15 @@
 
 #### 2.3 Load AdditionalFiles and EditorConfig
 
-- [ ] Add `AdditionalFiles` (e.g. `.razor`, `.cshtml`, analyzer data files) to the Roslyn project during loading
-- [ ] Add `.editorconfig` and `AnalyzerConfig` documents to the Roslyn project so style/analyzer settings are respected
-- [ ] Verify that `.editorconfig` severity overrides affect reported diagnostics
+- [x] Add `AdditionalFiles` (e.g. `.razor`, `.cshtml`, analyzer data files) to the Roslyn project during loading
+- [x] Add `.editorconfig` and `AnalyzerConfig` documents to the Roslyn project so style/analyzer settings are respected
+- [x] Verify that `.editorconfig` severity overrides affect reported diagnostics
 
 #### 2.4 Improve Solution-Wide Refresh
 
-- [ ] Refresh diagnostics for all open documents (not just dependents of the active file) after edits
-- [ ] Re-evaluate the Roslyn workspace when project files (`.csproj`) change on disk (file watcher integration)
-- [ ] Re-evaluate the Roslyn workspace when `Directory.Build.props` / `Directory.Packages.props` change
+- [x] Refresh diagnostics for all open documents (not just dependents of the active file) after edits
+- [x] Re-evaluate the Roslyn workspace when project files (`.csproj`) change on disk (file watcher integration)
+- [x] Re-evaluate the Roslyn workspace when `Directory.Build.props` / `Directory.Packages.props` change
 
 ---
 

@@ -55,7 +55,9 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
     private CancellationTokenSource? _renameCts;
     private CancellationTokenSource? _loadCts;
     private FileSystemWatcher? _explorerWatcher;
+    private FileSystemWatcher? _projectFileWatcher;
     private CancellationTokenSource? _explorerRefreshCts;
+    private CancellationTokenSource? _projectFileRefreshCts;
     private bool _isLoadingProject;
     private bool _isUpdatingSelectedBranch;
     private readonly TimeSpan _analysisDelay = TimeSpan.FromMilliseconds(500);
@@ -649,6 +651,136 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
         _explorerWatcher = null;
     }
 
+    /// <summary>
+    /// Configures a <see cref="FileSystemWatcher"/> that monitors project configuration files
+    /// (<c>.csproj</c>, <c>Directory.Build.props</c>, <c>Directory.Packages.props</c>) for changes.
+    /// When a matching file is modified on disk, the workspace is automatically re-evaluated.
+    /// </summary>
+    private void ConfigureProjectFileWatcher(string rootPath)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(rootPath);
+
+        DisposeProjectFileWatcher();
+
+        if (!Directory.Exists(rootPath))
+        {
+            return;
+        }
+
+        try
+        {
+            _projectFileWatcher = new FileSystemWatcher(rootPath)
+            {
+                IncludeSubdirectories = true,
+                NotifyFilter = NotifyFilters.LastWrite | NotifyFilters.FileName
+            };
+
+            _projectFileWatcher.Changed += OnProjectFileWatcherChanged;
+            _projectFileWatcher.Created += OnProjectFileWatcherChanged;
+            _projectFileWatcher.Renamed += OnProjectFileWatcherRenamed;
+            _projectFileWatcher.EnableRaisingEvents = true;
+        }
+        catch (IOException ex)
+        {
+            Debug.WriteLine($"Could not watch project files: {ex.Message}");
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            Debug.WriteLine($"Access denied watching project files: {ex.Message}");
+        }
+    }
+
+    private void DisposeProjectFileWatcher()
+    {
+        if (_projectFileWatcher is null)
+        {
+            return;
+        }
+
+        _projectFileWatcher.EnableRaisingEvents = false;
+        _projectFileWatcher.Changed -= OnProjectFileWatcherChanged;
+        _projectFileWatcher.Created -= OnProjectFileWatcherChanged;
+        _projectFileWatcher.Renamed -= OnProjectFileWatcherRenamed;
+        _projectFileWatcher.Dispose();
+        _projectFileWatcher = null;
+    }
+
+    private void OnProjectFileWatcherChanged(object sender, FileSystemEventArgs e)
+    {
+        if (IsProjectConfigFile(e.FullPath))
+        {
+            QueueProjectFileReload();
+        }
+    }
+
+    private void OnProjectFileWatcherRenamed(object sender, RenamedEventArgs e)
+    {
+        if (IsProjectConfigFile(e.FullPath) || IsProjectConfigFile(e.OldFullPath))
+        {
+            QueueProjectFileReload();
+        }
+    }
+
+    private void QueueProjectFileReload()
+    {
+        _projectFileRefreshCts?.Cancel();
+        _projectFileRefreshCts?.Dispose();
+        _projectFileRefreshCts = new CancellationTokenSource();
+        var ct = _projectFileRefreshCts.Token;
+
+        _ = ReloadWorkspaceFromProjectFileChangeAsync(ct);
+    }
+
+    private async Task ReloadWorkspaceFromProjectFileChangeAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            // Debounce: project file saves may fire multiple events in rapid succession
+            await Task.Delay(TimeSpan.FromMilliseconds(1500), cancellationToken).ConfigureAwait(false);
+
+            var path = _loadedProjectOrSolutionPath;
+            if (string.IsNullOrEmpty(path))
+            {
+                return;
+            }
+
+            await Application.Current.Dispatcher.InvokeAsync(async () =>
+            {
+                var ext = Path.GetExtension(path);
+                if (ext.Equals(".sln", StringComparison.OrdinalIgnoreCase))
+                {
+                    await LoadSolutionFileAsync(path);
+                }
+                else if (ext.Equals(".csproj", StringComparison.OrdinalIgnoreCase))
+                {
+                    await LoadProjectFileAsync(path);
+                }
+            }, System.Windows.Threading.DispatcherPriority.Background, cancellationToken);
+        }
+        catch (OperationCanceledException)
+        {
+            // Superseded by newer project file activity.
+        }
+    }
+
+    /// <summary>
+    /// Returns true if the given file path is a project configuration file that should
+    /// trigger a workspace re-evaluation when changed on disk.
+    /// </summary>
+    internal static bool IsProjectConfigFile(string filePath)
+    {
+        if (string.IsNullOrEmpty(filePath))
+        {
+            return false;
+        }
+
+        string fileName = Path.GetFileName(filePath);
+        return fileName.EndsWith(".csproj", StringComparison.OrdinalIgnoreCase)
+            || fileName.Equals("Directory.Build.props", StringComparison.OrdinalIgnoreCase)
+            || fileName.Equals("Directory.Build.targets", StringComparison.OrdinalIgnoreCase)
+            || fileName.Equals("Directory.Packages.props", StringComparison.OrdinalIgnoreCase);
+    }
+
     private void OnExplorerWatcherChanged(object sender, FileSystemEventArgs e)
     {
         if (IsGitMetadataPath(e.FullPath))
@@ -924,6 +1056,7 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
             var root = EditorService.BuildProjectTree(projectPath);
             ProjectItems = new ObservableCollection<ProjectItem> { root };
             ConfigureExplorerWatcher(projectDir);
+            ConfigureProjectFileWatcher(projectDir);
 
             OpenRepositoryForPath(projectDir);
 
@@ -981,6 +1114,7 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
             var root = EditorService.BuildSolutionTree(solutionPath, projectPaths);
             ProjectItems = new ObservableCollection<ProjectItem> { root };
             ConfigureExplorerWatcher(solutionDir);
+            ConfigureProjectFileWatcher(solutionDir);
 
             OpenRepositoryForPath(solutionDir);
 
@@ -1912,12 +2046,32 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
                 await _classificationColorizer.UpdateClassificationsAsync(cancellationToken).ConfigureAwait(false);
             }
 
-            // Diagnostics for active file + dependent open files
+            // Diagnostics for all open C# documents, not just dependents of the active file
             var allDiagnosticItems = new List<DiagnosticItem>();
             var activeFileEntries = new List<DiagnosticEntry>();
-            var filesToAnalyze = _roslynService.GetDependentOpenDocumentFilePaths(filePath);
 
-            foreach (var path in filesToAnalyze.Where(RoslynWorkspaceService.IsCSharpFile).Distinct(StringComparer.OrdinalIgnoreCase))
+            var filesToAnalyze = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+            // Include all open tabs so the error list reflects the whole working set
+            foreach (var tab in OpenTabs)
+            {
+                if (RoslynWorkspaceService.IsCSharpFile(tab.FilePath))
+                {
+                    filesToAnalyze.Add(tab.FilePath);
+                }
+            }
+
+            // Also include tracked workspace documents that transitively depend on the edited file
+            // so that cross-project errors are surfaced even for files not currently open as tabs
+            foreach (var dep in _roslynService.GetDependentOpenDocumentFilePaths(filePath))
+            {
+                if (RoslynWorkspaceService.IsCSharpFile(dep))
+                {
+                    filesToAnalyze.Add(dep);
+                }
+            }
+
+            foreach (var path in filesToAnalyze)
             {
                 var (entries, items) = await BuildDiagnosticsForFileAsync(path, cancellationToken).ConfigureAwait(false);
                 allDiagnosticItems.AddRange(items);
@@ -3551,6 +3705,9 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
         DisposeExplorerWatcher();
         _explorerRefreshCts?.Cancel();
         _explorerRefreshCts?.Dispose();
+        DisposeProjectFileWatcher();
+        _projectFileRefreshCts?.Cancel();
+        _projectFileRefreshCts?.Dispose();
         CancelPreviousLoad();
         _loadingStatusClearCts?.Cancel();
         _loadingStatusClearCts?.Dispose();

@@ -238,7 +238,8 @@ internal sealed class RoslynWorkspaceService : IDisposable
 
         try
         {
-            CompilationWithAnalyzers compilationWithAnalyzers = compilation.WithAnalyzers(analyzers, options: null, cancellationToken: cancellationToken);
+            CompilationWithAnalyzers compilationWithAnalyzers = compilation.WithAnalyzers(
+                analyzers, options: project.AnalyzerOptions, cancellationToken: cancellationToken);
             ImmutableArray<Diagnostic> allDiagnostics = await compilationWithAnalyzers
                 .GetAnalyzerDiagnosticsAsync(cancellationToken).ConfigureAwait(false);
 
@@ -307,6 +308,14 @@ internal sealed class RoslynWorkspaceService : IDisposable
         }
 
         return dependentPaths;
+    }
+
+    /// <summary>
+    /// Returns the file paths of all documents currently tracked in the workspace.
+    /// </summary>
+    public IReadOnlyList<string> GetAllTrackedDocumentFilePaths()
+    {
+        return _documentIds.Keys.ToList();
     }
 
     /// <summary>
@@ -449,6 +458,91 @@ internal sealed class RoslynWorkspaceService : IDisposable
             _workspace.TryApplyChanges(_workspace.CurrentSolution.AddDocument(documentInfo));
             _documentIds[filePath] = documentId;
             return documentId;
+        }
+        finally
+        {
+            _workspaceLock.Release();
+        }
+    }
+
+    /// <summary>
+    /// Registers additional (non-compiled) documents on a project so analyzers can access them.
+    /// </summary>
+    public async Task AddAdditionalDocumentsToProjectAsync(
+        ProjectId projectId,
+        IEnumerable<string> filePaths,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(projectId);
+        ArgumentNullException.ThrowIfNull(filePaths);
+
+        List<string> paths = filePaths.ToList();
+        if (paths.Count == 0)
+        {
+            return;
+        }
+
+        await _workspaceLock.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            Solution solution = _workspace.CurrentSolution;
+            foreach (string filePath in paths)
+            {
+                if (!File.Exists(filePath))
+                {
+                    continue;
+                }
+
+                DocumentId docId = DocumentId.CreateNewId(projectId, debugName: filePath);
+                string fileName = Path.GetFileName(filePath);
+                SourceText text = SourceText.From(File.ReadAllText(filePath));
+                solution = solution.AddAdditionalDocument(docId, fileName, text, filePath: filePath);
+            }
+
+            _workspace.TryApplyChanges(solution);
+        }
+        finally
+        {
+            _workspaceLock.Release();
+        }
+    }
+
+    /// <summary>
+    /// Registers <c>.editorconfig</c> files as analyzer-config documents on a project
+    /// so that style and severity settings are respected by analyzers and the compiler.
+    /// </summary>
+    public async Task AddAnalyzerConfigDocumentsToProjectAsync(
+        ProjectId projectId,
+        IEnumerable<string> filePaths,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(projectId);
+        ArgumentNullException.ThrowIfNull(filePaths);
+
+        List<string> paths = filePaths.ToList();
+        if (paths.Count == 0)
+        {
+            return;
+        }
+
+        await _workspaceLock.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            Solution solution = _workspace.CurrentSolution;
+            foreach (string filePath in paths)
+            {
+                if (!File.Exists(filePath))
+                {
+                    continue;
+                }
+
+                DocumentId docId = DocumentId.CreateNewId(projectId, debugName: filePath);
+                string fileName = Path.GetFileName(filePath);
+                SourceText text = SourceText.From(File.ReadAllText(filePath));
+                solution = solution.AddAnalyzerConfigDocument(docId, fileName, text, filePath: filePath);
+            }
+
+            _workspace.TryApplyChanges(solution);
         }
         finally
         {
