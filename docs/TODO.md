@@ -4,9 +4,10 @@
 >
 > **AI agents**: 
 > pick the next unchecked `[ ]` item.
-> Mark `[~]` when starting work, `[O]` when complete and awaiting review, 
-> Under the item give a few brief runtime testing items, for a QA team to verify.
-> The QA team will mark `[x]` when it is tested.
+> Mark `[~]` when starting work, `[x]` when complete
+>
+> write tests when necessary in `KaneCode.Tests` to verify correctness of your implementation, 
+> and to build out a robust set of tests for the future
 
 
 ## Status Key
@@ -14,7 +15,6 @@
 - `[ ]` — Not started
 - `[-]` — Skip
 - `[~]` — In progress
-- `[O]` — Awaiting review
 - `[x]` — Complete
 
 ---
