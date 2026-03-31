@@ -85,10 +85,10 @@
 
 #### 3.2 Signature Help Lifecycle
 
-- [ ] Update active parameter highlight as the caret moves within the argument list (not just on `(` and `,`)
-- [ ] Handle backspace and arbitrary edits inside argument lists without dismissing the window
-- [ ] Improve overload selection to prefer the overload matching the current argument count/types
-- [ ] Use richer formatting for the active parameter (bold/highlight) and XML doc content
+- [x] Update active parameter highlight as the caret moves within the argument list (not just on `(` and `,`)
+- [x] Handle backspace and arbitrary edits inside argument lists without dismissing the window
+- [x] Improve overload selection to prefer the overload matching the current argument count/types
+- [x] Use richer formatting for the active parameter (bold/highlight) and XML doc content
 
 #### 3.3 Quick Info / Hover Formatting
 

@@ -368,6 +368,7 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
 
         _editor.TextArea.TextEntering += OnTextEntering;
         _editor.TextArea.TextEntered += OnTextEntered;
+        _editor.TextArea.Caret.PositionChanged += OnCaretPositionChanged;
 
         ApplyEditorTheme();
     }
@@ -1871,11 +1872,25 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
         {
             await ShowSignatureHelpAsync().ConfigureAwait(true);
         }
-        // Dismiss signature help on ')'
-        else if (typedChar == ')')
+        // On ')' check if we're still inside an outer argument list (nested calls)
+        else if (typedChar == ')' && _insightWindow is not null)
         {
-            CloseSignatureHelp();
+            await UpdateSignatureHelpAsync().ConfigureAwait(true);
         }
+    }
+
+    /// <summary>
+    /// Handles caret position changes to update the active parameter highlight
+    /// when the signature help window is open.
+    /// </summary>
+    private async void OnCaretPositionChanged(object? sender, EventArgs e)
+    {
+        if (_insightWindow is null)
+        {
+            return;
+        }
+
+        await UpdateSignatureHelpAsync().ConfigureAwait(true);
     }
 
     /// <summary>
@@ -2009,6 +2024,60 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
         {
             _insightWindow.Close();
             _insightWindow = null;
+        }
+    }
+
+    /// <summary>
+    /// Re-evaluates signature help at the current caret position.
+    /// Updates the active parameter highlight and overload selection in an existing window,
+    /// or closes the window if the caret has moved outside all argument lists.
+    /// </summary>
+    private async Task UpdateSignatureHelpAsync()
+    {
+        if (ActiveTab is null || _editor is null || _insightWindow is null
+            || !RoslynWorkspaceService.IsCSharpFile(ActiveTab.FilePath))
+        {
+            return;
+        }
+
+        _signatureHelpCts?.Cancel();
+        _signatureHelpCts?.Dispose();
+        _signatureHelpCts = new CancellationTokenSource();
+        var ct = _signatureHelpCts.Token;
+
+        try
+        {
+            var caretOffset = _editor.CaretOffset;
+            await _roslynService.UpdateDocumentTextAsync(ActiveTab.FilePath, _editor.Text, ct).ConfigureAwait(true);
+
+            // Check if still inside an argument list
+            bool insideArgs = await _signatureHelpService.IsInsideArgumentListAsync(
+                ActiveTab.FilePath, caretOffset, ct).ConfigureAwait(true);
+
+            if (!insideArgs)
+            {
+                CloseSignatureHelp();
+                return;
+            }
+
+            var result = await _signatureHelpService.GetSignatureHelpAsync(
+                ActiveTab.FilePath, caretOffset, ct).ConfigureAwait(true);
+
+            if (result is null || result.Overloads.Count == 0)
+            {
+                CloseSignatureHelp();
+                return;
+            }
+
+            // Update the existing provider in-place to avoid recreating the window
+            if (_insightWindow?.Provider is SignatureHelpOverloadProvider provider)
+            {
+                provider.UpdateResult(result);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // Superseded by a newer request
         }
     }
 
