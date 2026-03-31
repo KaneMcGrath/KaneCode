@@ -1,8 +1,10 @@
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
+using Microsoft.CodeAnalysis.Diagnostics;
 using Microsoft.CodeAnalysis.Host.Mef;
 using Microsoft.CodeAnalysis.Text;
 using System.Collections.Concurrent;
+using System.Collections.Immutable;
 using System.IO;
 
 namespace KaneCode.Services;
@@ -166,24 +168,91 @@ internal sealed class RoslynWorkspaceService : IDisposable
     }
 
     /// <summary>
-    /// Gets diagnostics for the given file.
+    /// Gets diagnostics for the given file, including both compiler diagnostics
+    /// and analyzer diagnostics from any registered <see cref="AnalyzerReference"/> entries.
     /// Thread-safe: operates on an immutable solution snapshot.
     /// </summary>
     public async Task<IReadOnlyList<Diagnostic>> GetDiagnosticsAsync(string filePath, CancellationToken cancellationToken = default)
     {
-        var document = GetDocument(filePath);
+        Document? document = GetDocument(filePath);
         if (document is null)
         {
             return [];
         }
 
-        var semanticModel = await document.GetSemanticModelAsync(cancellationToken).ConfigureAwait(false);
+        SemanticModel? semanticModel = await document.GetSemanticModelAsync(cancellationToken).ConfigureAwait(false);
         if (semanticModel is null)
         {
             return [];
         }
 
-        return semanticModel.GetDiagnostics(cancellationToken: cancellationToken);
+        ImmutableArray<Diagnostic> compilerDiagnostics = semanticModel.GetDiagnostics(cancellationToken: cancellationToken);
+
+        ImmutableArray<Diagnostic> analyzerDiagnostics = await GetAnalyzerDiagnosticsForDocumentAsync(
+            document, cancellationToken).ConfigureAwait(false);
+
+        if (analyzerDiagnostics.IsEmpty)
+        {
+            return compilerDiagnostics;
+        }
+
+        var combined = new List<Diagnostic>(compilerDiagnostics.Length + analyzerDiagnostics.Length);
+        combined.AddRange(compilerDiagnostics);
+        combined.AddRange(analyzerDiagnostics);
+        return combined;
+    }
+
+    /// <summary>
+    /// Runs all analyzers registered on the document's project and returns diagnostics
+    /// scoped to the given document's syntax tree.
+    /// </summary>
+    private static async Task<ImmutableArray<Diagnostic>> GetAnalyzerDiagnosticsForDocumentAsync(
+        Document document, CancellationToken cancellationToken)
+    {
+        Project project = document.Project;
+        if (project.AnalyzerReferences.Count == 0)
+        {
+            return [];
+        }
+
+        Compilation? compilation = await project.GetCompilationAsync(cancellationToken).ConfigureAwait(false);
+        if (compilation is null)
+        {
+            return [];
+        }
+
+        ImmutableArray<DiagnosticAnalyzer> analyzers = project.AnalyzerReferences
+            .SelectMany(r => r.GetAnalyzersForAllLanguages())
+            .ToImmutableArray();
+
+        if (analyzers.IsEmpty)
+        {
+            return [];
+        }
+
+        SyntaxTree? tree = await document.GetSyntaxTreeAsync(cancellationToken).ConfigureAwait(false);
+        if (tree is null)
+        {
+            return [];
+        }
+
+        try
+        {
+            CompilationWithAnalyzers compilationWithAnalyzers = compilation.WithAnalyzers(analyzers, options: null, cancellationToken: cancellationToken);
+            ImmutableArray<Diagnostic> allDiagnostics = await compilationWithAnalyzers
+                .GetAnalyzerDiagnosticsAsync(cancellationToken).ConfigureAwait(false);
+
+            // Filter to diagnostics located in the current document's syntax tree
+            return allDiagnostics
+                .Where(d => d.Location.SourceTree == tree)
+                .ToImmutableArray();
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            System.Diagnostics.Debug.WriteLine(
+                $"Analyzer execution failed for '{document.FilePath}': {ex.Message}");
+            return [];
+        }
     }
 
     /// <summary>
@@ -323,6 +392,7 @@ internal sealed class RoslynWorkspaceService : IDisposable
         CSharpCompilationOptions compilationOptions,
         CSharpParseOptions parseOptions,
         IEnumerable<MetadataReference> metadataReferences,
+        IEnumerable<AnalyzerReference>? analyzerReferences = null,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(projectName);
@@ -341,7 +411,8 @@ internal sealed class RoslynWorkspaceService : IDisposable
                 LanguageNames.CSharp,
                 compilationOptions: compilationOptions,
                 parseOptions: parseOptions,
-                metadataReferences: metadataReferences.ToList());
+                metadataReferences: metadataReferences.ToList(),
+                analyzerReferences: analyzerReferences?.ToList());
 
             _workspace.TryApplyChanges(_workspace.CurrentSolution.AddProject(projectInfo));
             _projectIds[projectName] = projectId;

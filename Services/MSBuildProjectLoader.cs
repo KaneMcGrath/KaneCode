@@ -2,9 +2,11 @@ using Microsoft.Build.Evaluation;
 using Microsoft.Build.Locator;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
+using Microsoft.CodeAnalysis.Diagnostics;
 using Microsoft.CodeAnalysis.MSBuild;
 using System.Collections.Immutable;
 using System.IO;
+using System.Reflection;
 
 using MSBuildProject = Microsoft.Build.Evaluation.Project;
 
@@ -20,6 +22,20 @@ internal static class MSBuildProjectLoader
     private static bool _msBuildRegistered;
     private static readonly object _registerLock = new();
     private static readonly string[] s_generatedSourcePatterns = ["*.g.cs", "*.g.i.cs"];
+    private static readonly SimpleAnalyzerAssemblyLoader s_analyzerLoader = SimpleAnalyzerAssemblyLoader.Instance;
+
+    /// <summary>
+    /// Minimal <see cref="IAnalyzerAssemblyLoader"/> implementation used to construct
+    /// <see cref="AnalyzerFileReference"/> instances for the Roslyn workspace.
+    /// </summary>
+    private sealed class SimpleAnalyzerAssemblyLoader : IAnalyzerAssemblyLoader
+    {
+        public static readonly SimpleAnalyzerAssemblyLoader Instance = new();
+
+        public void AddDependencyLocation(string fullPath) { }
+
+        public Assembly LoadFromPath(string fullPath) => Assembly.LoadFrom(fullPath);
+    }
 
     /// <summary>
     /// Ensures MSBuild is registered via MSBuildLocator. Must be called before any MSBuild API usage.
@@ -406,6 +422,10 @@ internal static class MSBuildProjectLoader
         var metadataReferences = ResolveMetadataReferencesViaBuild(project, targetFramework)
             ?? ResolveMetadataReferences(project, projectDir, targetFramework);
 
+        // Collect analyzer references — prefer design-time build resolution, fall back to manual scanning
+        var analyzerReferences = ResolveAnalyzerReferencesViaBuild(project)
+            ?? ResolveAnalyzerReferences(project, targetFramework);
+
         // Collect preprocessor symbols
         var defineConstants = project.GetPropertyValue("DefineConstants");
         if (!string.IsNullOrEmpty(defineConstants))
@@ -422,6 +442,7 @@ internal static class MSBuildProjectLoader
             compilationOptions,
             parseOptions,
             metadataReferences,
+            analyzerReferences,
             cancellationToken).ConfigureAwait(false);
 
         // Add source files
@@ -659,6 +680,158 @@ internal static class MSBuildProjectLoader
                 references.Add(reference);
             }
         }
+    }
+
+    /// <summary>
+    /// Attempts to discover analyzer assemblies by running the MSBuild
+    /// <c>ResolvePackageAssets</c> target and collecting <c>Analyzer</c> items.
+    /// Returns null if the build fails, allowing the caller to fall back.
+    /// </summary>
+    private static List<AnalyzerReference>? ResolveAnalyzerReferencesViaBuild(MSBuildProject msbuildProject)
+    {
+        try
+        {
+            var instance = msbuildProject.CreateProjectInstance();
+            instance.SetProperty("DesignTimeBuild", "true");
+            instance.SetProperty("SkipCompilerExecution", "true");
+
+            // ResolvePackageAssets populates the Analyzer item group from restored packages
+            bool success = instance.Build(["ResolvePackageAssets"], null);
+            if (!success)
+            {
+                return null;
+            }
+
+            var references = new List<AnalyzerReference>();
+            var addedPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+            foreach (var item in instance.GetItems("Analyzer"))
+            {
+                string analyzerPath = item.EvaluatedInclude;
+                if (string.IsNullOrEmpty(analyzerPath) || !File.Exists(analyzerPath))
+                {
+                    continue;
+                }
+
+                if (!analyzerPath.EndsWith(".dll", StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                if (addedPaths.Add(analyzerPath))
+                {
+                    references.Add(new AnalyzerFileReference(analyzerPath, s_analyzerLoader));
+                }
+            }
+
+            return references.Count > 0 ? references : null;
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            System.Diagnostics.Debug.WriteLine(
+                $"Design-time build failed for ResolvePackageAssets (analyzers): {ex.Message}");
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Discovers analyzer assemblies by scanning the <c>analyzers</c> folder of each
+    /// <c>PackageReference</c> in the NuGet global packages cache.
+    /// </summary>
+    internal static List<AnalyzerReference> ResolveAnalyzerReferences(
+        MSBuildProject msbuildProject, string targetFramework)
+    {
+        var references = new List<AnalyzerReference>();
+        var addedPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var item in msbuildProject.GetItems("PackageReference"))
+        {
+            var packageName = item.EvaluatedInclude;
+            var version = item.GetMetadataValue("Version");
+            if (string.IsNullOrEmpty(packageName) || string.IsNullOrEmpty(version))
+            {
+                continue;
+            }
+
+            ResolvePackageAnalyzers(references, addedPaths, packageName, version, targetFramework);
+        }
+
+        return references;
+    }
+
+    /// <summary>
+    /// Scans a single NuGet package for analyzer DLLs under its <c>analyzers</c> directory.
+    /// Prefers the <c>analyzers/dotnet/cs</c> sub-path, then <c>analyzers/dotnet</c>,
+    /// then the root <c>analyzers</c> folder.
+    /// </summary>
+    internal static void ResolvePackageAnalyzers(
+        List<AnalyzerReference> references,
+        HashSet<string> addedPaths,
+        string packageName,
+        string version,
+        string targetFramework)
+    {
+        var nugetCache = GetNuGetPackagesPath();
+        if (nugetCache is null)
+        {
+            return;
+        }
+
+        var packageDir = Path.Combine(nugetCache, packageName.ToLowerInvariant(), version.ToLowerInvariant());
+        if (!Directory.Exists(packageDir))
+        {
+            return;
+        }
+
+        var analyzersDir = Path.Combine(packageDir, "analyzers");
+        if (!Directory.Exists(analyzersDir))
+        {
+            return;
+        }
+
+        // Prefer the most specific path: analyzers/dotnet/cs > analyzers/dotnet > analyzers
+        string? bestDir = FindBestAnalyzerDirectory(analyzersDir);
+        if (bestDir is null)
+        {
+            return;
+        }
+
+        foreach (var dll in Directory.EnumerateFiles(bestDir, "*.dll"))
+        {
+            if (addedPaths.Add(dll))
+            {
+                references.Add(new AnalyzerFileReference(dll, s_analyzerLoader));
+            }
+        }
+    }
+
+    /// <summary>
+    /// Finds the best analyzer subdirectory for C#. Prefers <c>dotnet/cs</c>, then <c>dotnet</c>,
+    /// then the root analyzers folder.
+    /// </summary>
+    internal static string? FindBestAnalyzerDirectory(string analyzersDir)
+    {
+        // Most NuGet analyzer packages use: analyzers/dotnet/cs
+        var csDir = Path.Combine(analyzersDir, "dotnet", "cs");
+        if (Directory.Exists(csDir) && Directory.EnumerateFiles(csDir, "*.dll").Any())
+        {
+            return csDir;
+        }
+
+        // Some packages use: analyzers/dotnet
+        var dotnetDir = Path.Combine(analyzersDir, "dotnet");
+        if (Directory.Exists(dotnetDir) && Directory.EnumerateFiles(dotnetDir, "*.dll").Any())
+        {
+            return dotnetDir;
+        }
+
+        // Fall back to the root analyzers folder
+        if (Directory.EnumerateFiles(analyzersDir, "*.dll").Any())
+        {
+            return analyzersDir;
+        }
+
+        return null;
     }
 
     private static string? FindBestTfmDirectory(string libDir, string targetFramework)

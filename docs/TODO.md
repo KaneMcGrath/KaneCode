@@ -55,9 +55,9 @@
 
 #### 2.2 Load Analyzer References
 
-- [ ] Discover analyzer assemblies from NuGet packages and SDK during project load
-- [ ] Register `AnalyzerReference` entries on the Roslyn project so analyzer diagnostics appear
-- [ ] Verify that common analyzers (e.g. `Microsoft.CodeAnalysis.NetAnalyzers`) produce diagnostics in the error list
+- [x] Discover analyzer assemblies from NuGet packages and SDK during project load
+- [x] Register `AnalyzerReference` entries on the Roslyn project so analyzer diagnostics appear
+- [x] Verify that common analyzers (e.g. `Microsoft.CodeAnalysis.NetAnalyzers`) produce diagnostics in the error list
 
 #### 2.3 Load AdditionalFiles and EditorConfig
 

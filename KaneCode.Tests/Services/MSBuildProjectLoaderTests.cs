@@ -1,11 +1,25 @@
 using KaneCode.Services;
 using Microsoft.CodeAnalysis.CSharp;
+using Microsoft.CodeAnalysis.Diagnostics;
+using System.IO;
 using Xunit;
 
 namespace KaneCode.Tests.Services;
 
-public class MSBuildProjectLoaderTests
+public class MSBuildProjectLoaderTests : IDisposable
 {
+    private readonly string _tempDir;
+
+    public MSBuildProjectLoaderTests()
+    {
+        _tempDir = Path.Combine(Path.GetTempPath(), "KaneCodeTests_" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(_tempDir);
+    }
+
+    public void Dispose()
+    {
+        try { Directory.Delete(_tempDir, recursive: true); } catch { }
+    }
     // --- GetDefaultLanguageVersionForTfm ---
 
     [Theory]
@@ -110,5 +124,95 @@ public class MSBuildProjectLoaderTests
         string? result = MSBuildProjectLoader.GetFirstTargetFramework(";;;");
 
         Assert.Null(result);
+    }
+
+    // --- FindBestAnalyzerDirectory ---
+
+    [Fact]
+    public void WhenDotnetCsSubdirExistsThenItIsPreferred()
+    {
+        string analyzersDir = Path.Combine(_tempDir, "analyzers");
+        string csDir = Path.Combine(analyzersDir, "dotnet", "cs");
+        Directory.CreateDirectory(csDir);
+        File.WriteAllText(Path.Combine(csDir, "MyAnalyzer.dll"), "");
+
+        string? result = MSBuildProjectLoader.FindBestAnalyzerDirectory(analyzersDir);
+
+        Assert.Equal(csDir, result);
+    }
+
+    [Fact]
+    public void WhenOnlyDotnetSubdirExistsThenItIsReturned()
+    {
+        string analyzersDir = Path.Combine(_tempDir, "analyzers");
+        string dotnetDir = Path.Combine(analyzersDir, "dotnet");
+        Directory.CreateDirectory(dotnetDir);
+        File.WriteAllText(Path.Combine(dotnetDir, "MyAnalyzer.dll"), "");
+
+        string? result = MSBuildProjectLoader.FindBestAnalyzerDirectory(analyzersDir);
+
+        Assert.Equal(dotnetDir, result);
+    }
+
+    [Fact]
+    public void WhenOnlyRootAnalyzersDirHasDllsThenItIsReturned()
+    {
+        string analyzersDir = Path.Combine(_tempDir, "analyzers");
+        Directory.CreateDirectory(analyzersDir);
+        File.WriteAllText(Path.Combine(analyzersDir, "MyAnalyzer.dll"), "");
+
+        string? result = MSBuildProjectLoader.FindBestAnalyzerDirectory(analyzersDir);
+
+        Assert.Equal(analyzersDir, result);
+    }
+
+    [Fact]
+    public void WhenAnalyzersDirIsEmptyThenNullIsReturned()
+    {
+        string analyzersDir = Path.Combine(_tempDir, "analyzers");
+        Directory.CreateDirectory(analyzersDir);
+
+        string? result = MSBuildProjectLoader.FindBestAnalyzerDirectory(analyzersDir);
+
+        Assert.Null(result);
+    }
+
+    [Fact]
+    public void WhenDotnetCsExistsButIsEmptyThenFallsBackToDotnet()
+    {
+        string analyzersDir = Path.Combine(_tempDir, "analyzers");
+        Directory.CreateDirectory(Path.Combine(analyzersDir, "dotnet", "cs"));
+        string dotnetDir = Path.Combine(analyzersDir, "dotnet");
+        File.WriteAllText(Path.Combine(dotnetDir, "Analyzer.dll"), "");
+
+        string? result = MSBuildProjectLoader.FindBestAnalyzerDirectory(analyzersDir);
+
+        Assert.Equal(dotnetDir, result);
+    }
+
+    [Fact]
+    public void WhenAllSubdirsEmptyThenNullIsReturned()
+    {
+        string analyzersDir = Path.Combine(_tempDir, "analyzers");
+        Directory.CreateDirectory(Path.Combine(analyzersDir, "dotnet", "cs"));
+        Directory.CreateDirectory(Path.Combine(analyzersDir, "dotnet", "vb"));
+
+        string? result = MSBuildProjectLoader.FindBestAnalyzerDirectory(analyzersDir);
+
+        Assert.Null(result);
+    }
+
+    // --- ResolvePackageAnalyzers ---
+
+    [Fact]
+    public void WhenPackageDoesNotExistThenNoAnalyzersAreReturned()
+    {
+        List<AnalyzerReference> references = [];
+        HashSet<string> addedPaths = new(StringComparer.OrdinalIgnoreCase);
+
+        MSBuildProjectLoader.ResolvePackageAnalyzers(
+            references, addedPaths, "NonExistent.Package", "99.99.99", "net8.0");
+
+        Assert.Empty(references);
     }
 }
