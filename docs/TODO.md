@@ -77,11 +77,11 @@
 
 #### 3.1 Completion UI Enhancements
 
-- [ ] Add symbol-kind icons (method, property, class, etc.) to completion list items
-- [ ] Broaden auto-trigger rules (e.g. after `<`, `[`, `::`, spaces in certain contexts)
-- [ ] Improve commit-character handling to match common IDE behavior (`;`, `(`, `[`, etc.)
-- [ ] Add import-completion support (suggest types from unreferenced namespaces with automatic `using`)
-- [ ] Add a detail/description side panel for the selected completion item
+- [x] Add symbol-kind icons (method, property, class, etc.) to completion list items
+- [x] Broaden auto-trigger rules (e.g. after `<`, `[`, `::`, spaces in certain contexts)
+- [x] Improve commit-character handling to match common IDE behavior (`;`, `(`, `[`, etc.)
+- [x] Add import-completion support (suggest types from unreferenced namespaces with automatic `using`)
+- [x] Add a detail/description side panel for the selected completion item
 
 #### 3.2 Signature Help Lifecycle
 

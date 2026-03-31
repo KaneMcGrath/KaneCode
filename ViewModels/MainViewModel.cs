@@ -1839,7 +1839,7 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
                 // can trigger a fresh member-access completion after the '.' is typed.
                 _completionWindow.Close();
             }
-            else if (!char.IsLetterOrDigit(ch) && ch != '_')
+            else if (RoslynCompletionProvider.IsCommitCharacter(ch))
             {
                 _completionWindow.CompletionList.RequestInsertion(e);
             }
