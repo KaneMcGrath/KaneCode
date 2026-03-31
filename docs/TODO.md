@@ -26,10 +26,10 @@
 #### 1.1 Fix Multi-File Edit Persistence
 
 - [x] Write changed but unopened files to disk when a rename or code action modifies them (`ApplyMultiFileChanges` in `MainViewModel`)
-- [ ] Mark open tabs dirty when their text is changed programmatically by a code action or rename
-- [ ] Handle document add, remove, and rename operations from Roslyn solution changes (not only changed document text)
-- [ ] Keep Roslyn workspace state, tab state, and disk state in sync after every multi-file operation
-- [ ] Add guard/logging when a code action produces changes to files that cannot be persisted
+- [x] Mark open tabs dirty when their text is changed programmatically by a code action or rename
+- [x] Handle document add, remove, and rename operations from Roslyn solution changes (not only changed document text)
+- [x] Keep Roslyn workspace state, tab state, and disk state in sync after every multi-file operation
+- [x] Add guard/logging when a code action produces changes to files that cannot be persisted
 
 #### 1.2 Improve Dirty-State Handling
 

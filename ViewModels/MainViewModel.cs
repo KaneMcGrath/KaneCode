@@ -9,6 +9,7 @@ using KaneCode.Theming;
 using Microsoft.CodeAnalysis;
 using Microsoft.Win32;
 using System.Collections.ObjectModel;
+using System.Diagnostics;
 using System.IO;
 using System.Windows;
 using System.Windows.Input;
@@ -2439,7 +2440,7 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
                 return;
             }
 
-            ApplyMultiFileChanges(multiResult.ChangedFiles);
+            ApplySolutionEdits(multiResult);
         }
         catch (OperationCanceledException)
         {
@@ -2497,7 +2498,7 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
                 return;
             }
 
-            ApplyMultiFileChanges(result.ChangedFiles);
+            ApplySolutionEdits(result);
         }
         catch (OperationCanceledException)
         {
@@ -2563,16 +2564,20 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
     }
 
     /// <summary>
-    /// Applies multi-file changes: updates open tabs in-memory, marks them dirty,
-    /// and writes changes for files not currently open directly to disk.
+    /// Applies a full solution edit: updates changed files in open tabs or on disk,
+    /// writes newly added files to disk, removes deleted files from the workspace,
+    /// and keeps Roslyn workspace state in sync.
     /// </summary>
-    private void ApplyMultiFileChanges(IReadOnlyDictionary<string, string> changedFiles)
+    private void ApplySolutionEdits(Models.SolutionEditResult editResult)
     {
+        Debug.WriteLine($"[ApplySolutionEdits] Applying edits: {editResult.ChangedFiles.Count} changed, {editResult.AddedFiles.Count} added, {editResult.RemovedFiles.Count} removed");
+
         List<string>? writeFailures = null;
 
-        foreach (var (filePath, newText) in changedFiles)
+        // 1. Changed documents
+        foreach (var (filePath, newText) in editResult.ChangedFiles)
         {
-            var tab = OpenTabs.FirstOrDefault(t =>
+            OpenFileTab? tab = OpenTabs.FirstOrDefault(t =>
                 string.Equals(t.FilePath, filePath, StringComparison.OrdinalIgnoreCase));
 
             if (tab is not null && tab == ActiveTab && _editor is not null)
@@ -2586,38 +2591,101 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
             }
             else
             {
-                // File is not open — write changes directly to disk
-                try
-                {
-                    EditorService.WriteFile(filePath, newText);
-                }
-                catch (IOException)
-                {
-                    writeFailures ??= [];
-                    writeFailures.Add(filePath);
-                }
-                catch (UnauthorizedAccessException)
+                if (!TryWriteFile(filePath, newText))
                 {
                     writeFailures ??= [];
                     writeFailures.Add(filePath);
                 }
             }
 
-            // Update the Roslyn workspace with the new text
             _ = _roslynService.UpdateDocumentTextAsync(filePath, newText);
+        }
+
+        // 2. Added documents
+        foreach (var (filePath, newText) in editResult.AddedFiles)
+        {
+            if (!TryWriteFile(filePath, newText))
+            {
+                writeFailures ??= [];
+                writeFailures.Add(filePath);
+            }
+
+            _ = _roslynService.OpenOrUpdateDocumentAsync(filePath, newText);
+        }
+
+        // 3. Removed documents
+        foreach (string filePath in editResult.RemovedFiles)
+        {
+            // Close the tab if it is open
+            OpenFileTab? tab = OpenTabs.FirstOrDefault(t =>
+                string.Equals(t.FilePath, filePath, StringComparison.OrdinalIgnoreCase));
+
+            if (tab is not null)
+            {
+                OpenTabs.Remove(tab);
+                if (tab == ActiveTab)
+                {
+                    ActiveTab = OpenTabs.FirstOrDefault();
+                }
+            }
+
+            _ = _roslynService.CloseDocumentAsync(filePath);
+
+            // Delete the file from disk if it exists
+            try
+            {
+                if (File.Exists(filePath))
+                {
+                    File.Delete(filePath);
+                }
+            }
+            catch (IOException ex)
+            {
+                Debug.WriteLine($"[ApplySolutionEdits] Failed to delete file '{filePath}': {ex.Message}");
+                writeFailures ??= [];
+                writeFailures.Add(filePath);
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                Debug.WriteLine($"[ApplySolutionEdits] Access denied deleting file '{filePath}': {ex.Message}");
+                writeFailures ??= [];
+                writeFailures.Add(filePath);
+            }
         }
 
         if (writeFailures is not null)
         {
             string fileList = string.Join("\n", writeFailures);
             MessageBox.Show(
-                $"Could not write changes to the following files:\n{fileList}",
+                $"Could not write/delete the following files:\n{fileList}",
                 "Multi-File Edit Warning",
                 MessageBoxButton.OK,
                 MessageBoxImage.Warning);
         }
 
         ScheduleRoslynAnalysis();
+    }
+
+    /// <summary>
+    /// Attempts to write content to a file, returning false on I/O or access errors.
+    /// </summary>
+    private static bool TryWriteFile(string filePath, string content)
+    {
+        try
+        {
+            EditorService.WriteFile(filePath, content);
+            return true;
+        }
+        catch (IOException ex)
+        {
+            Debug.WriteLine($"[ApplySolutionEdits] Failed to write file '{filePath}': {ex.Message}");
+            return false;
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            Debug.WriteLine($"[ApplySolutionEdits] Access denied writing file '{filePath}': {ex.Message}");
+            return false;
+        }
     }
 
     private static string? PromptForNewName(string currentName)

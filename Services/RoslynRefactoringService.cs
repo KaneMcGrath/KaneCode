@@ -1,3 +1,4 @@
+using KaneCode.Models;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.FindSymbols;
 using Microsoft.CodeAnalysis.Rename;
@@ -23,9 +24,9 @@ internal sealed class RoslynRefactoringService
 
     /// <summary>
     /// Renames the symbol at the given position across the entire solution.
-    /// Returns a map of file paths to their new text content, or null if rename is not possible.
+    /// Returns changed, added, and removed files, or null if rename is not possible.
     /// </summary>
-    public async Task<RenameResult?> RenameSymbolAsync(
+    public async Task<SolutionEditResult?> RenameSymbolAsync(
         string filePath,
         int position,
         string newName,
@@ -53,31 +54,16 @@ internal sealed class RoslynRefactoringService
             return null;
         }
 
-        var solution = document.Project.Solution;
-        var options = default(SymbolRenameOptions);
+        Solution solution = document.Project.Solution;
+        SymbolRenameOptions options = default;
 
-        var newSolution = await Renamer.RenameSymbolAsync(
+        Solution newSolution = await Renamer.RenameSymbolAsync(
             solution, symbol, options, newName, cancellationToken).ConfigureAwait(false);
 
-        var changes = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var projectChanges in newSolution.GetChanges(solution).GetProjectChanges())
-        {
-            foreach (var docId in projectChanges.GetChangedDocuments())
-            {
-                cancellationToken.ThrowIfCancellationRequested();
+        SolutionEditResult result = await SolutionEditResult.CollectFromSolutionChangesAsync(
+            solution, newSolution, cancellationToken).ConfigureAwait(false);
 
-                var changedDoc = newSolution.GetDocument(docId);
-                if (changedDoc?.FilePath is null)
-                {
-                    continue;
-                }
-
-                var text = await changedDoc.GetTextAsync(cancellationToken).ConfigureAwait(false);
-                changes[changedDoc.FilePath] = text.ToString();
-            }
-        }
-
-        return changes.Count > 0 ? new RenameResult(changes) : null;
+        return result.IsEmpty ? null : result;
     }
 
     /// <summary>
@@ -124,11 +110,6 @@ internal sealed class RoslynRefactoringService
         return symbol.Locations.Any(static l => l.IsInSource);
     }
 }
-
-/// <summary>
-/// Result of a rename operation containing the new text for each changed file.
-/// </summary>
-internal sealed record RenameResult(IReadOnlyDictionary<string, string> ChangedFiles);
 
 /// <summary>
 /// Information about a symbol at a position, used to pre-populate the rename dialog.
