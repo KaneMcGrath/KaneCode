@@ -2563,11 +2563,13 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
     }
 
     /// <summary>
-    /// Applies multi-file changes: updates open tabs in-memory and writes changes
-    /// for files not currently open back to the workspace.
+    /// Applies multi-file changes: updates open tabs in-memory, marks them dirty,
+    /// and writes changes for files not currently open directly to disk.
     /// </summary>
     private void ApplyMultiFileChanges(IReadOnlyDictionary<string, string> changedFiles)
     {
+        List<string>? writeFailures = null;
+
         foreach (var (filePath, newText) in changedFiles)
         {
             var tab = OpenTabs.FirstOrDefault(t =>
@@ -2580,10 +2582,39 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
             else if (tab is not null)
             {
                 tab.Document.Text = newText;
+                tab.IsDirty = true;
+            }
+            else
+            {
+                // File is not open — write changes directly to disk
+                try
+                {
+                    EditorService.WriteFile(filePath, newText);
+                }
+                catch (IOException)
+                {
+                    writeFailures ??= [];
+                    writeFailures.Add(filePath);
+                }
+                catch (UnauthorizedAccessException)
+                {
+                    writeFailures ??= [];
+                    writeFailures.Add(filePath);
+                }
             }
 
             // Update the Roslyn workspace with the new text
             _ = _roslynService.UpdateDocumentTextAsync(filePath, newText);
+        }
+
+        if (writeFailures is not null)
+        {
+            string fileList = string.Join("\n", writeFailures);
+            MessageBox.Show(
+                $"Could not write changes to the following files:\n{fileList}",
+                "Multi-File Edit Warning",
+                MessageBoxButton.OK,
+                MessageBoxImage.Warning);
         }
 
         ScheduleRoslynAnalysis();
