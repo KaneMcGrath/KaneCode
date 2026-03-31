@@ -23,6 +23,9 @@
 
   <ItemGroup>
     <None Remove="Icons\kanecode.ico" />
+    <Compile Remove="KaneCode.Tests\**" />
+    <None Remove="KaneCode.Tests\**" />
+    <EmbeddedResource Remove="KaneCode.Tests\**" />
   </ItemGroup>
 
   <ItemGroup>
