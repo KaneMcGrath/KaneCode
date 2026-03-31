@@ -385,7 +385,8 @@ Icon="Icons/KaneCode.ico">
                                                          ContentId="ErrorListPane">
                                 <controls:ErrorListPanel x:Name="ErrorList"
                                                          Diagnostics="{Binding DiagnosticItems}"
-                                                         NavigateRequested="ErrorList_NavigateRequested" />
+                                                         NavigateRequested="ErrorList_NavigateRequested"
+                                                         FixRequested="ErrorList_FixRequested" />
                             </avalonDock:LayoutAnchorable>
                             <avalonDock:LayoutAnchorable x:Name="BuildOutputAnchorable" Title="Build Output"
                                                          CanClose="False"

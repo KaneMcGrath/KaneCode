@@ -1,9 +1,10 @@
 <UserControl x:Class="KaneCode.Controls.ErrorListPanel"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             xmlns:models="clr-namespace:KaneCode.Models">
+             xmlns:models="clr-namespace:KaneCode.Models"
+             x:Name="ErrorListRoot">
     <DockPanel Background="{DynamicResource ErrorListBackground}">
-        <!-- Header bar with title and counts -->
+        <!-- Header bar with title, filter toggles, counts, and group-by menu -->
         <Border DockPanel.Dock="Top"
                 Background="{DynamicResource ErrorListHeaderBackground}"
                 Padding="8,4">
@@ -12,8 +13,65 @@
                            FontWeight="SemiBold"
                            Foreground="{DynamicResource ErrorListHeaderForeground}"
                            VerticalAlignment="Center" />
+
+                <!-- Severity filter toggle buttons -->
+                <ToggleButton x:Name="ErrorToggle"
+                              IsChecked="{Binding ShowErrors, ElementName=ErrorListRoot}"
+                              Margin="12,0,2,0"
+                              Padding="4,2"
+                              ToolTip="Toggle Errors"
+                              Background="{DynamicResource ErrorListFilterActiveBackground}"
+                              Foreground="{DynamicResource ErrorListHeaderForeground}"
+                              BorderThickness="0"
+                              Cursor="Hand">
+                    <StackPanel Orientation="Horizontal">
+                        <Ellipse Width="10" Height="10" Fill="{DynamicResource DiagnosticErrorForeground}" Margin="0,0,4,0" VerticalAlignment="Center" />
+                        <TextBlock Text="Errors" VerticalAlignment="Center" />
+                    </StackPanel>
+                </ToggleButton>
+                <ToggleButton x:Name="WarningToggle"
+                              IsChecked="{Binding ShowWarnings, ElementName=ErrorListRoot}"
+                              Margin="2,0,2,0"
+                              Padding="4,2"
+                              ToolTip="Toggle Warnings"
+                              Background="{DynamicResource ErrorListFilterActiveBackground}"
+                              Foreground="{DynamicResource ErrorListHeaderForeground}"
+                              BorderThickness="0"
+                              Cursor="Hand">
+                    <StackPanel Orientation="Horizontal">
+                        <Ellipse Width="10" Height="10" Fill="{DynamicResource DiagnosticWarningForeground}" Margin="0,0,4,0" VerticalAlignment="Center" />
+                        <TextBlock Text="Warnings" VerticalAlignment="Center" />
+                    </StackPanel>
+                </ToggleButton>
+                <ToggleButton x:Name="MessageToggle"
+                              IsChecked="{Binding ShowMessages, ElementName=ErrorListRoot}"
+                              Margin="2,0,6,0"
+                              Padding="4,2"
+                              ToolTip="Toggle Messages"
+                              Background="{DynamicResource ErrorListFilterActiveBackground}"
+                              Foreground="{DynamicResource ErrorListHeaderForeground}"
+                              BorderThickness="0"
+                              Cursor="Hand">
+                    <StackPanel Orientation="Horizontal">
+                        <Ellipse Width="10" Height="10" Fill="{DynamicResource DiagnosticInfoForeground}" Margin="0,0,4,0" VerticalAlignment="Center" />
+                        <TextBlock Text="Messages" VerticalAlignment="Center" />
+                    </StackPanel>
+                </ToggleButton>
+
+                <!-- Group-by dropdown -->
+                <TextBlock Text="|" Foreground="{DynamicResource ErrorListGridLine}" VerticalAlignment="Center" Margin="4,0" />
+                <Menu Background="Transparent" VerticalAlignment="Center">
+                    <MenuItem Header="Group By" Foreground="{DynamicResource ErrorListHeaderForeground}">
+                        <MenuItem Header="Severity" Tag="Severity" Click="GroupBy_Click" />
+                        <MenuItem Header="Project" Tag="Project" Click="GroupBy_Click" />
+                        <MenuItem Header="File" Tag="File" Click="GroupBy_Click" />
+                        <Separator />
+                        <MenuItem Header="None" Tag="" Click="GroupBy_Click" />
+                    </MenuItem>
+                </Menu>
+
                 <TextBlock x:Name="SummaryText"
-                           Margin="12,0,0,0"
+                           Margin="8,0,0,0"
                            Foreground="{DynamicResource ErrorListForeground}"
                            VerticalAlignment="Center" />
             </StackPanel>
@@ -27,6 +85,7 @@
                   HeadersVisibility="Column"
                   GridLinesVisibility="Horizontal"
                   HorizontalGridLinesBrush="{DynamicResource ErrorListGridLine}"
+                  HorizontalScrollBarVisibility="Disabled"
                   Background="{DynamicResource ErrorListBackground}"
                   Foreground="{DynamicResource ErrorListForeground}"
                   RowBackground="{DynamicResource ErrorListBackground}"
@@ -84,13 +143,78 @@
                     </Style.Triggers>
                 </Style>
             </DataGrid.RowStyle>
+            <!-- Group header style -->
+            <DataGrid.GroupStyle>
+                <GroupStyle>
+                    <GroupStyle.ContainerStyle>
+                        <Style TargetType="GroupItem">
+                            <Setter Property="Template">
+                                <Setter.Value>
+                                    <ControlTemplate TargetType="GroupItem">
+                                        <Expander IsExpanded="True"
+                                                  Background="{DynamicResource ErrorListHeaderBackground}"
+                                                  Foreground="{DynamicResource ErrorListHeaderForeground}">
+                                            <Expander.Header>
+                                                <StackPanel Orientation="Horizontal">
+                                                    <TextBlock Text="{Binding Name}" FontWeight="SemiBold" Margin="0,0,6,0" />
+                                                    <TextBlock Text="{Binding ItemCount, StringFormat='({0})'}" />
+                                                </StackPanel>
+                                            </Expander.Header>
+                                            <ItemsPresenter />
+                                        </Expander>
+                                    </ControlTemplate>
+                                </Setter.Value>
+                            </Setter>
+                        </Style>
+                    </GroupStyle.ContainerStyle>
+                </GroupStyle>
+            </DataGrid.GroupStyle>
             <DataGrid.Columns>
-                <DataGridTextColumn Header="" Binding="{Binding SeverityIcon}" Width="30" IsReadOnly="True" />
-                <DataGridTextColumn Header="Code" Binding="{Binding Code}" Width="80" />
-                <DataGridTextColumn Header="Description" Binding="{Binding Message}" Width="*" />
-                <DataGridTextColumn Header="File" Binding="{Binding File}" Width="150" />
+                <!-- Severity icon column using colored ellipse -->
+                <DataGridTemplateColumn Header="" Width="30" IsReadOnly="True" SortMemberPath="Severity">
+                    <DataGridTemplateColumn.CellTemplate>
+                        <DataTemplate DataType="{x:Type models:DiagnosticItem}">
+                            <Ellipse Width="12" Height="12" HorizontalAlignment="Center" VerticalAlignment="Center"
+                                     ToolTip="{Binding Severity}">
+                                <Ellipse.Style>
+                                    <Style TargetType="Ellipse">
+                                        <Setter Property="Fill" Value="{DynamicResource DiagnosticInfoForeground}" />
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding Severity}" Value="Error">
+                                                <Setter Property="Fill" Value="{DynamicResource DiagnosticErrorForeground}" />
+                                            </DataTrigger>
+                                            <DataTrigger Binding="{Binding Severity}" Value="Warning">
+                                                <Setter Property="Fill" Value="{DynamicResource DiagnosticWarningForeground}" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Ellipse.Style>
+                            </Ellipse>
+                        </DataTemplate>
+                    </DataGridTemplateColumn.CellTemplate>
+                </DataGridTemplateColumn>
+                <DataGridTextColumn Header="Code" Binding="{Binding Code}" Width="0.8*" MinWidth="60" />
+                <DataGridTextColumn Header="Description" Binding="{Binding Message}" Width="4*" MinWidth="120" />
+                <DataGridTextColumn Header="Project" Binding="{Binding Project}" Width="1.2*" MinWidth="80" />
+                <DataGridTextColumn Header="File" Binding="{Binding File}" Width="1.2*" MinWidth="80" />
                 <DataGridTextColumn Header="Line" Binding="{Binding Line}" Width="50" />
                 <DataGridTextColumn Header="Col" Binding="{Binding Column}" Width="50" />
+                <DataGridTextColumn Header="Source" Binding="{Binding Source}" Width="1.4*" MinWidth="80" />
+                <!-- Fix link column -->
+                <DataGridTemplateColumn Header="" Width="40" IsReadOnly="True">
+                    <DataGridTemplateColumn.CellTemplate>
+                        <DataTemplate DataType="{x:Type models:DiagnosticItem}">
+                            <TextBlock>
+                                <Hyperlink Click="FixLink_Click"
+                                           Foreground="{DynamicResource ErrorListFixLinkForeground}"
+                                           TextDecorations="None"
+                                           ToolTip="Apply quick fix">
+                                    <Run Text="Fix" />
+                                </Hyperlink>
+                            </TextBlock>
+                        </DataTemplate>
+                    </DataGridTemplateColumn.CellTemplate>
+                </DataGridTemplateColumn>
             </DataGrid.Columns>
         </DataGrid>
     </DockPanel>

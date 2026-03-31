@@ -149,6 +149,101 @@ internal sealed class RoslynCodeActionService
         return null;
     }
 
+    /// <summary>
+    /// Gets code fixes for a specific diagnostic at the given position.
+    /// Used by the error list "fix" links to target a specific diagnostic ID.
+    /// </summary>
+    public async Task<IReadOnlyList<CodeActionItem>> GetCodeFixesForDiagnosticAsync(
+        string filePath,
+        int position,
+        string diagnosticId,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(filePath);
+        ArgumentException.ThrowIfNullOrWhiteSpace(diagnosticId);
+
+        if (!RoslynWorkspaceService.IsCSharpFile(filePath))
+        {
+            return [];
+        }
+
+        var document = _roslynService.GetDocument(filePath);
+        if (document is null)
+        {
+            return [];
+        }
+
+        var semanticModel = await document.GetSemanticModelAsync(cancellationToken).ConfigureAwait(false);
+        if (semanticModel is null)
+        {
+            return [];
+        }
+
+        var sourceText = await document.GetTextAsync(cancellationToken).ConfigureAwait(false);
+        int clampedPosition = Math.Min(position, sourceText.Length);
+        var span = TextSpan.FromBounds(clampedPosition, Math.Min(clampedPosition + 1, sourceText.Length));
+
+        var allDiagnostics = semanticModel.GetDiagnostics(span, cancellationToken);
+        var targetDiagnostics = allDiagnostics
+            .Where(d => string.Equals(d.Id, diagnosticId, StringComparison.Ordinal))
+            .ToImmutableArray();
+
+        if (targetDiagnostics.IsEmpty)
+        {
+            // Fall back to the whole line in case the span was too narrow
+            var line = sourceText.Lines.GetLineFromPosition(clampedPosition);
+            allDiagnostics = semanticModel.GetDiagnostics(line.Span, cancellationToken);
+            targetDiagnostics = allDiagnostics
+                .Where(d => string.Equals(d.Id, diagnosticId, StringComparison.Ordinal))
+                .ToImmutableArray();
+        }
+
+        if (targetDiagnostics.IsEmpty)
+        {
+            return [];
+        }
+
+        var results = new List<CodeActionItem>();
+        var seenTitles = new HashSet<string>(StringComparer.Ordinal);
+        var providers = _codeFixProviders.Value;
+
+        foreach (var provider in providers)
+        {
+            var fixableIds = provider.FixableDiagnosticIds;
+            var matching = targetDiagnostics.Where(d => fixableIds.Contains(d.Id)).ToImmutableArray();
+            if (matching.IsEmpty)
+            {
+                continue;
+            }
+
+            foreach (var diagnostic in matching)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+
+                try
+                {
+                    var context = new CodeFixContext(
+                        document,
+                        diagnostic,
+                        (action, _) => AddLeafActions(action, results, seenTitles),
+                        cancellationToken);
+
+                    await provider.RegisterCodeFixesAsync(context).ConfigureAwait(false);
+                }
+                catch (OperationCanceledException)
+                {
+                    throw;
+                }
+                catch
+                {
+                    // Some providers may fail; skip them.
+                }
+            }
+        }
+
+        return results;
+    }
+
     private async Task CollectCodeFixesAsync(
         Document document,
         int position,

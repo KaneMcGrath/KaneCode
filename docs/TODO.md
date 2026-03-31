@@ -98,10 +98,10 @@
 
 #### 3.4 Diagnostics & Error List UX
 
-- [ ] Add proper severity icons (error, warning, info) to error list rows replacing placeholder glyphs
-- [ ] Add grouped/filterable error list views (by severity, project, file)
-- [ ] Show diagnostic source information (analyzer ID, category) in the error list
-- [ ] Add clickable "fix" links from error list rows that trigger associated code fixes
+- [x] Add proper severity icons (error, warning, info) to error list rows replacing placeholder glyphs
+- [x] Add grouped/filterable error list views (by severity, project, file)
+- [x] Show diagnostic source information (analyzer ID, category) in the error list
+- [x] Add clickable "fix" links from error list rows that trigger associated code fixes
 
 #### 3.5 Automatic Lightbulb Improvements
 

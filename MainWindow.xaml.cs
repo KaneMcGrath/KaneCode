@@ -466,6 +466,11 @@ public partial class MainWindow : Window
         _viewModel.NavigateToDiagnostic(item);
     }
 
+    private async void ErrorList_FixRequested(object? sender, DiagnosticItem item)
+    {
+        await _viewModel.ApplyDiagnosticFixAsync(item);
+    }
+
     private void FindReferencesPanel_NavigateRequested(object? sender, ReferenceItem item)
     {
         _viewModel.NavigateToReference(item);

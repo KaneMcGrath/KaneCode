@@ -120,6 +120,9 @@
     <SolidColorBrush x:Key="ErrorListHeaderForeground" Color="#1E1E1E" />
     <SolidColorBrush x:Key="ErrorListSelectedBackground" Color="#BF3000" />
     <SolidColorBrush x:Key="ErrorListGridLine" Color="#CCCCCC" />
+    <SolidColorBrush x:Key="ErrorListFilterActiveBackground" Color="#D0D0D0" />
+    <SolidColorBrush x:Key="ErrorListFilterInactiveBackground" Color="#E8E8E8" />
+    <SolidColorBrush x:Key="ErrorListFixLinkForeground" Color="#0066CC" />
 
     <!-- AI Chat panel -->
     <SolidColorBrush x:Key="AiChatBackground" Color="#FFFFFF" />

@@ -2191,6 +2191,7 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
     {
         var diagnostics = await _roslynService.GetDiagnosticsAsync(filePath, cancellationToken).ConfigureAwait(false);
         var entries = new List<DiagnosticEntry>();
+        var diagDetails = new List<(DiagnosticEntry Entry, string Category)>();
         foreach (var diag in diagnostics)
         {
             if (diag.Severity == DiagnosticSeverity.Hidden)
@@ -2199,7 +2200,9 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
             }
 
             var span = diag.Location.SourceSpan;
-            entries.Add(new DiagnosticEntry(span.Start, span.End, diag.Severity, diag.GetMessage(), diag.Id));
+            var entry = new DiagnosticEntry(span.Start, span.End, diag.Severity, diag.GetMessage(), diag.Id);
+            entries.Add(entry);
+            diagDetails.Add((entry, diag.Descriptor.Category));
         }
 
         var document = _roslynService.GetDocument(filePath);
@@ -2207,9 +2210,11 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
             ? await document.GetTextAsync(cancellationToken).ConfigureAwait(false)
             : null;
 
+        string projectName = document?.Project.Name ?? "";
+
         var items = new List<DiagnosticItem>();
         var fileName = Path.GetFileName(filePath);
-        foreach (var entry in entries)
+        foreach (var (entry, category) in diagDetails)
         {
             var line = 0;
             var column = 0;
@@ -2223,7 +2228,8 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
             items.Add(new DiagnosticItem(
                 entry.Severity, entry.Id, entry.Message,
                 fileName, line, column,
-                entry.Start, entry.End, filePath));
+                entry.Start, entry.End, filePath,
+                category, projectName));
         }
 
         return (entries, items);
@@ -2270,6 +2276,49 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
             _editor.CaretOffset = offset;
             _editor.ScrollToLine(item.Line);
             _editor.TextArea.Focus();
+        }
+    }
+
+    /// <summary>
+    /// Finds available code fixes for the given diagnostic, applies the first one,
+    /// and updates the editor. If multiple fixes are available, applies the first.
+    /// </summary>
+    public async Task ApplyDiagnosticFixAsync(DiagnosticItem item)
+    {
+        ArgumentNullException.ThrowIfNull(item);
+
+        if (_editor is null || string.IsNullOrWhiteSpace(item.FilePath))
+        {
+            return;
+        }
+
+        // Navigate to the diagnostic first so the correct file is active
+        NavigateToDiagnostic(item);
+
+        try
+        {
+            IReadOnlyList<CodeActionItem> fixes = await _codeActionService
+                .GetCodeFixesForDiagnosticAsync(item.FilePath, item.StartOffset, item.Code)
+                .ConfigureAwait(true);
+
+            if (fixes.Count == 0)
+            {
+                return;
+            }
+
+            // Apply the first available fix
+            SolutionEditResult? multiResult = await _codeActionService
+                .ApplyCodeActionMultiFileAsync(item.FilePath, fixes[0].Action)
+                .ConfigureAwait(true);
+
+            if (multiResult is not null)
+            {
+                ApplySolutionEdits(multiResult);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // Ignored
         }
     }
 
