@@ -133,7 +133,10 @@ internal sealed class RoslynWorkspaceService : IDisposable
     }
 
     /// <summary>
-    /// Removes a document from the workspace.
+    /// Removes a document from the workspace tracking.
+    /// For <c>MSBuildWorkspace</c>, the document may still exist in the loaded
+    /// solution because SDK-style projects use implicit glob includes that
+    /// cannot be modified via <see cref="Workspace.TryApplyChanges"/>.
     /// </summary>
     public async Task CloseDocumentAsync(string filePath, CancellationToken cancellationToken = default)
     {
@@ -146,6 +149,12 @@ internal sealed class RoslynWorkspaceService : IDisposable
         try
         {
             _workspace.TryApplyChanges(_workspace.CurrentSolution.RemoveDocument(documentId));
+        }
+        catch (AggregateException)
+        {
+            // MSBuildWorkspace throws when removing documents from SDK-style
+            // projects whose items originate in imported SDK targets.
+            // The document is already removed from _documentIds tracking.
         }
         finally
         {
