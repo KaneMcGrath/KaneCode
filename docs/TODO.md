@@ -49,9 +49,9 @@
 
 #### 2.1 Move to Higher-Fidelity MSBuild/Roslyn Workspace
 
-- [ ] Evaluate replacing `AdhocWorkspace` + manual loading with `MSBuildWorkspace` for project/solution open
-- [ ] If `MSBuildWorkspace` is adopted, wire it into `RoslynWorkspaceService` as the backing workspace
-- [ ] If `MSBuildWorkspace` is not viable, enhance `MSBuildProjectLoader` to use design-time build outputs for references and source files
+- [x] Evaluate replacing `AdhocWorkspace` + manual loading with `MSBuildWorkspace` for project/solution open
+- [x] If `MSBuildWorkspace` is adopted, wire it into `RoslynWorkspaceService` as the backing workspace
+- [x] If `MSBuildWorkspace` is not viable, enhance `MSBuildProjectLoader` to use design-time build outputs for references and source files
 
 #### 2.2 Load Analyzer References
 

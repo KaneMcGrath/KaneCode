@@ -2,6 +2,7 @@ using Microsoft.Build.Evaluation;
 using Microsoft.Build.Locator;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
+using Microsoft.CodeAnalysis.MSBuild;
 using System.Collections.Immutable;
 using System.IO;
 
@@ -59,6 +60,8 @@ internal static class MSBuildProjectLoader
 
     /// <summary>
     /// Loads a .sln file, discovers all C# projects, and loads them into the workspace.
+    /// Attempts high-fidelity loading via <c>MSBuildWorkspace</c> first, then falls back
+    /// to manual MSBuild evaluation if that fails.
     /// </summary>
     /// <returns>Information about the loaded solution.</returns>
     public static async Task<LoadedSolutionInfo> LoadSolutionAsync(string solutionPath, RoslynWorkspaceService workspaceService, CancellationToken cancellationToken = default)
@@ -68,6 +71,84 @@ internal static class MSBuildProjectLoader
 
         EnsureMSBuildRegistered();
 
+        try
+        {
+            return await LoadSolutionWithMSBuildWorkspaceAsync(solutionPath, workspaceService, cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            System.Diagnostics.Debug.WriteLine(
+                $"MSBuildWorkspace solution load failed, falling back to manual loading: {ex.Message}");
+            return await LoadSolutionManuallyAsync(solutionPath, workspaceService, cancellationToken).ConfigureAwait(false);
+        }
+    }
+
+    /// <summary>
+    /// Loads a solution using <c>MSBuildWorkspace</c> for full-fidelity project loading.
+    /// </summary>
+    private static async Task<LoadedSolutionInfo> LoadSolutionWithMSBuildWorkspaceAsync(
+        string solutionPath, RoslynWorkspaceService workspaceService, CancellationToken cancellationToken)
+    {
+        MSBuildWorkspace msbuildWorkspace = MSBuildWorkspace.Create();
+        try
+        {
+            Microsoft.CodeAnalysis.Solution solution = await msbuildWorkspace.OpenSolutionAsync(solutionPath, cancellationToken: cancellationToken).ConfigureAwait(false);
+
+            foreach (WorkspaceDiagnostic diagnostic in msbuildWorkspace.Diagnostics)
+            {
+                System.Diagnostics.Debug.WriteLine(
+                    $"MSBuildWorkspace [{diagnostic.Kind}]: {diagnostic.Message}");
+            }
+
+            await workspaceService.ReplaceWithWorkspaceAsync(msbuildWorkspace, cancellationToken).ConfigureAwait(false);
+
+            List<LoadedProjectInfo> loadedProjects = [];
+            foreach (Microsoft.CodeAnalysis.Project project in solution.Projects)
+            {
+                if (project.Language != LanguageNames.CSharp)
+                {
+                    continue;
+                }
+
+                string targetFramework = "";
+                ImmutableArray<string> sourceFiles = project.Documents
+                    .Where(d => !string.IsNullOrEmpty(d.FilePath))
+                    .Select(d => d.FilePath!)
+                    .ToImmutableArray();
+
+                ImmutableArray<string> projectReferencePaths = project.ProjectReferences
+                    .Select(pr => solution.GetProject(pr.ProjectId)?.FilePath)
+                    .Where(p => !string.IsNullOrEmpty(p))
+                    .Select(p => p!)
+                    .ToImmutableArray();
+
+                loadedProjects.Add(new LoadedProjectInfo(
+                    project.FilePath ?? project.Name,
+                    project.Name,
+                    targetFramework,
+                    project.Id,
+                    sourceFiles,
+                    projectReferencePaths));
+            }
+
+            return new LoadedSolutionInfo(
+                solutionPath,
+                Path.GetFileNameWithoutExtension(solutionPath),
+                loadedProjects.ToImmutableArray());
+        }
+        catch
+        {
+            // On failure, dispose the workspace we just created so the caller can retry
+            msbuildWorkspace.Dispose();
+            throw;
+        }
+    }
+
+    /// <summary>
+    /// Fallback: loads a .sln file using manual MSBuild evaluation.
+    /// </summary>
+    private static async Task<LoadedSolutionInfo> LoadSolutionManuallyAsync(string solutionPath, RoslynWorkspaceService workspaceService, CancellationToken cancellationToken)
+    {
         var solutionDir = Path.GetDirectoryName(solutionPath)!;
         var projectPaths = ParseSolutionProjectPaths(solutionPath, solutionDir);
         var loadedProjects = new List<LoadedProjectInfo>();
@@ -117,6 +198,8 @@ internal static class MSBuildProjectLoader
 
     /// <summary>
     /// Loads a single .csproj file into the workspace.
+    /// Attempts high-fidelity loading via <c>MSBuildWorkspace</c> first, then falls back
+    /// to manual MSBuild evaluation if that fails.
     /// </summary>
     public static async Task<LoadedProjectInfo?> LoadProjectAsync(string projectPath, RoslynWorkspaceService workspaceService, CancellationToken cancellationToken = default)
     {
@@ -125,6 +208,69 @@ internal static class MSBuildProjectLoader
 
         EnsureMSBuildRegistered();
 
+        try
+        {
+            return await LoadProjectWithMSBuildWorkspaceAsync(projectPath, workspaceService, cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            System.Diagnostics.Debug.WriteLine(
+                $"MSBuildWorkspace project load failed, falling back to manual loading: {ex.Message}");
+            return await LoadProjectManuallyAsync(projectPath, workspaceService, cancellationToken).ConfigureAwait(false);
+        }
+    }
+
+    /// <summary>
+    /// Loads a project using <c>MSBuildWorkspace</c> for full-fidelity project loading.
+    /// </summary>
+    private static async Task<LoadedProjectInfo?> LoadProjectWithMSBuildWorkspaceAsync(
+        string projectPath, RoslynWorkspaceService workspaceService, CancellationToken cancellationToken)
+    {
+        MSBuildWorkspace msbuildWorkspace = MSBuildWorkspace.Create();
+        try
+        {
+            Microsoft.CodeAnalysis.Project project = await msbuildWorkspace.OpenProjectAsync(projectPath, cancellationToken: cancellationToken).ConfigureAwait(false);
+
+            foreach (WorkspaceDiagnostic diagnostic in msbuildWorkspace.Diagnostics)
+            {
+                System.Diagnostics.Debug.WriteLine(
+                    $"MSBuildWorkspace [{diagnostic.Kind}]: {diagnostic.Message}");
+            }
+
+            await workspaceService.ReplaceWithWorkspaceAsync(msbuildWorkspace, cancellationToken).ConfigureAwait(false);
+
+            ImmutableArray<string> sourceFiles = project.Documents
+                .Where(d => !string.IsNullOrEmpty(d.FilePath))
+                .Select(d => d.FilePath!)
+                .ToImmutableArray();
+
+            Microsoft.CodeAnalysis.Solution solution = msbuildWorkspace.CurrentSolution;
+            ImmutableArray<string> projectReferencePaths = project.ProjectReferences
+                .Select(pr => solution.GetProject(pr.ProjectId)?.FilePath)
+                .Where(p => !string.IsNullOrEmpty(p))
+                .Select(p => p!)
+                .ToImmutableArray();
+
+            return new LoadedProjectInfo(
+                project.FilePath ?? projectPath,
+                project.Name,
+                "",
+                project.Id,
+                sourceFiles,
+                projectReferencePaths);
+        }
+        catch
+        {
+            msbuildWorkspace.Dispose();
+            throw;
+        }
+    }
+
+    /// <summary>
+    /// Fallback: loads a single .csproj file using manual MSBuild evaluation.
+    /// </summary>
+    private static async Task<LoadedProjectInfo?> LoadProjectManuallyAsync(string projectPath, RoslynWorkspaceService workspaceService, CancellationToken cancellationToken = default)
+    {
         await workspaceService.ClearWorkspaceAsync(cancellationToken).ConfigureAwait(false);
 
         try

@@ -13,7 +13,8 @@ namespace KaneCode.Services;
 /// </summary>
 internal sealed class RoslynWorkspaceService : IDisposable
 {
-    private readonly AdhocWorkspace _workspace;
+    private readonly MefHostServices _hostServices;
+    private Workspace _workspace;
     private readonly SemaphoreSlim _workspaceLock = new(1, 1);
     private ProjectId _projectId;
     private readonly ConcurrentDictionary<string, DocumentId> _documentIds = new(StringComparer.OrdinalIgnoreCase);
@@ -22,8 +23,8 @@ internal sealed class RoslynWorkspaceService : IDisposable
 
     public RoslynWorkspaceService()
     {
-        var host = MefHostServices.Create(MefHostServices.DefaultAssemblies);
-        _workspace = new AdhocWorkspace(host);
+        _hostServices = MefHostServices.Create(MefHostServices.DefaultAssemblies);
+        _workspace = new AdhocWorkspace(_hostServices);
 
         InitializeDefaultProject();
     }
@@ -42,7 +43,7 @@ internal sealed class RoslynWorkspaceService : IDisposable
             parseOptions: new CSharpParseOptions(LanguageVersion.Latest),
             metadataReferences: GetDefaultReferences());
 
-        _workspace.AddProject(projectInfo);
+        _workspace.TryApplyChanges(_workspace.CurrentSolution.AddProject(projectInfo));
     }
 
     /// <summary>
@@ -252,17 +253,61 @@ internal sealed class RoslynWorkspaceService : IDisposable
         await _workspaceLock.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            var solution = _workspace.CurrentSolution;
-            foreach (var projectId in solution.ProjectIds)
-            {
-                solution = solution.RemoveProject(projectId);
-            }
-
-            _workspace.TryApplyChanges(solution);
+            _workspace.Dispose();
+            _workspace = new AdhocWorkspace(_hostServices);
             _documentIds.Clear();
             _projectIds.Clear();
 
             InitializeDefaultProject();
+        }
+        finally
+        {
+            _workspaceLock.Release();
+        }
+    }
+
+    /// <summary>
+    /// Replaces the backing workspace with an <c>MSBuildWorkspace</c> (or any pre-populated workspace)
+    /// and rebuilds the internal document/project tracking dictionaries from its solution.
+    /// The caller is responsible for having already loaded projects into <paramref name="newWorkspace"/>.
+    /// </summary>
+    internal async Task ReplaceWithWorkspaceAsync(Workspace newWorkspace, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(newWorkspace);
+
+        await _workspaceLock.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            _workspace.Dispose();
+            _workspace = newWorkspace;
+            _documentIds.Clear();
+            _projectIds.Clear();
+
+            // Rebuild tracking dictionaries from the loaded solution
+            Solution solution = newWorkspace.CurrentSolution;
+            bool firstProject = true;
+            foreach (Project project in solution.Projects)
+            {
+                if (!string.IsNullOrEmpty(project.Name))
+                {
+                    _projectIds[project.Name] = project.Id;
+                }
+
+                // Use the first project as the default target for loose file opens
+                if (firstProject)
+                {
+                    _projectId = project.Id;
+                    firstProject = false;
+                }
+
+                foreach (Document document in project.Documents)
+                {
+                    if (!string.IsNullOrEmpty(document.FilePath))
+                    {
+                        _documentIds[document.FilePath] = document.Id;
+                    }
+                }
+            }
         }
         finally
         {
