@@ -151,4 +151,13 @@ internal static class ThemeResourceKeys
     public const string AiChatToolCallForeground = nameof(AiChatToolCallForeground);
     public const string AiChatToolCallSuccessForeground = nameof(AiChatToolCallSuccessForeground);
     public const string AiChatToolCallErrorForeground = nameof(AiChatToolCallErrorForeground);
+
+    // Inline rename
+    public const string RenameHighlightBackground = nameof(RenameHighlightBackground);
+    public const string RenameHighlightBorder = nameof(RenameHighlightBorder);
+    public const string RenameActiveBackground = nameof(RenameActiveBackground);
+    public const string RenameActiveBorder = nameof(RenameActiveBorder);
+    public const string RenamePreviewBackground = nameof(RenamePreviewBackground);
+    public const string RenamePreviewForeground = nameof(RenamePreviewForeground);
+    public const string RenamePreviewBorder = nameof(RenamePreviewBorder);
 }

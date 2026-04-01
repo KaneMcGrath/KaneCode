@@ -111,8 +111,8 @@
 
 #### 3.6 Inline Rename UI
 
-- [ ] Add an inline rename experience (highlight all occurrences, type-to-rename) instead of a dialog/prompt
-- [ ] Show a preview of affected files/locations before committing the rename
+- [x] Add an inline rename experience (highlight all occurrences, type-to-rename) instead of a dialog/prompt
+- [x] Show a preview of affected files/locations before committing the rename
 
 #### 3.7 Navigation Enhancements
 

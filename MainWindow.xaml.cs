@@ -42,6 +42,7 @@ public partial class MainWindow : Window
     private readonly PresentationLineHighlightRenderer _presentationLineHighlightRenderer = new();
     private Popup? _quickInfoPopup;
     private bool _isQuickInfoPinned;
+    private Popup? _renamePreviewPopup;
 
     public MainWindow()
     {
@@ -79,6 +80,7 @@ public partial class MainWindow : Window
 
         _viewModel.PropertyChanged += OnViewModelPropertyChanged;
         _viewModel.CodeActionsReady += OnCodeActionsReady;
+        _viewModel.InlineRenameRequested += OnInlineRenameRequested;
 
         // Ctrl+Click triggers Go to Definition
         CodeEditor.PreviewMouseLeftButtonUp += CodeEditor_PreviewMouseLeftButtonUp;
@@ -108,6 +110,8 @@ public partial class MainWindow : Window
     {
         _viewModel.PropertyChanged -= OnViewModelPropertyChanged;
         _viewModel.CodeActionsReady -= OnCodeActionsReady;
+        _viewModel.InlineRenameRequested -= OnInlineRenameRequested;
+        CloseRenamePreviewPopup();
         HotkeyManager.BindingsChanged -= ApplyHotkeyBindings;
         _themeManager.ThemeChanged -= _viewModel.OnThemeChanged;
         CodeEditor.TextArea.TextView.MouseHover -= TextView_MouseHover;
@@ -824,6 +828,135 @@ public partial class MainWindow : Window
         }
 
         _isQuickInfoPinned = false;
+    }
+
+    // ── Inline Rename ──────────────────────────────────────────────────
+
+    private void OnInlineRenameRequested(InlineRenameSession session)
+    {
+        // Subscribe to preview data for the affected-files popup
+        session.PreviewReady += OnRenamePreviewReady;
+        session.Cancelled += OnRenameSessionEnded;
+        session.Committed += OnRenameSessionCommitted;
+    }
+
+    private void OnRenamePreviewReady(object? sender, IReadOnlyList<RenamePreviewItem> items)
+    {
+        if (items.Count <= 1)
+        {
+            // Single-file rename: no preview needed
+            return;
+        }
+
+        ShowRenamePreviewPopup(items);
+    }
+
+    private void OnRenameSessionCommitted(object? sender, InlineRenameCommitArgs args)
+    {
+        CleanupRenameSessionHandlers(sender as InlineRenameSession);
+        CloseRenamePreviewPopup();
+        CodeEditor.TextArea.Focus();
+    }
+
+    private void OnRenameSessionEnded(object? sender, EventArgs e)
+    {
+        CleanupRenameSessionHandlers(sender as InlineRenameSession);
+        CloseRenamePreviewPopup();
+        CodeEditor.TextArea.Focus();
+    }
+
+    private static void CleanupRenameSessionHandlers(InlineRenameSession? session)
+    {
+        if (session is null)
+        {
+            return;
+        }
+
+        session.PreviewReady -= null; // detach is best-effort; session is being disposed
+    }
+
+    /// <summary>
+    /// Shows a small popup near the editor caret listing the files that will be affected by the rename.
+    /// </summary>
+    private void ShowRenamePreviewPopup(IReadOnlyList<RenamePreviewItem> items)
+    {
+        CloseRenamePreviewPopup();
+
+        var panel = new StackPanel { Margin = new Thickness(8) };
+
+        var header = new TextBlock
+        {
+            Text = $"Rename will affect {items.Count} file(s):",
+            FontWeight = FontWeights.SemiBold,
+            Margin = new Thickness(0, 0, 0, 6)
+        };
+        panel.Children.Add(header);
+
+        foreach (RenamePreviewItem item in items)
+        {
+            var line = new TextBlock
+            {
+                Text = $"  {item.FileName}  ({item.OccurrenceCount} occurrence{(item.OccurrenceCount != 1 ? "s" : "")})",
+                Margin = new Thickness(0, 1, 0, 1)
+            };
+            panel.Children.Add(line);
+        }
+
+        Brush? bg = Application.Current.TryFindResource(ThemeResourceKeys.RenamePreviewBackground) as Brush;
+        Brush? fg = Application.Current.TryFindResource(ThemeResourceKeys.RenamePreviewForeground) as Brush;
+        Brush? border = Application.Current.TryFindResource(ThemeResourceKeys.RenamePreviewBorder) as Brush;
+
+        if (fg is not null)
+        {
+            header.Foreground = fg;
+            foreach (var child in panel.Children.OfType<TextBlock>())
+            {
+                child.Foreground = fg;
+            }
+        }
+
+        var container = new Border
+        {
+            Child = panel,
+            Background = bg ?? Brushes.White,
+            BorderBrush = border ?? Brushes.Gray,
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(4),
+            Effect = new System.Windows.Media.Effects.DropShadowEffect
+            {
+                BlurRadius = 6,
+                ShadowDepth = 2,
+                Opacity = 0.3
+            }
+        };
+
+        // Position near the caret
+        var caretPos = CodeEditor.TextArea.TextView.GetVisualPosition(
+            CodeEditor.TextArea.Caret.Position,
+            ICSharpCode.AvalonEdit.Rendering.VisualYPosition.LineBottom);
+        var screenPoint = CodeEditor.TextArea.TextView.PointToScreen(caretPos);
+        var windowPoint = PointFromScreen(screenPoint);
+
+        _renamePreviewPopup = new Popup
+        {
+            Child = container,
+            Placement = PlacementMode.Relative,
+            PlacementTarget = this,
+            HorizontalOffset = windowPoint.X,
+            VerticalOffset = windowPoint.Y + 24,
+            AllowsTransparency = true,
+            StaysOpen = true,
+            IsOpen = true
+        };
+    }
+
+    private void CloseRenamePreviewPopup()
+    {
+        if (_renamePreviewPopup is not null)
+        {
+            _renamePreviewPopup.IsOpen = false;
+            _renamePreviewPopup = null;
+        }
     }
 
     private async void FileMenu_NewProject_Click(object sender, RoutedEventArgs e)

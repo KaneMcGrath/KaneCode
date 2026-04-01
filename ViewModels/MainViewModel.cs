@@ -57,6 +57,7 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
     private CancellationTokenSource? _signatureHelpCts;
     private CancellationTokenSource? _codeActionsCts;
     private CancellationTokenSource? _renameCts;
+    private InlineRenameSession? _inlineRenameSession;
     private CancellationTokenSource? _lightBulbCts;
     private int _lightBulbLastLine;
     private CancellationTokenSource? _loadCts;
@@ -2818,7 +2819,14 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
     public event Action<IReadOnlyList<Models.CodeActionItem>>? CodeActionsReady;
 
     /// <summary>
-    /// Prompts the user for a new name and renames the symbol at the caret across the solution.
+    /// Raised when an inline rename session is started.
+    /// The MainWindow subscribes to wire up the preview panel.
+    /// </summary>
+    public event Action<InlineRenameSession>? InlineRenameRequested;
+
+    /// <summary>
+    /// Starts an inline rename session at the caret position. The adorner is shown
+    /// by the MainWindow through the <see cref="InlineRenameRequested"/> event.
     /// </summary>
     public async Task RenameSymbolAsync()
     {
@@ -2827,45 +2835,84 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
             return;
         }
 
+        // Cancel any previous session
+        _inlineRenameSession?.Dispose();
+        _inlineRenameSession = null;
+
         _renameCts?.Cancel();
         _renameCts?.Dispose();
         _renameCts = new CancellationTokenSource();
-        var ct = _renameCts.Token;
+        CancellationToken ct = _renameCts.Token;
 
         try
         {
-            var caretOffset = _editor.CaretOffset;
-            await _roslynService.UpdateDocumentTextAsync(ActiveTab.FilePath, _editor.Text, ct).ConfigureAwait(true);
+            int caretOffset = _editor.CaretOffset;
 
-            var symbolInfo = await _refactoringService
-                .GetSymbolNameAtPositionAsync(ActiveTab.FilePath, caretOffset, ct)
-                .ConfigureAwait(true);
+            InlineRenameSession session = new(
+                _editor, _refactoringService, _roslynService,
+                ActiveTab.FilePath, caretOffset);
 
-            if (symbolInfo is null)
-            {
-                return;
-            }
+            session.Committed += OnInlineRenameCommitted;
+            session.Cancelled += OnInlineRenameCancelled;
 
-            var newName = PromptForNewName(symbolInfo.Name);
-            if (string.IsNullOrWhiteSpace(newName) || newName == symbolInfo.Name)
-            {
-                return;
-            }
+            _inlineRenameSession = session;
+            InlineRenameRequested?.Invoke(session);
 
-            var result = await _refactoringService
-                .RenameSymbolAsync(ActiveTab.FilePath, caretOffset, newName, ct)
-                .ConfigureAwait(true);
-
-            if (result is null)
-            {
-                return;
-            }
-
-            ApplySolutionEdits(result);
+            await session.StartAsync(ct).ConfigureAwait(true);
         }
         catch (OperationCanceledException)
         {
             // Superseded by a newer request
+        }
+    }
+
+    /// <summary>
+    /// Commits the Roslyn rename after the inline session is completed.
+    /// </summary>
+    private async void OnInlineRenameCommitted(object? sender, InlineRenameCommitArgs args)
+    {
+        _renameCts?.Cancel();
+        _renameCts?.Dispose();
+        _renameCts = new CancellationTokenSource();
+        CancellationToken ct = _renameCts.Token;
+
+        try
+        {
+            // Sync the original document text before applying the rename
+            await _roslynService.UpdateDocumentTextAsync(args.FilePath, _editor!.Text, ct).ConfigureAwait(true);
+
+            SolutionEditResult? result = await _refactoringService
+                .RenameSymbolAsync(args.FilePath, args.CaretOffset, args.NewName, ct)
+                .ConfigureAwait(true);
+
+            if (result is not null)
+            {
+                ApplySolutionEdits(result);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // Superseded
+        }
+        finally
+        {
+            CleanupRenameSession();
+        }
+    }
+
+    private void OnInlineRenameCancelled(object? sender, EventArgs e)
+    {
+        CleanupRenameSession();
+    }
+
+    private void CleanupRenameSession()
+    {
+        if (_inlineRenameSession is not null)
+        {
+            _inlineRenameSession.Committed -= OnInlineRenameCommitted;
+            _inlineRenameSession.Cancelled -= OnInlineRenameCancelled;
+            _inlineRenameSession.Dispose();
+            _inlineRenameSession = null;
         }
     }
 
@@ -3049,73 +3096,6 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
             Debug.WriteLine($"[ApplySolutionEdits] Access denied writing file '{filePath}': {ex.Message}");
             return false;
         }
-    }
-
-    private static string? PromptForNewName(string currentName)
-    {
-        var inputWindow = new System.Windows.Window
-        {
-            Title = "Rename Symbol",
-            Width = 350,
-            Height = 150,
-            WindowStartupLocation = System.Windows.WindowStartupLocation.CenterOwner,
-            ResizeMode = System.Windows.ResizeMode.NoResize,
-            Owner = System.Windows.Application.Current.MainWindow
-        };
-
-        string? result = null;
-        var panel = new System.Windows.Controls.StackPanel { Margin = new System.Windows.Thickness(12) };
-
-        var label = new System.Windows.Controls.TextBlock
-        {
-            Text = "New name:",
-            Margin = new System.Windows.Thickness(0, 0, 0, 6)
-        };
-        panel.Children.Add(label);
-
-        var textBox = new System.Windows.Controls.TextBox
-        {
-            Text = currentName,
-            Margin = new System.Windows.Thickness(0, 0, 0, 12)
-        };
-        textBox.SelectAll();
-        panel.Children.Add(textBox);
-
-        var buttonPanel = new System.Windows.Controls.StackPanel
-        {
-            Orientation = System.Windows.Controls.Orientation.Horizontal,
-            HorizontalAlignment = System.Windows.HorizontalAlignment.Right
-        };
-
-        var okButton = new System.Windows.Controls.Button
-        {
-            Content = "OK",
-            Width = 75,
-            Margin = new System.Windows.Thickness(0, 0, 8, 0),
-            IsDefault = true
-        };
-        okButton.Click += (_, _) =>
-        {
-            result = textBox.Text;
-            inputWindow.DialogResult = true;
-        };
-        buttonPanel.Children.Add(okButton);
-
-        var cancelButton = new System.Windows.Controls.Button
-        {
-            Content = "Cancel",
-            Width = 75,
-            IsCancel = true
-        };
-        buttonPanel.Children.Add(cancelButton);
-
-        panel.Children.Add(buttonPanel);
-        inputWindow.Content = panel;
-
-        textBox.Loaded += (_, _) => textBox.Focus();
-
-        inputWindow.ShowDialog();
-        return result;
     }
 
     private bool CanExtractMethod()
@@ -3940,6 +3920,7 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
         _lightBulbCts?.Dispose();
         _renameCts?.Cancel();
         _renameCts?.Dispose();
+        _inlineRenameSession?.Dispose();
         _roslynService.Dispose();
     }
 }

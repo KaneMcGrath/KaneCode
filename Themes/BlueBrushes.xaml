@@ -187,6 +187,15 @@
     <SolidColorBrush x:Key="AiChatToolCallSuccessForeground" Color="#16A085" />
     <SolidColorBrush x:Key="AiChatToolCallErrorForeground" Color="#C0392B" />
 
+    <!-- Inline rename -->
+    <SolidColorBrush x:Key="RenameHighlightBackground" Color="#C5E1F5" />
+    <SolidColorBrush x:Key="RenameHighlightBorder" Color="#5B9BD5" />
+    <SolidColorBrush x:Key="RenameActiveBackground" Color="#D4E9F7" />
+    <SolidColorBrush x:Key="RenameActiveBorder" Color="#2A6496" />
+    <SolidColorBrush x:Key="RenamePreviewBackground" Color="#F0F4F8" />
+    <SolidColorBrush x:Key="RenamePreviewForeground" Color="#2C3E50" />
+    <SolidColorBrush x:Key="RenamePreviewBorder" Color="#B0C4DE" />
+
     <!-- ═══════════════════════════════════════════════════════════
          Theme.WPF colour tokens (Light palette, MIT licence).
          Consumed by ControlColours.xaml and ControlStyles.xaml.
