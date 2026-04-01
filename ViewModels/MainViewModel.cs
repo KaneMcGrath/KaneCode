@@ -2,6 +2,7 @@ using ICSharpCode.AvalonEdit;
 using ICSharpCode.AvalonEdit.CodeCompletion;
 using ICSharpCode.AvalonEdit.Highlighting;
 using ICSharpCode.AvalonEdit.Search;
+using KaneCode.Controls;
 using KaneCode.Infrastructure;
 using KaneCode.Models;
 using KaneCode.Services;
@@ -45,6 +46,7 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
     private RoslynClassificationColorizer? _classificationColorizer;
     private RoslynDiagnosticRenderer? _diagnosticRenderer;
     private GitGutterChangeRenderer? _gitGutterRenderer;
+    private LightBulbMargin? _lightBulbMargin;
     private SearchPanel? _searchPanel;
     private CompletionWindow? _completionWindow;
     private OverloadInsightWindow? _insightWindow;
@@ -55,6 +57,8 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
     private CancellationTokenSource? _signatureHelpCts;
     private CancellationTokenSource? _codeActionsCts;
     private CancellationTokenSource? _renameCts;
+    private CancellationTokenSource? _lightBulbCts;
+    private int _lightBulbLastLine;
     private CancellationTokenSource? _loadCts;
     private FileSystemWatcher? _explorerWatcher;
     private FileSystemWatcher? _projectFileWatcher;
@@ -364,6 +368,10 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
 
         _gitGutterRenderer = new GitGutterChangeRenderer();
         _editor.TextArea.TextView.BackgroundRenderers.Add(_gitGutterRenderer);
+
+        _lightBulbMargin = new LightBulbMargin();
+        _lightBulbMargin.GlyphClicked += OnLightBulbGlyphClicked;
+        _editor.TextArea.LeftMargins.Insert(0, _lightBulbMargin);
 
         _searchPanel = SearchPanel.Install(_editor.TextArea);
 
@@ -1465,6 +1473,8 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
             {
                 // Clear Roslyn overlays for non-C# files
                 _diagnosticRenderer?.UpdateDiagnostics([]);
+                _lightBulbMargin?.Hide();
+                _lightBulbLastLine = 0;
                 if (_classificationColorizer is not null)
                 {
                     _classificationColorizer.FilePath = null;
@@ -1882,16 +1892,96 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
 
     /// <summary>
     /// Handles caret position changes to update the active parameter highlight
-    /// when the signature help window is open.
+    /// when the signature help window is open, and to schedule lightbulb availability checks.
     /// </summary>
     private async void OnCaretPositionChanged(object? sender, EventArgs e)
     {
+        ScheduleLightBulbCheck();
+
         if (_insightWindow is null)
         {
             return;
         }
 
         await UpdateSignatureHelpAsync().ConfigureAwait(true);
+    }
+
+    /// <summary>
+    /// Schedules a background check for code action availability on the current caret line.
+    /// Hides the lightbulb immediately if the line changed, then probes asynchronously.
+    /// </summary>
+    private void ScheduleLightBulbCheck()
+    {
+        if (_editor is null || ActiveTab is null || !RoslynWorkspaceService.IsCSharpFile(ActiveTab.FilePath))
+        {
+            _lightBulbMargin?.Hide();
+            _lightBulbLastLine = 0;
+            return;
+        }
+
+        int currentLine = _editor.TextArea.Caret.Line;
+        if (currentLine == _lightBulbLastLine)
+        {
+            return;
+        }
+
+        _lightBulbLastLine = currentLine;
+        _lightBulbMargin?.Hide();
+
+        _lightBulbCts?.Cancel();
+        _lightBulbCts?.Dispose();
+        _lightBulbCts = new CancellationTokenSource();
+        CancellationToken ct = _lightBulbCts.Token;
+        string filePath = ActiveTab.FilePath;
+        string text = _editor.Text;
+        int caretOffset = _editor.CaretOffset;
+
+        _ = CheckLightBulbAsync(filePath, text, caretOffset, currentLine, ct);
+    }
+
+    private async Task CheckLightBulbAsync(
+        string filePath, string text, int caretOffset, int lineNumber, CancellationToken cancellationToken)
+    {
+        try
+        {
+            // Small delay to avoid excessive queries while the user is moving the caret rapidly
+            await Task.Delay(250, cancellationToken).ConfigureAwait(false);
+
+            await _roslynService.UpdateDocumentTextAsync(filePath, text, cancellationToken).ConfigureAwait(false);
+
+            IReadOnlyList<CodeActionItem> items = await _codeActionService
+                .GetCodeActionsAsync(filePath, caretOffset, cancellationToken)
+                .ConfigureAwait(false);
+
+            await Application.Current.Dispatcher.InvokeAsync(() =>
+            {
+                if (cancellationToken.IsCancellationRequested)
+                {
+                    return;
+                }
+
+                if (items.Count > 0)
+                {
+                    _lightBulbMargin?.ShowOnLine(lineNumber);
+                }
+                else
+                {
+                    _lightBulbMargin?.Hide();
+                }
+            });
+        }
+        catch (OperationCanceledException)
+        {
+            // Superseded by a newer caret movement
+        }
+    }
+
+    /// <summary>
+    /// Handles a click on the lightbulb margin glyph by triggering the code action popup.
+    /// </summary>
+    private async void OnLightBulbGlyphClicked(object? sender, EventArgs e)
+    {
+        await ShowCodeActionsAsync().ConfigureAwait(true);
     }
 
     /// <summary>
@@ -3846,6 +3936,8 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
         _signatureHelpCts?.Dispose();
         _codeActionsCts?.Cancel();
         _codeActionsCts?.Dispose();
+        _lightBulbCts?.Cancel();
+        _lightBulbCts?.Dispose();
         _renameCts?.Cancel();
         _renameCts?.Dispose();
         _roslynService.Dispose();

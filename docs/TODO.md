@@ -105,9 +105,9 @@
 
 #### 3.5 Automatic Lightbulb Improvements
 
-- [ ] Show the lightbulb glyph in the editor margin automatically when code actions are available for the current line
-- [ ] Position the lightbulb near diagnostics (not just at caret) for discoverability
-- [ ] Dismiss the lightbulb when moving to a line with no available actions
+- [x] Show the lightbulb glyph in the editor margin automatically when code actions are available for the current line
+- [x] Position the lightbulb near diagnostics (not just at caret) for discoverability
+- [x] Dismiss the lightbulb when moving to a line with no available actions
 
 #### 3.6 Inline Rename UI
 
