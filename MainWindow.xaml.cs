@@ -29,6 +29,11 @@ namespace KaneCode;
 public partial class MainWindow : Window
 {
     private readonly MainViewModel _viewModel = new();
+    private readonly ThemeManager _themeManager = new();
+
+    /// <summary>Exposes the theme manager for child controls that open the options dialog.</summary>
+    internal ThemeManager ThemeManagerInstance => _themeManager;
+
     private readonly TemplateEngineService _templateEngine = new();
     private readonly AiProviderRegistry _aiProviderRegistry = new();
     private readonly AgentToolRegistry _agentToolRegistry = new();
@@ -42,6 +47,21 @@ public partial class MainWindow : Window
     {
         InitializeComponent();
         DataContext = _viewModel;
+
+        // Fix maximize covering the taskbar when using custom WindowChrome
+        WindowMaximizeHelper.Attach(this);
+
+        // Wire up theme selector
+        ThemeSelector.ItemsSource = _themeManager.AvailableThemes;
+        ThemeSelector.SelectedItem = _themeManager.CurrentTheme;
+
+        // Apply the initial AvalonDock theme
+        DockManager.Theme = _themeManager.CurrentTheme.AvalonDockTheme;
+
+        // Notify ViewModel of theme changes so it can refresh the editor
+        _themeManager.ThemeChanged += _viewModel.OnThemeChanged;
+        _viewModel.ThemeManager = _themeManager;
+
         Loaded += OnLoaded;
         Closed += OnClosed;
         RegisterAiChatModes();
@@ -89,6 +109,7 @@ public partial class MainWindow : Window
         _viewModel.PropertyChanged -= OnViewModelPropertyChanged;
         _viewModel.CodeActionsReady -= OnCodeActionsReady;
         HotkeyManager.BindingsChanged -= ApplyHotkeyBindings;
+        _themeManager.ThemeChanged -= _viewModel.OnThemeChanged;
         CodeEditor.TextArea.TextView.MouseHover -= TextView_MouseHover;
         CodeEditor.TextArea.TextView.MouseHoverStopped -= TextView_MouseHoverStopped;
         CodeEditor.TextArea.TextView.VisualLinesChanged -= TextView_VisualLinesChanged;
@@ -386,8 +407,7 @@ public partial class MainWindow : Window
     /// </summary>
     private void UpdateMenuGestureText()
     {
-        var menuBar = (Menu)((DockPanel)Content).Children[0];
-        foreach (var topItem in menuBar.Items.OfType<MenuItem>())
+        foreach (var topItem in MainMenu.Items.OfType<MenuItem>())
         {
             UpdateMenuItemGestures(topItem);
         }
@@ -1395,4 +1415,21 @@ public partial class MainWindow : Window
     {
         _viewModel.RunCommand.Execute(null);
     }
+
+    private void OnThemeSelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (ThemeSelector.SelectedItem is not ThemeOption selected)
+            return;
+
+        _themeManager.CurrentTheme = selected;
+        DockManager.Theme = selected.AvalonDockTheme;
+    }
+
+    private void OnMinimizeClick(object sender, RoutedEventArgs e) => WindowState = WindowState.Minimized;
+
+    private void OnMaximizeClick(object sender, RoutedEventArgs e) => WindowState = WindowState.Maximized;
+
+    private void OnRestoreDownClick(object sender, RoutedEventArgs e) => WindowState = WindowState.Normal;
+
+    private void OnCloseClick(object sender, RoutedEventArgs e) => Close();
 }

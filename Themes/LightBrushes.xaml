@@ -1,9 +1,43 @@
 <ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:MLib_reskeys="clr-namespace:MLib.Themes;assembly=MLib">
 
-    <!-- Window / chrome -->
+    <!-- ═══════════════════════════════════════════════════════════
+         Window chrome (from ThemedWPFTemplate)
+         ═══════════════════════════════════════════════════════════ -->
+    <SolidColorBrush x:Key="WindowForeground" Color="Black" />
+    <SolidColorBrush x:Key="HeaderBackground" Color="#EEEEF2" />
+    <SolidColorBrush x:Key="WindowBorderBrush" Color="#9A9EB8" />
+    <SolidColorBrush x:Key="WindowInactiveBorderBrush" Color="#CBCDDA" />
+
+    <!-- System buttons (Minimize / Maximize / Close) -->
+    <SolidColorBrush x:Key="SystemButtonsForeground" Color="Black" />
+    <SolidColorBrush x:Key="SystemButtonsInactiveForeground" Color="#8F8F91" />
+    <SolidColorBrush x:Key="SystemButtonsMouseOverBackground" Color="#FCFCFD" />
+    <SolidColorBrush x:Key="SystemButtonsMousePressedForeground" Color="White" />
+    <SolidColorBrush x:Key="SystemButtonsMousePressedBackground" Color="#007ACC" />
+
+    <!-- Icons -->
+    <SolidColorBrush x:Key="IconBrush" Color="#865FC5" />
+    <SolidColorBrush x:Key="IconInactiveBrush" Color="#8F8F91" />
+
+    <!-- Title bar misc -->
+    <SolidColorBrush x:Key="ToolBarGripper" Color="#999999" />
+    <SolidColorBrush x:Key="ProjectNameForeground" Color="Black" />
+    <SolidColorBrush x:Key="ProjectNameInactiveForeground" Color="#929496" />
+    <SolidColorBrush x:Key="ProjectNameBackground" Color="#E0E3E6" />
+    <SolidColorBrush x:Key="ScrollViewerRectBackground" Color="#F5F5F5" />
+
+    <!-- MLib overrides -->
+    <SolidColorBrush x:Key="{ComponentResourceKey TypeInTargetAssembly={x:Type MLib_reskeys:ResourceKeys}, ResourceId=NormalBackgroundBrushKey}" Color="Transparent" />
+    <SolidColorBrush x:Key="{ComponentResourceKey TypeInTargetAssembly={x:Type MLib_reskeys:ResourceKeys}, ResourceId=TopLevelHeaderMenuBackgroundKey}" Color="Transparent" />
+
+    <!-- ═══════════════════════════════════════════════════════════
+         KaneCode application brushes
+         ═══════════════════════════════════════════════════════════ -->
+
+    <!-- Window (kept for existing XAML compatibility) -->
     <SolidColorBrush x:Key="WindowBackground" Color="#F3F3F3" />
-    <SolidColorBrush x:Key="WindowForeground" Color="#1E1E1E" />
 
     <!-- Menu -->
     <SolidColorBrush x:Key="MenuBackground" Color="#E8E8E8" />
@@ -29,7 +63,7 @@
     <SolidColorBrush x:Key="ControlSelectionForeground" Color="#FFFFFF" />
 
     <!-- Status bar -->
-    <SolidColorBrush x:Key="StatusBarBackground" Color="#BF3000" />
+    <SolidColorBrush x:Key="StatusBarBackground" Color="#007ACC" />
     <SolidColorBrush x:Key="StatusBarForeground" Color="#FFFFFF" />
 
     <!-- Side panels -->
@@ -153,10 +187,10 @@
     <SolidColorBrush x:Key="AiChatToolCallSuccessForeground" Color="#16A085" />
     <SolidColorBrush x:Key="AiChatToolCallErrorForeground" Color="#C0392B" />
 
-    <!-- ═══════════════════════════════════════════════════════════════
+    <!-- ═══════════════════════════════════════════════════════════
          Theme.WPF colour tokens (Light palette, MIT licence).
-         These are consumed by ControlColours.xaml and ControlStyles.xaml.
-         ═══════════════════════════════════════════════════════════════ -->
+         Consumed by ControlColours.xaml and ControlStyles.xaml.
+         ═══════════════════════════════════════════════════════════ -->
 
     <!-- Foreground / glyph colours -->
     <Color x:Key="AColour.Foreground.Static">#FF0F0F0F</Color>
@@ -258,7 +292,7 @@
     <Color x:Key="AColour.Tone8.Background.Disabled">#FF757575</Color>
     <Color x:Key="AColour.Tone8.Border.Disabled">#FF646464</Color>
 
-    <!-- ABrush shortcuts (referenced directly by Controls.xaml templates) -->
+    <!-- ABrush shortcuts -->
     <SolidColorBrush x:Key="ABrush.AccentTone1.Background.Static" Color="{StaticResource AColour.AccentTone1.Background.Static}"/>
     <SolidColorBrush x:Key="ABrush.AccentTone1.Border.Static" Color="{StaticResource AColour.AccentTone1.Border.Static}"/>
     <SolidColorBrush x:Key="ABrush.AccentTone2.Background.Static" Color="{StaticResource AColour.AccentTone2.Background.Static}"/>

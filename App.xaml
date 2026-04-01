@@ -6,6 +6,14 @@
     <Application.Resources>
         <ResourceDictionary>
             <ResourceDictionary.MergedDictionaries>
+                <!-- Index 0: MLib base theme (swapped at runtime by ThemeManager) -->
+                <ResourceDictionary Source="pack://application:,,,/MLib;component/Themes/DarkTheme.xaml" />
+
+                <!-- Index 1: App extended brushes (swapped at runtime by ThemeManager) -->
+                <ResourceDictionary Source="/KaneCode;component/Themes/DarkBrushes.xaml" />
+
+                <!-- Index 2+: Constant dictionaries (never swapped) -->
+                <ResourceDictionary Source="Themes/WindowStyles.xaml" />
                 <ResourceDictionary Source="Themes/ControlColours.xaml" />
                 <ResourceDictionary Source="Themes/MenuStyles.xaml" />
                 <ResourceDictionary Source="Themes/ControlStyles.xaml" />

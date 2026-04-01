@@ -39,6 +39,8 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
     internal BuildService BuildService => _buildService;
     /// <summary>Exposes the Roslyn workspace service for agent tool registration.</summary>
     internal RoslynWorkspaceService RoslynService => _roslynService;
+    /// <summary>Exposes the theme manager for OptionsWindow creation.</summary>
+    internal ThemeManager? ThemeManager { get; set; }
     private readonly TemplateService _templateService = new();
     private RoslynClassificationColorizer? _classificationColorizer;
     private RoslynDiagnosticRenderer? _diagnosticRenderer;
@@ -66,7 +68,6 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
 
     public MainViewModel()
     {
-        ThemeManager.ThemeChanged += OnThemeChanged;
         _completionProvider = new RoslynCompletionProvider(_roslynService);
         _navigationService = new RoslynNavigationService(_roslynService);
         _quickInfoService = new RoslynQuickInfoService(_roslynService);
@@ -1385,7 +1386,7 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
 
     private void OpenOptions()
     {
-        var optionsWindow = new OptionsWindow
+        var optionsWindow = new OptionsWindow(ThemeManager!)
         {
             Owner = Application.Current.MainWindow
         };
@@ -1807,7 +1808,7 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
         return result;
     }
 
-    private void OnThemeChanged(AppTheme _)
+    public void OnThemeChanged()
     {
         ApplyEditorTheme();
     }
@@ -3819,7 +3820,6 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
 
     public void Dispose()
     {
-        ThemeManager.ThemeChanged -= OnThemeChanged;
         _buildService.OutputReceived -= OnBuildOutputReceived;
         _buildService.ProcessExited -= OnBuildProcessExited;
         _buildService.Dispose();

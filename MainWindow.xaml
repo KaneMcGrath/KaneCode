@@ -9,12 +9,43 @@ xmlns:avalonEdit="http://icsharpcode.net/sharpdevelop/avalonedit"
 xmlns:avalonDock="https://github.com/Dirkster99/AvalonDock"
 mc:Ignorable="d"
 Title="{Binding WindowTitle}" Height="450" Width="800" WindowState="Maximized"
-Background="{DynamicResource WindowBackground}"
-Icon="Icons/KaneCode.ico">
-    <DockPanel>
-        <!-- Top Bar -->
-        <Menu DockPanel.Dock="Top"
-              Background="{DynamicResource MenuBackground}">
+SnapsToDevicePixels="True"
+Foreground="{DynamicResource WindowForeground}"
+Background="{DynamicResource HeaderBackground}"
+Icon="Icons/KaneCode.ico"
+WindowStyle="None"
+ResizeMode="CanResizeWithGrip">
+
+    <WindowChrome.WindowChrome>
+        <WindowChrome ResizeBorderThickness="8" CornerRadius="0"
+                      GlassFrameThickness="0" NonClientFrameEdges="None" />
+    </WindowChrome.WindowChrome>
+
+    <Window.Style>
+        <Style TargetType="{x:Type Window}">
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="BorderBrush" Value="{DynamicResource WindowBorderBrush}" />
+            <Style.Triggers>
+                <Trigger Property="IsActive" Value="False">
+                    <Setter Property="BorderBrush" Value="{DynamicResource WindowInactiveBorderBrush}" />
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+    </Window.Style>
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="23" />
+        </Grid.RowDefinitions>
+
+        <!-- Title bar area -->
+        <Grid Grid.Row="0">
+            <StackPanel Margin="8,4" Orientation="Horizontal" HorizontalAlignment="Left">
+                <!-- Menu bar -->
+                <Menu x:Name="MainMenu" Style="{DynamicResource MetroMenu}" VerticalAlignment="Center"
+                      WindowChrome.IsHitTestVisibleInChrome="True">
             <MenuItem Header="_File">
                 <MenuItem Header="_New" Command="{Binding NewFileCommand}" />
                 <MenuItem Header="New _Project..." Click="FileMenu_NewProject_Click" />
@@ -125,17 +156,43 @@ Icon="Icons/KaneCode.ico">
             </MenuItem>
         </Menu>
 
-        <!-- Status Bar -->
-        <StatusBar DockPanel.Dock="Bottom"
-                   Background="{DynamicResource StatusBarBackground}">
-            <StatusBarItem>
-                <TextBlock Text="{Binding StatusText}"
-                           Foreground="{DynamicResource StatusBarForeground}" />
-            </StatusBarItem>
-        </StatusBar>
+                <!-- Theme selector -->
+                <ComboBox x:Name="ThemeSelector"
+                          Margin="8,0,0,0"
+                          VerticalAlignment="Center"
+                          WindowChrome.IsHitTestVisibleInChrome="True"
+                          DisplayMemberPath="DisplayName"
+                          SelectionChanged="OnThemeSelectionChanged" />
+
+                <!-- Title text -->
+                <Border Background="{DynamicResource ProjectNameBackground}" Padding="8,0" Margin="14,0">
+                    <TextBlock Text="{Binding WindowTitle}" VerticalAlignment="Center" Padding="0,1,0,0">
+                        <TextBlock.Style>
+                            <Style TargetType="TextBlock">
+                                <Setter Property="Foreground" Value="{DynamicResource ProjectNameForeground}" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding IsActive, RelativeSource={RelativeSource FindAncestor, AncestorType={x:Type Window}}}" Value="False">
+                                        <Setter Property="Foreground" Value="{DynamicResource ProjectNameInactiveForeground}" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </TextBlock.Style>
+                    </TextBlock>
+                </Border>
+            </StackPanel>
+
+            <!-- Window chrome buttons -->
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right"
+                        WindowChrome.IsHitTestVisibleInChrome="True">
+                <Button Style="{StaticResource MinimizeButton}" Click="OnMinimizeClick" />
+                <Button Style="{StaticResource MaximizeButton}" Click="OnMaximizeClick" />
+                <Button Style="{StaticResource RestoreDownButton}" Click="OnRestoreDownClick" />
+                <Button Style="{StaticResource CloseButton}" Click="OnCloseClick" />
+            </StackPanel>
+        </Grid>
 
         <!-- AvalonDock DockingManager -->
-        <avalonDock:DockingManager x:Name="DockManager">
+        <avalonDock:DockingManager x:Name="DockManager" Grid.Row="1">
             <avalonDock:LayoutRoot>
                 <avalonDock:LayoutPanel Orientation="Horizontal">
 
@@ -454,5 +511,13 @@ Icon="Icons/KaneCode.ico">
                 </avalonDock:LayoutPanel>
             </avalonDock:LayoutRoot>
         </avalonDock:DockingManager>
-    </DockPanel>
+
+        <!-- Status bar -->
+        <Border Grid.Row="2" Background="{DynamicResource StatusBarBackground}">
+            <TextBlock Text="{Binding StatusText}" Margin="8,2"
+                       Foreground="{DynamicResource StatusBarForeground}"
+                       VerticalAlignment="Center" />
+        </Border>
+
+    </Grid>
 </Window>

@@ -18,9 +18,11 @@ public partial class OptionsWindow : Window
     private readonly HotkeySettingsViewModel _hotkeyViewModel = new();
     private readonly AiSettingsViewModel _aiSettingsViewModel = new();
     private readonly string? _initialCategory;
+    private readonly ThemeManager _themeManager;
 
-    public OptionsWindow(string? initialCategory = null)
+    public OptionsWindow(ThemeManager themeManager, string? initialCategory = null)
     {
+        _themeManager = themeManager;
         _initialCategory = initialCategory;
         InitializeComponent();
         Loaded += OnLoaded;
@@ -29,9 +31,10 @@ public partial class OptionsWindow : Window
     private void OnLoaded(object sender, RoutedEventArgs e)
     {
         // Set the theme combo to match the current theme
-        ThemeComboBox.SelectedIndex = ThemeManager.CurrentTheme switch
+        ThemeComboBox.SelectedIndex = _themeManager.CurrentTheme.DisplayName switch
         {
-            AppTheme.Light => 1,
+            "Light" => 1,
+            "Blue" => 2,
             _ => 0
         };
 
@@ -112,11 +115,15 @@ public partial class OptionsWindow : Window
 
         var theme = ThemeComboBox.SelectedIndex switch
         {
-            1 => AppTheme.Light,
-            _ => AppTheme.Dark
+            1 => _themeManager.AvailableThemes.FirstOrDefault(t => t.DisplayName == "Light"),
+            2 => _themeManager.AvailableThemes.FirstOrDefault(t => t.DisplayName == "Blue"),
+            _ => _themeManager.AvailableThemes.FirstOrDefault(t => t.DisplayName == "Dark")
         };
 
-        ThemeManager.ApplyTheme(theme);
+        if (theme is not null)
+        {
+            _themeManager.CurrentTheme = theme;
+        }
     }
 
     private void AssignKey_Click(object sender, RoutedEventArgs e)

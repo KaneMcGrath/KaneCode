@@ -1,6 +1,5 @@
 ﻿using KaneCode.Infrastructure;
 using KaneCode.Services;
-using KaneCode.Theming;
 using System.Windows;
 
 namespace KaneCode;
@@ -18,6 +17,5 @@ public partial class App : Application
         MSBuildProjectLoader.EnsureMSBuildRegistered();
 
         HotkeyManager.Initialize();
-        ThemeManager.ApplyTheme(AppTheme.Dark);
     }
 }

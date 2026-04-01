@@ -101,6 +101,7 @@
                           SelectionChanged="ThemeComboBox_SelectionChanged">
                     <ComboBoxItem Content="Dark" />
                     <ComboBoxItem Content="Light" />
+                    <ComboBoxItem Content="Blue" />
                 </ComboBox>
             </StackPanel>
         </Border>

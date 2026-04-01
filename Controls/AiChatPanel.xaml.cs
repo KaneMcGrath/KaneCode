@@ -686,9 +686,11 @@ public partial class AiChatPanel : UserControl
 
     private void AiSettingsButton_Click(object sender, RoutedEventArgs e)
     {
-        var optionsWindow = new OptionsWindow(OptionsWindow.AiSettingsCategoryName)
+        var owner = Window.GetWindow(this);
+        ThemeManager? themeManager = (owner as MainWindow)?.ThemeManagerInstance;
+        var optionsWindow = new OptionsWindow(themeManager!, OptionsWindow.AiSettingsCategoryName)
         {
-            Owner = Window.GetWindow(this)
+            Owner = owner
         };
 
         optionsWindow.ShowDialog();
