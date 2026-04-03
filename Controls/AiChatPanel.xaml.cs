@@ -31,6 +31,7 @@ public partial class AiChatPanel : UserControl
     private Func<string?>? _projectConversationKeyProvider;
     private AgentToolRegistry? _toolRegistry;
     private AiChatModeRegistry? _modeRegistry;
+    private AiDebugLogService? _debugLogService;
     private IAiChatMode? _activeMode;
     private ListBox? _mentionPopup;
     private string? _pendingSelectionContext;
@@ -96,6 +97,13 @@ public partial class AiChatPanel : UserControl
     internal void SetToolRegistry(AgentToolRegistry registry)
     {
         _toolRegistry = registry;
+    }
+
+    internal void SetDebugLogService(AiDebugLogService debugLogService)
+    {
+        ArgumentNullException.ThrowIfNull(debugLogService);
+
+        _debugLogService = debugLogService;
     }
 
     /// <summary>
@@ -1144,6 +1152,8 @@ public partial class AiChatPanel : UserControl
                             }
                         }
 
+                        await LogToolFailureAsync(toolCall.FunctionName, toolCallId, toolCall.ArgumentsJson, result);
+
                         string resultContent = result.Success
                             ? result.Output
                             : $"Error: {result.Error}";
@@ -1229,6 +1239,17 @@ public partial class AiChatPanel : UserControl
         }
 
         return value[..maxLength] + "…";
+    }
+
+    private async Task LogToolFailureAsync(string toolName, string toolCallId, string? argumentsJson, ToolCallResult result)
+    {
+        if (result.Success || _debugLogService is null || string.IsNullOrWhiteSpace(result.Error))
+        {
+            return;
+        }
+
+        await Dispatcher.InvokeAsync(() =>
+            _debugLogService.LogToolFailure(toolName, argumentsJson, result.Error, toolCallId));
     }
 
     /// <summary>

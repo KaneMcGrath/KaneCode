@@ -100,6 +100,9 @@ ResizeMode="CanResizeWithGrip">
                 <MenuItem Header="_AI Chat"
                           Tag="{Binding ElementName=AiChatAnchorable}"
                           Click="ViewMenuPanel_Click" />
+                 <MenuItem Header="AI _Debug"
+                           Tag="{Binding ElementName=AiDebugAnchorable}"
+                           Click="ViewMenuPanel_Click" />
                 <Separator />
                 <MenuItem Header="_Options" Command="{Binding OpenOptionsCommand}" />
             </MenuItem>
@@ -494,6 +497,13 @@ ResizeMode="CanResizeWithGrip">
                                                       Commits="{Binding GitCommitHistory}"
                                                       PanelStatusText="{Binding GitLogStatusText}" />
                             </avalonDock:LayoutAnchorable>
+                             <avalonDock:LayoutAnchorable x:Name="AiDebugAnchorable" Title="AI Debug"
+                                                          CanClose="False"
+                                                          CanHide="True"
+                                                          CanAutoHide="True"
+                                                          ContentId="AiDebugPane">
+                                 <controls:AiDebugPanel x:Name="AiDebugPanel" />
+                             </avalonDock:LayoutAnchorable>
                         </avalonDock:LayoutAnchorablePane>
 
                     </avalonDock:LayoutPanel>

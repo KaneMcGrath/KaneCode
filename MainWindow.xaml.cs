@@ -38,6 +38,7 @@ public partial class MainWindow : Window
     private readonly AiProviderRegistry _aiProviderRegistry = new();
     private readonly AgentToolRegistry _agentToolRegistry = new();
     private readonly AiChatModeRegistry _aiChatModeRegistry = new();
+    private readonly AiDebugLogService _aiDebugLogService = new();
     private readonly PresentationService _presentationService = new();
     private readonly PresentationLineHighlightRenderer _presentationLineHighlightRenderer = new();
     private Popup? _quickInfoPopup;
@@ -192,6 +193,7 @@ public partial class MainWindow : Window
         IAiProvider? provider = _aiProviderRegistry.ActiveProvider;
         AiProviderSettings? settings = provider is null ? null : _aiProviderRegistry.GetSettings(provider);
         AiChatPanel.Configure(provider, settings?.SelectedModel);
+        AiChatPanel.SetDebugLogService(_aiDebugLogService);
         AiChatPanel.SetProviderRegistry(_aiProviderRegistry);
         AiChatPanel.SetProjectItemsProvider(() => _viewModel.ProjectItems);
         AiChatPanel.SetConversationProjectKeyProvider(() =>
@@ -199,6 +201,7 @@ public partial class MainWindow : Window
             ?? _viewModel.ProjectItems.FirstOrDefault()?.FullPath);
         AiChatPanel.SetToolRegistry(_agentToolRegistry);
         AiChatPanel.SetModeRegistry(_aiChatModeRegistry);
+        AiDebugPanel.ToolFailures = _aiDebugLogService.ToolFailures;
     }
     /// </summary>
     private void RegisterAiChatModes()
