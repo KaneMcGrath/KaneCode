@@ -164,6 +164,24 @@ public partial class AiChatPanel : UserControl
         InputBox.CaretIndex = InputBox.Text.Length;
     }
 
+    internal static string GetDisplayedUserMessageContent(string typedText, string outboundText, bool showRawText)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(typedText);
+        ArgumentException.ThrowIfNullOrWhiteSpace(outboundText);
+
+        return showRawText ? outboundText : typedText;
+    }
+
+    internal static string FormatRawTranscriptEntry(string label, string content)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(label);
+        ArgumentNullException.ThrowIfNull(content);
+
+        return string.IsNullOrEmpty(content)
+            ? $"{label}:"
+            : $"{label}:\n{content}";
+    }
+
     // ── Conversation persistence and token budgeting ───────────────
 
     private void TryLoadPersistedConversation()
@@ -699,7 +717,7 @@ public partial class AiChatPanel : UserControl
 
     private async Task SendMessageAsync()
     {
-        var text = InputBox.Text?.Trim();
+        string? text = InputBox.Text?.Trim();
         if (string.IsNullOrEmpty(text))
         {
             return;
@@ -718,14 +736,15 @@ public partial class AiChatPanel : UserControl
 
         InputBox.Text = string.Empty;
 
-        // Display user message
-        AppendUserMessage(text);
+        string outboundUserContent;
+
+        string displayedUserContent;
 
         // Inject project-wide system context once per conversation
         if (!_projectContextInjected)
         {
-            var projectItems = _projectItemsProvider?.Invoke() ?? [];
-            var projectContext = AiProjectContextBuilder.Build(projectItems);
+            IReadOnlyList<ProjectItem> projectItems = _projectItemsProvider?.Invoke() ?? [];
+            string projectContext = AiProjectContextBuilder.Build(projectItems);
 
             if (!string.IsNullOrWhiteSpace(projectContext))
             {
@@ -736,9 +755,9 @@ public partial class AiChatPanel : UserControl
         }
 
         // Add to history with context injection (references + one-shot selection context)
-        var referenceContext = BuildReferenceContext();
+        string referenceContext = BuildReferenceContext();
 
-        var combinedContext = new System.Text.StringBuilder();
+        System.Text.StringBuilder combinedContext = new();
         if (!string.IsNullOrEmpty(referenceContext))
         {
             combinedContext.AppendLine(referenceContext);
@@ -750,15 +769,15 @@ public partial class AiChatPanel : UserControl
             _pendingSelectionContext = null; // one-shot context
         }
 
-        if (combinedContext.Length > 0)
-        {
-            var userMessageWithContext = $"{combinedContext}\n{text}";
-            _conversationHistory.Add(new AiChatMessage(AiChatRole.User, userMessageWithContext));
-        }
-        else
-        {
-            _conversationHistory.Add(new AiChatMessage(AiChatRole.User, text));
-        }
+        outboundUserContent = combinedContext.Length > 0
+            ? $"{combinedContext}\n{text}"
+            : text;
+
+        displayedUserContent = GetDisplayedUserMessageContent(text, outboundUserContent, IsRawTextModeEnabled());
+
+        AppendUserMessage(displayedUserContent);
+
+        _conversationHistory.Add(new AiChatMessage(AiChatRole.User, outboundUserContent));
 
         SavePersistedConversation();
 
@@ -777,6 +796,8 @@ public partial class AiChatPanel : UserControl
         _streamCts = new CancellationTokenSource();
         CancellationToken ct = _streamCts.Token;
         bool cutoffMarkerAddedForRequest = false;
+        bool rawTextMode = IsRawTextModeEnabled();
+        bool rawSystemPromptAddedForRequest = false;
 
         try
         {
@@ -797,8 +818,10 @@ public partial class AiChatPanel : UserControl
                 Expander? thinkingExpander = null;
                 StackPanel? thinkingPanel = null;
                 TextBlock? thinkingTextBlock = null;
+                TextBlock? rawThinkingBlock = null;
                 Dictionary<int, AiStreamToolCall> streamedToolCalls = new();
                 Dictionary<int, (Expander expander, TextBlock argumentsBlock, TextBlock resultBlock)> toolCallBlocks = new();
+                Dictionary<int, TextBlock> rawToolCallBlocks = new();
 
                 // UI element creation must happen on the dispatcher thread.
                 // After the first iteration, we may be on a thread-pool thread
@@ -813,6 +836,15 @@ public partial class AiChatPanel : UserControl
                 await Dispatcher.InvokeAsync(() =>
                 {
                     UpdateContextWindowBar(contextWindow.Info);
+
+                    if (rawTextMode &&
+                        !rawSystemPromptAddedForRequest &&
+                        outboundMessages.Count > 0 &&
+                        outboundMessages[0].Role == AiChatRole.System)
+                    {
+                        AppendRawTranscriptEntry("System Prompt", outboundMessages[0].Content, FindBrush("AiChatSecondaryForeground"), assistantBlock);
+                        rawSystemPromptAddedForRequest = true;
+                    }
 
                     if (contextWindow.Info.CutoffOccurred && !cutoffMarkerAddedForRequest)
                     {
@@ -837,7 +869,35 @@ public partial class AiChatPanel : UserControl
 
                         await Dispatcher.InvokeAsync(() =>
                         {
-                            var shouldStickToBottom = IsMessageScrollerNearBottom();
+                            bool shouldStickToBottom = IsMessageScrollerNearBottom();
+
+                            if (rawTextMode)
+                            {
+                                string rawToolCallText = FormatRawTranscriptEntry(
+                                    $"Tool Call ({toolCall.FunctionName})",
+                                    FormatToolArgs(toolCall.ArgumentsJson));
+
+                                if (!rawToolCallBlocks.TryGetValue(toolCall.Index, out TextBlock? rawBlock))
+                                {
+                                    rawBlock = AppendRawTranscriptEntry(
+                                        $"Tool Call ({toolCall.FunctionName})",
+                                        FormatToolArgs(toolCall.ArgumentsJson),
+                                        FindBrush(ThemeResourceKeys.AiChatToolCallForeground),
+                                        assistantBlock);
+                                    rawToolCallBlocks[toolCall.Index] = rawBlock;
+                                }
+                                else
+                                {
+                                    rawBlock.Text = rawToolCallText;
+                                }
+
+                                if (shouldStickToBottom)
+                                {
+                                    MessageScroller.ScrollToEnd();
+                                }
+
+                                return;
+                            }
 
                             if (!toolCallBlocks.TryGetValue(toolCall.Index, out var block))
                             {
@@ -874,7 +934,32 @@ public partial class AiChatPanel : UserControl
 
                         await Dispatcher.InvokeAsync(() =>
                         {
-                            var shouldStickToBottom = IsMessageScrollerNearBottom();
+                            bool shouldStickToBottom = IsMessageScrollerNearBottom();
+
+                            if (rawTextMode)
+                            {
+                                if (rawThinkingBlock is null)
+                                {
+                                    rawThinkingBlock = AppendRawTranscriptEntry(
+                                        "Thinking",
+                                        reasoningBuilder.ToString(),
+                                        FindBrush("AiChatThinkingForeground"),
+                                        assistantBlock);
+                                }
+                                else
+                                {
+                                    rawThinkingBlock.Text = FormatRawTranscriptEntry("Thinking", reasoningBuilder.ToString());
+                                }
+
+                                UpdateStatsBar(reasoningTokenCount + contentTokenCount, streamStopwatch);
+
+                                if (shouldStickToBottom)
+                                {
+                                    MessageScroller.ScrollToEnd();
+                                }
+
+                                return;
+                            }
 
                             if (thinkingExpander is null)
                             {
@@ -912,7 +997,7 @@ public partial class AiChatPanel : UserControl
                                 thinkingExpander.Header = $"💭 Thought for {reasoningTokenCount:N0} tokens";
                             }
 
-                            RenderMarkdownInto(assistantBlock, responseBuilder.ToString());
+                            RenderAssistantContent(assistantBlock, responseBuilder.ToString());
                             UpdateStatsBar(reasoningTokenCount + contentTokenCount, streamStopwatch);
 
                             if (shouldStickToBottom)
@@ -935,6 +1020,11 @@ public partial class AiChatPanel : UserControl
                                 : "💭 Thought";
                         }
                     });
+                }
+
+                if (rawTextMode && string.IsNullOrWhiteSpace(responseBuilder.ToString()))
+                {
+                    await Dispatcher.InvokeAsync(() => MessagePanel.Children.Remove(assistantBlock));
                 }
 
                 // If tool calls were requested, execute them and loop
@@ -987,6 +1077,21 @@ public partial class AiChatPanel : UserControl
                         TextBlock? toolResultBlock = null;
                         await Dispatcher.InvokeAsync(() =>
                         {
+                            if (rawTextMode)
+                            {
+                                if (!rawToolCallBlocks.TryGetValue(toolCall.Index, out TextBlock? rawBlock))
+                                {
+                                    rawBlock = AppendRawTranscriptEntry(
+                                        $"Tool Call ({toolCall.FunctionName})",
+                                        FormatToolArgs(toolCall.ArgumentsJson),
+                                        FindBrush(ThemeResourceKeys.AiChatToolCallForeground),
+                                        assistantBlock);
+                                    rawToolCallBlocks[toolCall.Index] = rawBlock;
+                                }
+
+                                return;
+                            }
+
                             if (!toolCallBlocks.TryGetValue(toolCall.Index, out var block))
                             {
                                 if (thinkingExpander is null)
@@ -1050,6 +1155,18 @@ public partial class AiChatPanel : UserControl
 
                         await Dispatcher.InvokeAsync(() =>
                         {
+                            if (rawTextMode)
+                            {
+                                AppendRawTranscriptEntry(
+                                    $"Tool Result ({toolCall.FunctionName})",
+                                    result.Success ? result.Output : result.Error ?? "Unknown error",
+                                    result.Success
+                                        ? FindBrush(ThemeResourceKeys.AiChatToolCallSuccessForeground)
+                                        : FindBrush(ThemeResourceKeys.AiChatToolCallErrorForeground),
+                                    assistantBlock);
+                                return;
+                            }
+
                             FinalizeToolCallBlock(toolExpander!, toolResultBlock!, toolCall.FunctionName, result);
                         });
                     }
@@ -1296,6 +1413,12 @@ public partial class AiChatPanel : UserControl
             ? "1 earlier message was omitted from this request."
             : $"{info.DroppedMessages} earlier messages were omitted from this request.";
 
+        if (IsRawTextModeEnabled())
+        {
+            AppendRawTranscriptEntry("System", $"Context window cutoff — {omittedMessage}", Brushes.IndianRed);
+            return;
+        }
+
         Border marker = new()
         {
             Margin = new Thickness(4, 12, 4, 8),
@@ -1321,7 +1444,13 @@ public partial class AiChatPanel : UserControl
 
     private void AppendUserMessage(string text)
     {
-        var border = new Border
+        if (IsRawTextModeEnabled())
+        {
+            AppendRawTranscriptEntry("User", text, FindBrush("AiChatUserForeground"));
+            return;
+        }
+
+        Border border = new()
         {
             Background = FindBrush("AiChatUserBubble"),
             CornerRadius = new CornerRadius(6),
@@ -1330,7 +1459,7 @@ public partial class AiChatPanel : UserControl
             HorizontalAlignment = HorizontalAlignment.Right
         };
 
-        var rtb = new RichTextBox
+        RichTextBox rtb = new()
         {
             IsReadOnly = true,
             Background = Brushes.Transparent,
@@ -1341,21 +1470,7 @@ public partial class AiChatPanel : UserControl
             IsDocumentEnabled = true
         };
 
-        var doc = new FlowDocument
-        {
-            PagePadding = new Thickness(0),
-            LineHeight = 18
-        };
-
-        var paragraph = new Paragraph
-        {
-            Margin = new Thickness(0),
-            Foreground = FindBrush("AiChatUserForeground")
-        };
-        paragraph.Inlines.Add(new Run(text));
-        doc.Blocks.Add(paragraph);
-
-        rtb.Document = doc;
+        RenderPlainTextInto(rtb, text, FindBrush("AiChatUserForeground"), 18, useMonospace: IsRawTextModeEnabled());
         border.Child = rtb;
         MessagePanel.Children.Add(border);
         MessageScroller.ScrollToEnd();
@@ -1367,7 +1482,7 @@ public partial class AiChatPanel : UserControl
     /// </summary>
     private RichTextBox CreateAssistantMessageBlock()
     {
-        var rtb = new RichTextBox
+        RichTextBox rtb = new()
         {
             IsReadOnly = true,
             Background = Brushes.Transparent,
@@ -1391,6 +1506,57 @@ public partial class AiChatPanel : UserControl
 
         MessagePanel.Children.Add(rtb);
         return rtb;
+    }
+
+    private bool IsRawTextModeEnabled()
+    {
+        return RawTextCheckBox.IsChecked == true;
+    }
+
+    private void RenderAssistantContent(RichTextBox richTextBox, string content)
+    {
+        ArgumentNullException.ThrowIfNull(richTextBox);
+        ArgumentNullException.ThrowIfNull(content);
+
+        if (IsRawTextModeEnabled())
+        {
+            RenderPlainTextInto(
+                richTextBox,
+                FormatRawTranscriptEntry("Assistant", content),
+                FindBrush("AiChatAssistantForeground"),
+                20,
+                useMonospace: true);
+            return;
+        }
+
+        RenderMarkdownInto(richTextBox, content);
+    }
+
+    private static void RenderPlainTextInto(RichTextBox richTextBox, string text, Brush foreground, double lineHeight, bool useMonospace)
+    {
+        ArgumentNullException.ThrowIfNull(richTextBox);
+        ArgumentNullException.ThrowIfNull(text);
+        ArgumentNullException.ThrowIfNull(foreground);
+
+        FlowDocument document = new()
+        {
+            PagePadding = new Thickness(0),
+            ColumnWidth = double.PositiveInfinity,
+            LineHeight = lineHeight
+        };
+
+        Paragraph paragraph = new()
+        {
+            Margin = new Thickness(0),
+            Foreground = foreground
+        };
+        paragraph.Inlines.Add(new Run(text));
+        document.Blocks.Add(paragraph);
+
+        richTextBox.FontFamily = useMonospace
+            ? new FontFamily("Cascadia Code, Consolas, Courier New")
+            : new FontFamily("Segoe UI");
+        richTextBox.Document = document;
     }
 
     /// <summary>
@@ -1455,7 +1621,13 @@ public partial class AiChatPanel : UserControl
 
     private void AppendSystemMessage(string text)
     {
-        var tb = new TextBlock
+        if (IsRawTextModeEnabled())
+        {
+            AppendRawTranscriptEntry("System", text, FindBrush("AiChatSecondaryForeground"));
+            return;
+        }
+
+        TextBlock tb = new()
         {
             Text = text,
             TextWrapping = TextWrapping.Wrap,
@@ -1467,6 +1639,43 @@ public partial class AiChatPanel : UserControl
 
         MessagePanel.Children.Add(tb);
         MessageScroller.ScrollToEnd();
+    }
+
+    private TextBlock AppendRawTranscriptEntry(string label, string content, Brush foreground, UIElement? insertBefore = null)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(label);
+        ArgumentNullException.ThrowIfNull(content);
+        ArgumentNullException.ThrowIfNull(foreground);
+
+        TextBlock textBlock = new()
+        {
+            Text = FormatRawTranscriptEntry(label, content),
+            TextWrapping = TextWrapping.Wrap,
+            Foreground = foreground,
+            FontSize = 12,
+            FontFamily = new FontFamily("Cascadia Code, Consolas, Courier New"),
+            Margin = new Thickness(4, 4, 4, 4)
+        };
+
+        if (insertBefore is not null)
+        {
+            int index = MessagePanel.Children.IndexOf(insertBefore);
+            if (index >= 0)
+            {
+                MessagePanel.Children.Insert(index, textBlock);
+            }
+            else
+            {
+                MessagePanel.Children.Add(textBlock);
+            }
+        }
+        else
+        {
+            MessagePanel.Children.Add(textBlock);
+        }
+
+        MessageScroller.ScrollToEnd();
+        return textBlock;
     }
 
     /// <summary>
