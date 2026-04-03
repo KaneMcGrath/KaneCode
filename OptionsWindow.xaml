@@ -185,6 +185,13 @@
                                 <TextBox Text="{Binding SelectedModel, UpdateSourceTrigger=PropertyChanged}"
                                          Width="220" HorizontalAlignment="Left" Margin="0,0,0,10" />
 
+                                <TextBlock Text="Context Length" FontSize="12" FontWeight="SemiBold"
+                                           Foreground="{DynamicResource WindowForeground}" Margin="0,0,0,4"
+                                           ToolTip="Internal metric used by KaneCode for local context trimming. This value is not sent to the model." />
+                                <TextBox Text="{Binding ContextLength, UpdateSourceTrigger=PropertyChanged}"
+                                         Width="120" HorizontalAlignment="Left" Margin="0,0,0,10"
+                                         ToolTip="Internal metric used by KaneCode for local context trimming. This value is not sent to the model." />
+
                                 <TextBlock Text="Inference Parameters" FontSize="12" FontWeight="SemiBold"
                                            Foreground="{DynamicResource WindowForeground}" Margin="0,4,0,8" />
 

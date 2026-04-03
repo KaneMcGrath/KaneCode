@@ -44,6 +44,7 @@ internal static class AiSettingsManager
                 Endpoint = dto.Endpoint,
                 ApiKey = DecryptApiKey(dto.EncryptedApiKey),
                 SelectedModel = dto.SelectedModel,
+                ContextLength = dto.ContextLength,
                 Temperature = dto.Temperature,
                 TopP = dto.TopP,
                 TopK = dto.TopK,
@@ -76,6 +77,7 @@ internal static class AiSettingsManager
                 Endpoint = s.Endpoint,
                 EncryptedApiKey = EncryptApiKey(s.ApiKey),
                 SelectedModel = s.SelectedModel,
+                ContextLength = s.ContextLength,
                 Temperature = s.Temperature,
                 TopP = s.TopP,
                 TopK = s.TopK,
@@ -143,6 +145,7 @@ internal static class AiSettingsManager
         public string Endpoint { get; set; } = string.Empty;
         public string EncryptedApiKey { get; set; } = string.Empty;
         public string SelectedModel { get; set; } = string.Empty;
+        public int? ContextLength { get; set; }
         public double? Temperature { get; set; }
         public double? TopP { get; set; }
         public int? TopK { get; set; }

@@ -6,6 +6,7 @@ namespace KaneCode.Services.Ai;
 /// </summary>
 internal sealed class AiProviderSettings
 {
+    public const int DefaultContextLength = 12000;
     public const double DefaultTemperature = 0.6;
     public const double DefaultTopP = 0.95;
     public const int DefaultTopK = 20;
@@ -40,6 +41,12 @@ internal sealed class AiProviderSettings
     /// The selected model identifier (e.g. "gpt-4o", "gpt-4.1").
     /// </summary>
     public string SelectedModel { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Internal context window budget used by KaneCode when trimming outbound chat history.
+    /// This value is not sent to the provider.
+    /// </summary>
+    public int? ContextLength { get; set; } = DefaultContextLength;
 
     /// <summary>
     /// Optional sampling temperature for OpenAI-compatible providers.

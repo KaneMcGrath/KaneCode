@@ -35,7 +35,7 @@ public partial class AiChatPanel : UserControl
     private ListBox? _mentionPopup;
     private string? _pendingSelectionContext;
     private bool _projectContextInjected;
-    private const int OutboundTokenBudget = 12000;
+    private const int DefaultOutboundTokenBudget = AiProviderSettings.DefaultContextLength;
     private const int MaxToolCallIterations = 40;
 
     public AiChatPanel()
@@ -806,7 +806,8 @@ public partial class AiChatPanel : UserControl
                 RichTextBox assistantBlock = await Dispatcher.InvokeAsync(CreateAssistantMessageBlock);
 
                 bool toolsEnabled = _activeMode?.ToolsEnabled == true;
-                AiContextWindowSnapshot contextWindow = AiContextWindowBuilder.Build(_conversationHistory, OutboundTokenBudget, toolsEnabled);
+                int outboundTokenBudget = GetOutboundTokenBudget();
+                AiContextWindowSnapshot contextWindow = AiContextWindowBuilder.Build(_conversationHistory, outboundTokenBudget, toolsEnabled);
                 IReadOnlyList<AiChatMessage> outboundMessages = BuildOutboundMessages(contextWindow.Messages, toolsDef);
 
                 await Dispatcher.InvokeAsync(() =>
@@ -1228,7 +1229,7 @@ public partial class AiChatPanel : UserControl
 
     private void ResetContextWindowBar()
     {
-        ContextWindowBar.Text = $"window: 0 msgs  •  est: 0/{OutboundTokenBudget:N0} tok";
+        ContextWindowBar.Text = $"window: 0 msgs  •  est: 0/{GetOutboundTokenBudget():N0} tok";
         ContextWindowBar.Foreground = FindBrush("AiChatSecondaryForeground");
         ContextWindowBar.ToolTip = "Estimated conversation history that will be sent with the next request.";
     }
@@ -1236,8 +1237,22 @@ public partial class AiChatPanel : UserControl
     private void RefreshContextWindowDisplay()
     {
         bool includeToolMessages = _activeMode?.ToolsEnabled == true;
-        AiContextWindowSnapshot snapshot = AiContextWindowBuilder.Build(_conversationHistory, OutboundTokenBudget, includeToolMessages);
+        AiContextWindowSnapshot snapshot = AiContextWindowBuilder.Build(_conversationHistory, GetOutboundTokenBudget(), includeToolMessages);
         UpdateContextWindowBar(snapshot.Info);
+    }
+
+    private int GetOutboundTokenBudget()
+    {
+        AiProviderSettings? settings = _provider is null
+            ? null
+            : _providerRegistry?.GetSettings(_provider);
+
+        if (settings?.ContextLength is int contextLength && contextLength > 0)
+        {
+            return contextLength;
+        }
+
+        return DefaultOutboundTokenBudget;
     }
 
     private void UpdateContextWindowBar(AiContextWindowInfo info)

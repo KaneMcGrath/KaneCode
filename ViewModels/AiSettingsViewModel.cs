@@ -58,6 +58,7 @@ internal sealed class AiSettingsViewModel : ObservableObject
         ArgumentNullException.ThrowIfNull(settings);
 
         settings.ProviderId = NormalizeProviderId(settings.ProviderId);
+        settings.ContextLength ??= AiProviderSettings.DefaultContextLength;
         settings.Temperature ??= AiProviderSettings.DefaultTemperature;
         settings.TopP ??= AiProviderSettings.DefaultTopP;
         settings.TopK ??= AiProviderSettings.DefaultTopK;
@@ -120,6 +121,7 @@ internal sealed class AiProviderEntryViewModel : ObservableObject
     private string _endpoint;
     private string _apiKey;
     private string _selectedModel;
+    private string _contextLength;
     private string _temperature;
     private string _topP;
     private string _topK;
@@ -137,6 +139,7 @@ internal sealed class AiProviderEntryViewModel : ObservableObject
         _endpoint = settings.Endpoint;
         _apiKey = settings.ApiKey;
         _selectedModel = settings.SelectedModel;
+        _contextLength = FormatNullableInt(settings.ContextLength);
         _temperature = FormatNullableDouble(settings.Temperature);
         _topP = FormatNullableDouble(settings.TopP);
         _topK = FormatNullableInt(settings.TopK);
@@ -173,6 +176,12 @@ internal sealed class AiProviderEntryViewModel : ObservableObject
     {
         get => _selectedModel;
         set => SetProperty(ref _selectedModel, value);
+    }
+
+    public string ContextLength
+    {
+        get => _contextLength;
+        set => SetProperty(ref _contextLength, value);
     }
 
     public string Temperature
@@ -223,6 +232,7 @@ internal sealed class AiProviderEntryViewModel : ObservableObject
         Endpoint = Endpoint,
         ApiKey = ApiKey,
         SelectedModel = SelectedModel,
+        ContextLength = ParseNullableInt(ContextLength),
         Temperature = ParseNullableDouble(Temperature),
         TopP = ParseNullableDouble(TopP),
         TopK = ParseNullableInt(TopK),
