@@ -52,4 +52,17 @@ public class AiProviderRegistryTests
 
         Assert.Null(exception);
     }
+
+    [Fact]
+    public void WhenReloadCalledThenProvidersChangedEventIsRaised()
+    {
+        using AiProviderRegistry registry = new AiProviderRegistry();
+        int raisedCount = 0;
+
+        registry.ProvidersChanged += (_, _) => raisedCount++;
+
+        registry.Reload();
+
+        Assert.Equal(1, raisedCount);
+    }
 }

@@ -11,6 +11,8 @@ namespace KaneCode.Services.Ai;
 /// </summary>
 internal static class AiSettingsManager
 {
+    internal static event EventHandler? SettingsSaved;
+
     private static readonly string SettingsDirectory = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
         "KaneCode");
@@ -82,8 +84,9 @@ internal static class AiSettingsManager
                 RepetitionPenalty = s.RepetitionPenalty
             }).ToList();
 
-            var json = JsonSerializer.Serialize(entries, JsonOptions);
+            string json = JsonSerializer.Serialize(entries, JsonOptions);
             File.WriteAllText(SettingsFilePath, json);
+            SettingsSaved?.Invoke(null, EventArgs.Empty);
         }
         catch (IOException)
         {

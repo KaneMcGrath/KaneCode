@@ -60,7 +60,14 @@ public partial class AiChatPanel : UserControl
     internal void SetProviderRegistry(AiProviderRegistry registry)
     {
         ArgumentNullException.ThrowIfNull(registry);
+
+        if (_providerRegistry is not null)
+        {
+            _providerRegistry.ProvidersChanged -= ProviderRegistry_ProvidersChanged;
+        }
+
         _providerRegistry = registry;
+        _providerRegistry.ProvidersChanged += ProviderRegistry_ProvidersChanged;
         RefreshProviderSelector();
     }
 
@@ -686,21 +693,14 @@ public partial class AiChatPanel : UserControl
 
     private void AiSettingsButton_Click(object sender, RoutedEventArgs e)
     {
-        var owner = Window.GetWindow(this);
+        Window? owner = Window.GetWindow(this);
         ThemeManager? themeManager = (owner as MainWindow)?.ThemeManagerInstance;
-        var optionsWindow = new OptionsWindow(themeManager!, OptionsWindow.AiSettingsCategoryName)
+        OptionsWindow optionsWindow = new OptionsWindow(themeManager!, OptionsWindow.AiSettingsCategoryName)
         {
             Owner = owner
         };
 
         optionsWindow.ShowDialog();
-
-        // Reload providers after settings may have changed
-        if (_providerRegistry is not null)
-        {
-            _providerRegistry.Reload();
-            RefreshProviderSelector();
-        }
     }
 
     private void ProviderSelector_SelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -747,6 +747,17 @@ public partial class AiChatPanel : UserControl
         }
 
         ProviderSelector.SelectionChanged += ProviderSelector_SelectionChanged;
+    }
+
+    private void ProviderRegistry_ProvidersChanged(object? sender, EventArgs e)
+    {
+        if (!Dispatcher.CheckAccess())
+        {
+            Dispatcher.Invoke(RefreshProviderSelector);
+            return;
+        }
+
+        RefreshProviderSelector();
     }
 
     private void ModeSelector_SelectionChanged(object sender, SelectionChangedEventArgs e)

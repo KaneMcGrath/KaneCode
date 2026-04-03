@@ -10,6 +10,13 @@ internal sealed class AiProviderRegistry : IDisposable
     private readonly Dictionary<IAiProvider, AiProviderSettings> _settingsMap = [];
     private IAiProvider? _activeProvider;
 
+    public AiProviderRegistry()
+    {
+        AiSettingsManager.SettingsSaved += OnSettingsSaved;
+    }
+
+    internal event EventHandler? ProvidersChanged;
+
     /// <summary>
     /// All currently registered provider instances.
     /// </summary>
@@ -35,13 +42,14 @@ internal sealed class AiProviderRegistry : IDisposable
     /// </summary>
     public void Reload()
     {
+        int activeProviderIndex = _activeProvider is null ? -1 : _providers.IndexOf(_activeProvider);
         DisposeProviders();
 
-        var settings = AiSettingsManager.Load();
+        List<AiProviderSettings> settings = AiSettingsManager.Load();
 
-        foreach (var s in settings)
+        foreach (AiProviderSettings s in settings)
         {
-            var provider = CreateProvider(s);
+            IAiProvider? provider = CreateProvider(s);
             if (provider is null)
             {
                 continue;
@@ -51,7 +59,17 @@ internal sealed class AiProviderRegistry : IDisposable
             _settingsMap[provider] = s;
         }
 
-        _activeProvider = _providers.FirstOrDefault(p => p.IsConfigured);
+        if (activeProviderIndex >= 0 && activeProviderIndex < _providers.Count)
+        {
+            _activeProvider = _providers[activeProviderIndex];
+        }
+
+        if (_activeProvider is null || !_activeProvider.IsConfigured)
+        {
+            _activeProvider = _providers.FirstOrDefault(p => p.IsConfigured);
+        }
+
+        ProvidersChanged?.Invoke(this, EventArgs.Empty);
     }
 
     /// <summary>
@@ -80,7 +98,7 @@ internal sealed class AiProviderRegistry : IDisposable
 
     private void DisposeProviders()
     {
-        foreach (var provider in _providers)
+        foreach (IAiProvider provider in _providers)
         {
             if (provider is IDisposable disposable)
             {
@@ -93,8 +111,14 @@ internal sealed class AiProviderRegistry : IDisposable
         _activeProvider = null;
     }
 
+    private void OnSettingsSaved(object? sender, EventArgs e)
+    {
+        Reload();
+    }
+
     public void Dispose()
     {
+        AiSettingsManager.SettingsSaved -= OnSettingsSaved;
         DisposeProviders();
     }
 }

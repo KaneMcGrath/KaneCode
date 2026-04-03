@@ -189,8 +189,8 @@ public partial class MainWindow : Window
     /// </summary>
     private void ConfigureAiChatPanel()
     {
-        var provider = _aiProviderRegistry.ActiveProvider;
-        var settings = AiSettingsManager.Load().FirstOrDefault();
+        IAiProvider? provider = _aiProviderRegistry.ActiveProvider;
+        AiProviderSettings? settings = provider is null ? null : _aiProviderRegistry.GetSettings(provider);
         AiChatPanel.Configure(provider, settings?.SelectedModel);
         AiChatPanel.SetProviderRegistry(_aiProviderRegistry);
         AiChatPanel.SetProjectItemsProvider(() => _viewModel.ProjectItems);
