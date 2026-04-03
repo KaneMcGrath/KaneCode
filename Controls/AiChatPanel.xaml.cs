@@ -41,6 +41,7 @@ public partial class AiChatPanel : UserControl
     public AiChatPanel()
     {
         InitializeComponent();
+        ResetContextWindowBar();
     }
 
     /// <summary>
@@ -200,6 +201,8 @@ public partial class AiChatPanel : UserControl
         {
             AppendSystemMessage($"Saved conversation history JSON is invalid: {ex.Message}");
         }
+
+        RefreshContextWindowDisplay();
     }
 
     private void SavePersistedConversation()
@@ -222,87 +225,6 @@ public partial class AiChatPanel : UserControl
         {
             AppendSystemMessage($"Could not save conversation history: {ex.Message}");
         }
-    }
-
-    private IReadOnlyList<AiChatMessage> BuildBudgetedContextWindow(bool includeToolMessages)
-    {
-        if (_conversationHistory.Count == 0)
-        {
-            return [];
-        }
-
-        int total = 0;
-        List<AiChatMessage> selected = [];
-        bool hasUserMessage = false;
-
-        for (int i = _conversationHistory.Count - 1; i >= 0; i--)
-        {
-            AiChatMessage message = _conversationHistory[i];
-
-            if (!includeToolMessages &&
-                (message.Role == AiChatRole.Tool ||
-                 (message.Role == AiChatRole.Assistant && message.ToolCalls is { Count: > 0 })))
-            {
-                continue;
-            }
-
-            int cost = EstimateTokens(message.Content);
-
-            if (selected.Count > 0 && total + cost > OutboundTokenBudget)
-            {
-                break;
-            }
-
-            selected.Add(message);
-            total += cost;
-
-            if (message.Role == AiChatRole.User)
-            {
-                hasUserMessage = true;
-            }
-        }
-
-        if (!hasUserMessage)
-        {
-            AiChatMessage? latestUser = _conversationHistory
-                .LastOrDefault(m => m.Role == AiChatRole.User);
-
-            if (latestUser is not null)
-            {
-                int latestUserCost = EstimateTokens(latestUser.Content);
-
-                while (selected.Count > 0 && total + latestUserCost > OutboundTokenBudget)
-                {
-                    int removeIndex = selected.FindLastIndex(m => m.Role != AiChatRole.User);
-                    if (removeIndex < 0)
-                    {
-                        break;
-                    }
-
-                    total -= EstimateTokens(selected[removeIndex].Content);
-                    selected.RemoveAt(removeIndex);
-                }
-
-                if (!selected.Any(m => ReferenceEquals(m, latestUser)))
-                {
-                    selected.Add(latestUser);
-                }
-            }
-        }
-
-        selected.Reverse();
-        return selected;
-    }
-
-    private static int EstimateTokens(string text)
-    {
-        if (string.IsNullOrWhiteSpace(text))
-        {
-            return 1;
-        }
-
-        // Heuristic token estimate (roughly 4 chars/token average)
-        return Math.Max(1, text.Length / 4);
     }
 
     // ── Reference management ───────────────────────────────────────
@@ -672,6 +594,7 @@ public partial class AiChatPanel : UserControl
         MessagePanel.Children.Clear();
         _pendingSelectionContext = null;
         _projectContextInjected = false;
+        ResetContextWindowBar();
 
         var key = _projectConversationKeyProvider?.Invoke();
         if (!string.IsNullOrWhiteSpace(key))
@@ -689,6 +612,8 @@ public partial class AiChatPanel : UserControl
                 AppendSystemMessage($"Could not clear conversation history: {ex.Message}");
             }
         }
+
+        RefreshContextWindowDisplay();
     }
 
     private void AiSettingsButton_Click(object sender, RoutedEventArgs e)
@@ -769,6 +694,7 @@ public partial class AiChatPanel : UserControl
 
         _activeMode = mode;
         AppendSystemMessage($"Switched to {mode.DisplayName} mode.");
+        RefreshContextWindowDisplay();
     }
 
     private async Task SendMessageAsync()
@@ -849,38 +775,50 @@ public partial class AiChatPanel : UserControl
 
         CancelStreaming();
         _streamCts = new CancellationTokenSource();
-        var ct = _streamCts.Token;
+        CancellationToken ct = _streamCts.Token;
+        bool cutoffMarkerAddedForRequest = false;
 
         try
         {
-            var model = _model ?? _provider.AvailableModels.FirstOrDefault() ?? "default";
-            var toolsDef = _activeMode is not null && _activeMode.ToolsEnabled && _toolRegistry is not null
+            string model = _model ?? _provider.AvailableModels.FirstOrDefault() ?? "default";
+            JsonElement toolsDef = _activeMode is not null && _activeMode.ToolsEnabled && _toolRegistry is not null
                 ? _activeMode.GetToolDefinitions(_toolRegistry)
                 : default;
 
-            var iteration = 0;
+            int iteration = 0;
 
             while (iteration < MaxToolCallIterations)
             {
                 iteration++;
                 ct.ThrowIfCancellationRequested();
 
-                var responseBuilder = new System.Text.StringBuilder();
-                var reasoningBuilder = new System.Text.StringBuilder();
+                System.Text.StringBuilder responseBuilder = new();
+                System.Text.StringBuilder reasoningBuilder = new();
                 Expander? thinkingExpander = null;
                 StackPanel? thinkingPanel = null;
                 TextBlock? thinkingTextBlock = null;
-                var streamedToolCalls = new Dictionary<int, AiStreamToolCall>();
-                var toolCallBlocks = new Dictionary<int, (Expander expander, TextBlock argumentsBlock, TextBlock resultBlock)>();
+                Dictionary<int, AiStreamToolCall> streamedToolCalls = new();
+                Dictionary<int, (Expander expander, TextBlock argumentsBlock, TextBlock resultBlock)> toolCallBlocks = new();
 
                 // UI element creation must happen on the dispatcher thread.
                 // After the first iteration, we may be on a thread-pool thread
                 // due to ConfigureAwait(false) in tool execution.
-                var assistantBlock = await Dispatcher.InvokeAsync(CreateAssistantMessageBlock);
+                RichTextBox assistantBlock = await Dispatcher.InvokeAsync(CreateAssistantMessageBlock);
 
-                var toolsEnabled = _activeMode?.ToolsEnabled == true;
-                var outboundWindow = BuildBudgetedContextWindow(includeToolMessages: toolsEnabled);
-                var outboundMessages = BuildOutboundMessages(outboundWindow, toolsDef);
+                bool toolsEnabled = _activeMode?.ToolsEnabled == true;
+                AiContextWindowSnapshot contextWindow = AiContextWindowBuilder.Build(_conversationHistory, OutboundTokenBudget, toolsEnabled);
+                IReadOnlyList<AiChatMessage> outboundMessages = BuildOutboundMessages(contextWindow.Messages, toolsDef);
+
+                await Dispatcher.InvokeAsync(() =>
+                {
+                    UpdateContextWindowBar(contextWindow.Info);
+
+                    if (contextWindow.Info.CutoffOccurred && !cutoffMarkerAddedForRequest)
+                    {
+                        AppendContextWindowCutoffMarker(contextWindow.Info);
+                        cutoffMarkerAddedForRequest = true;
+                    }
+                });
 
                 await foreach (var token in _provider.StreamCompletionAsync(outboundMessages, model, toolsDef, ct)
                     .ConfigureAwait(false))
@@ -1001,7 +939,7 @@ public partial class AiChatPanel : UserControl
                 // If tool calls were requested, execute them and loop
                 if (_activeMode?.ToolsEnabled == true && streamedToolCalls.Count > 0 && _toolRegistry is not null)
                 {
-                    var pendingToolCalls = streamedToolCalls
+                    List<AiStreamToolCall> pendingToolCalls = streamedToolCalls
                         .OrderBy(kv => kv.Key)
                         .Select(kv => kv.Value)
                         .Where(tc => !string.IsNullOrWhiteSpace(tc.FunctionName))
@@ -1018,10 +956,10 @@ public partial class AiChatPanel : UserControl
                     }
 
                     // Record the assistant message with its tool calls
-                    var toolCallRequests = pendingToolCalls
+                    List<AiToolCallRequest> toolCallRequests = pendingToolCalls
                         .Select(tc =>
                         {
-                            var toolCallId = string.IsNullOrWhiteSpace(tc.Id)
+                            string toolCallId = string.IsNullOrWhiteSpace(tc.Id)
                                 ? $"tool_call_{tc.Index}"
                                 : tc.Id;
 
@@ -1040,7 +978,7 @@ public partial class AiChatPanel : UserControl
                     {
                         ct.ThrowIfCancellationRequested();
 
-                        var toolCallId = string.IsNullOrWhiteSpace(toolCall.Id)
+                        string toolCallId = string.IsNullOrWhiteSpace(toolCall.Id)
                             ? $"tool_call_{toolCall.Index}"
                             : toolCall.Id;
 
@@ -1071,7 +1009,7 @@ public partial class AiChatPanel : UserControl
                             toolResultBlock = block.resultBlock;
                         });
 
-                        var tool = _activeMode?.IsToolAllowed(toolCall.FunctionName) == true
+                        IAgentTool? tool = _activeMode?.IsToolAllowed(toolCall.FunctionName) == true
                             ? _toolRegistry.Get(toolCall.FunctionName)
                             : null;
                         ToolCallResult result;
@@ -1084,7 +1022,7 @@ public partial class AiChatPanel : UserControl
                         {
                             try
                             {
-                                var args = string.IsNullOrWhiteSpace(toolCall.ArgumentsJson)
+                                JsonElement args = string.IsNullOrWhiteSpace(toolCall.ArgumentsJson)
                                     ? default
                                     : JsonDocument.Parse(toolCall.ArgumentsJson).RootElement;
 
@@ -1100,7 +1038,7 @@ public partial class AiChatPanel : UserControl
                             }
                         }
 
-                        var resultContent = result.Success
+                        string resultContent = result.Success
                             ? result.Output
                             : $"Error: {result.Error}";
 
@@ -1160,6 +1098,7 @@ public partial class AiChatPanel : UserControl
                 SendButton.Click += SendButton_Click;
 
                 UpdateStatsBarFinal(finalTokenCount, reasoningTokenCount, contentTokenCount, streamStopwatch);
+                RefreshContextWindowDisplay();
             });
         }
     }
@@ -1254,8 +1193,8 @@ public partial class AiChatPanel : UserControl
     /// </summary>
     private void UpdateStatsBar(int totalTokens, Stopwatch stopwatch)
     {
-        var elapsed = stopwatch.Elapsed.TotalSeconds;
-        var tokPerSec = elapsed > 0.1 ? totalTokens / elapsed : 0;
+        double elapsed = stopwatch.Elapsed.TotalSeconds;
+        double tokPerSec = elapsed > 0.1 ? totalTokens / elapsed : 0;
         StatsBar.Text = $"{totalTokens:N0} tokens  •  {tokPerSec:F1} tok/s";
     }
 
@@ -1265,10 +1204,10 @@ public partial class AiChatPanel : UserControl
     /// </summary>
     private void UpdateStatsBarFinal(int totalGenerated, int reasoningTokens, int contentTokens, Stopwatch stopwatch)
     {
-        var elapsed = stopwatch.Elapsed.TotalSeconds;
-        var tokPerSec = elapsed > 0.1 ? totalGenerated / elapsed : 0;
+        double elapsed = stopwatch.Elapsed.TotalSeconds;
+        double tokPerSec = elapsed > 0.1 ? totalGenerated / elapsed : 0;
 
-        var parts = new List<string>();
+        List<string> parts = new();
 
         if (_lastUsageStats is { } usage)
         {
@@ -1285,6 +1224,82 @@ public partial class AiChatPanel : UserControl
         parts.Add($"{elapsed:F1}s");
 
         StatsBar.Text = string.Join("  •  ", parts);
+    }
+
+    private void ResetContextWindowBar()
+    {
+        ContextWindowBar.Text = $"window: 0 msgs  •  est: 0/{OutboundTokenBudget:N0} tok";
+        ContextWindowBar.Foreground = FindBrush("AiChatSecondaryForeground");
+        ContextWindowBar.ToolTip = "Estimated conversation history that will be sent with the next request.";
+    }
+
+    private void RefreshContextWindowDisplay()
+    {
+        bool includeToolMessages = _activeMode?.ToolsEnabled == true;
+        AiContextWindowSnapshot snapshot = AiContextWindowBuilder.Build(_conversationHistory, OutboundTokenBudget, includeToolMessages);
+        UpdateContextWindowBar(snapshot.Info);
+    }
+
+    private void UpdateContextWindowBar(AiContextWindowInfo info)
+    {
+        ArgumentNullException.ThrowIfNull(info);
+
+        List<string> parts =
+        [
+            $"window: {info.IncludedMessages}/{info.TotalConsideredMessages} msgs",
+            $"est: {info.SelectedTokens:N0}/{info.BudgetTokens:N0} tok"
+        ];
+
+        if (info.CutoffOccurred)
+        {
+            parts.Add($"cutoff: {info.DroppedMessages} dropped");
+        }
+        else
+        {
+            parts.Add("cutoff: none");
+        }
+
+        if (info.ExcludedMessages > 0)
+        {
+            parts.Add($"hidden: {info.ExcludedMessages}");
+        }
+
+        ContextWindowBar.Text = string.Join("  •  ", parts);
+        ContextWindowBar.Foreground = info.CutoffOccurred
+            ? Brushes.IndianRed
+            : FindBrush("AiChatSecondaryForeground");
+        ContextWindowBar.ToolTip = info.CutoffOccurred
+            ? $"Estimated conversation window: {info.SelectedTokens:N0}/{info.BudgetTokens:N0} tokens. {info.DroppedMessages} earlier message(s) were omitted from the outbound request."
+            : $"Estimated conversation window: {info.SelectedTokens:N0}/{info.BudgetTokens:N0} tokens. No history was trimmed from the outbound request.";
+    }
+
+    private void AppendContextWindowCutoffMarker(AiContextWindowInfo info)
+    {
+        ArgumentNullException.ThrowIfNull(info);
+
+        string omittedMessage = info.DroppedMessages == 1
+            ? "1 earlier message was omitted from this request."
+            : $"{info.DroppedMessages} earlier messages were omitted from this request.";
+
+        Border marker = new()
+        {
+            Margin = new Thickness(4, 12, 4, 8),
+            Padding = new Thickness(0, 6, 0, 0),
+            BorderBrush = Brushes.IndianRed,
+            BorderThickness = new Thickness(0, 2, 0, 0),
+            Child = new TextBlock
+            {
+                Text = $"Context window cutoff — {omittedMessage}",
+                TextWrapping = TextWrapping.Wrap,
+                Foreground = Brushes.IndianRed,
+                FontSize = 11,
+                FontWeight = FontWeights.SemiBold
+            },
+            ToolTip = $"Estimated conversation window: {info.SelectedTokens:N0}/{info.BudgetTokens:N0} tokens."
+        };
+
+        MessagePanel.Children.Add(marker);
+        MessageScroller.ScrollToEnd();
     }
 
     // ── Message rendering ──────────────────────────────────────────

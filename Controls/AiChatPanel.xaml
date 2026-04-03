@@ -78,11 +78,26 @@
                 BorderThickness="0,1,0,0"
                 BorderBrush="{DynamicResource AiChatBorder}">
             <Grid>
-                <TextBlock x:Name="StatsBar"
-                           Text=""
-                           FontSize="11"
-                           Foreground="{DynamicResource AiChatSecondaryForeground}" />
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <StackPanel Grid.Column="0"
+                            Orientation="Vertical"
+                            Margin="0,0,8,0">
+                    <TextBlock x:Name="StatsBar"
+                               Text=""
+                               FontSize="11"
+                               Foreground="{DynamicResource AiChatSecondaryForeground}" />
+                    <TextBlock x:Name="ContextWindowBar"
+                               Text="window: 0 msgs  •  est: 0/12,000 tok"
+                               FontSize="10"
+                               Foreground="{DynamicResource AiChatSecondaryForeground}"
+                               Margin="0,1,0,0" />
+                </StackPanel>
                 <ComboBox x:Name="ProviderSelector"
+                          Grid.Column="1"
+                          VerticalAlignment="Center"
                           HorizontalAlignment="Right"
                           FontSize="11"
                           MinWidth="100"
