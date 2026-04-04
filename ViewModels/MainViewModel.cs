@@ -760,11 +760,11 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
                 var ext = Path.GetExtension(path);
                 if (ext.Equals(".sln", StringComparison.OrdinalIgnoreCase))
                 {
-                    await LoadSolutionFileAsync(path);
+                    await LoadSolutionFileAsync(path, closeOpenTabs: false);
                 }
                 else if (ext.Equals(".csproj", StringComparison.OrdinalIgnoreCase))
                 {
-                    await LoadProjectFileAsync(path);
+                    await LoadProjectFileAsync(path, closeOpenTabs: false);
                 }
             }, System.Windows.Threading.DispatcherPriority.Background, cancellationToken);
         }
@@ -1029,9 +1029,9 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
         return LoadSolutionFileAsync(solutionPath);
     }
 
-    private async Task LoadProjectFileAsync(string projectPath)
+    private async Task LoadProjectFileAsync(string projectPath, bool closeOpenTabs = true)
     {
-        if (!await CloseAllTabsAsync().ConfigureAwait(true))
+        if (closeOpenTabs && !await CloseAllTabsAsync().ConfigureAwait(true))
         {
             return;
         }
@@ -1093,9 +1093,9 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
         }
     }
 
-    private async Task LoadSolutionFileAsync(string solutionPath)
+    private async Task LoadSolutionFileAsync(string solutionPath, bool closeOpenTabs = true)
     {
-        if (!await CloseAllTabsAsync().ConfigureAwait(true))
+        if (closeOpenTabs && !await CloseAllTabsAsync().ConfigureAwait(true))
         {
             return;
         }
