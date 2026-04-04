@@ -15,7 +15,7 @@
     <SolidColorBrush x:Key="SystemButtonsInactiveForeground" Color="#8F8F91" />
     <SolidColorBrush x:Key="SystemButtonsMouseOverBackground" Color="#FCFCFD" />
     <SolidColorBrush x:Key="SystemButtonsMousePressedForeground" Color="White" />
-    <SolidColorBrush x:Key="SystemButtonsMousePressedBackground" Color="#007ACC" />
+    <SolidColorBrush x:Key="SystemButtonsMousePressedBackground" Color="#BF3000" />
 
     <!-- Icons -->
     <SolidColorBrush x:Key="IconBrush" Color="#865FC5" />
@@ -63,7 +63,7 @@
     <SolidColorBrush x:Key="ControlSelectionForeground" Color="#FFFFFF" />
 
     <!-- Status bar -->
-    <SolidColorBrush x:Key="StatusBarBackground" Color="#007ACC" />
+    <SolidColorBrush x:Key="StatusBarBackground" Color="#BF3000" />
     <SolidColorBrush x:Key="StatusBarForeground" Color="#FFFFFF" />
 
     <!-- Side panels -->
@@ -156,7 +156,7 @@
     <SolidColorBrush x:Key="ErrorListGridLine" Color="#CCCCCC" />
     <SolidColorBrush x:Key="ErrorListFilterActiveBackground" Color="#D0D0D0" />
     <SolidColorBrush x:Key="ErrorListFilterInactiveBackground" Color="#E8E8E8" />
-    <SolidColorBrush x:Key="ErrorListFixLinkForeground" Color="#0066CC" />
+    <SolidColorBrush x:Key="ErrorListFixLinkForeground" Color="#9B2400" />
 
     <!-- AI Chat panel -->
     <SolidColorBrush x:Key="AiChatBackground" Color="#FFFFFF" />
@@ -181,17 +181,17 @@
     <SolidColorBrush x:Key="AiChatRefTagForeground" Color="#BF3000" />
 
     <!-- AI Chat tool-call blocks -->
-    <SolidColorBrush x:Key="AiChatToolCallBackground" Color="#EFF5FB" />
-    <SolidColorBrush x:Key="AiChatToolCallBorder" Color="#B0C4DE" />
-    <SolidColorBrush x:Key="AiChatToolCallForeground" Color="#2C3E50" />
+    <SolidColorBrush x:Key="AiChatToolCallBackground" Color="#FCF1EC" />
+    <SolidColorBrush x:Key="AiChatToolCallBorder" Color="#D7B0A3" />
+    <SolidColorBrush x:Key="AiChatToolCallForeground" Color="#5A382E" />
     <SolidColorBrush x:Key="AiChatToolCallSuccessForeground" Color="#16A085" />
     <SolidColorBrush x:Key="AiChatToolCallErrorForeground" Color="#C0392B" />
 
     <!-- Inline rename -->
     <SolidColorBrush x:Key="RenameHighlightBackground" Color="#C8E6C9" />
     <SolidColorBrush x:Key="RenameHighlightBorder" Color="#66BB6A" />
-    <SolidColorBrush x:Key="RenameActiveBackground" Color="#BBDEFB" />
-    <SolidColorBrush x:Key="RenameActiveBorder" Color="#1976D2" />
+    <SolidColorBrush x:Key="RenameActiveBackground" Color="#F7D8CC" />
+    <SolidColorBrush x:Key="RenameActiveBorder" Color="#BF3000" />
     <SolidColorBrush x:Key="RenamePreviewBackground" Color="#F5F5F5" />
     <SolidColorBrush x:Key="RenamePreviewForeground" Color="#333333" />
     <SolidColorBrush x:Key="RenamePreviewBorder" Color="#CCCCCC" />
@@ -211,20 +211,20 @@
     <Color x:Key="AColour.Glyph.MouseDown">#FF141414</Color>
     <Color x:Key="AColour.Glyph.Selected">#FF1B1B1B</Color>
     <Color x:Key="AColour.Glyph.Selected.Inactive">#FF252525</Color>
-    <Color x:Key="AColour.ColourfulGlyph.Static">#FFCB6B1E</Color>
-    <Color x:Key="AColour.ColourfulGlyph.Disabled">#FFAA7850</Color>
-    <Color x:Key="AColour.ColourfulGlyph.MouseOver">#FFD28228</Color>
-    <Color x:Key="AColour.ColourfulGlyph.MouseDown">#FFCD7837</Color>
-    <Color x:Key="AColour.ColourfulGlyph.Selected">#FFCD8C46</Color>
-    <Color x:Key="AColour.ColourfulGlyph.Selected.Inactive">#FFC88737</Color>
+    <Color x:Key="AColour.ColourfulGlyph.Static">#FFBF3000</Color>
+    <Color x:Key="AColour.ColourfulGlyph.Disabled">#FFB07A66</Color>
+    <Color x:Key="AColour.ColourfulGlyph.MouseOver">#FFD25A2B</Color>
+    <Color x:Key="AColour.ColourfulGlyph.MouseDown">#FF9B2400</Color>
+    <Color x:Key="AColour.ColourfulGlyph.Selected">#FFC24A1E</Color>
+    <Color x:Key="AColour.ColourfulGlyph.Selected.Inactive">#FFA54A2E</Color>
 
     <!-- Accent tones -->
-    <Color x:Key="AColour.AccentTone1.Background.Static">#FFAA7850</Color>
-    <Color x:Key="AColour.AccentTone1.Border.Static">#FFBE7D32</Color>
-    <Color x:Key="AColour.AccentTone2.Background.Static">#FFCB6B1E</Color>
-    <Color x:Key="AColour.AccentTone2.Border.Static">#FFD07D37</Color>
-    <Color x:Key="AColour.AccentTone3.Background.Static">#FFD28228</Color>
-    <Color x:Key="AColour.AccentTone3.Border.Static">#FFCD7837</Color>
+    <Color x:Key="AColour.AccentTone1.Background.Static">#FFB07A66</Color>
+    <Color x:Key="AColour.AccentTone1.Border.Static">#FF8C2300</Color>
+    <Color x:Key="AColour.AccentTone2.Background.Static">#FFBF3000</Color>
+    <Color x:Key="AColour.AccentTone2.Border.Static">#FF9B2400</Color>
+    <Color x:Key="AColour.AccentTone3.Background.Static">#FFD25A2B</Color>
+    <Color x:Key="AColour.AccentTone3.Border.Static">#FFB64A1F</Color>
 
     <!-- Tone 0–8 background/border colours -->
     <Color x:Key="AColour.Tone0.Background.Static">#FFFFFFFF</Color>
