@@ -36,12 +36,16 @@ internal interface IAiProvider
     /// Optional serialized tools array in OpenAI format.
     /// Pass <c>default</c> to omit tools from the request.
     /// </param>
+    /// <param name="streamResponse">
+    /// True to request server-side streaming from the provider; false to request a buffered response.
+    /// </param>
     /// <param name="cancellationToken">Token to cancel the request.</param>
     /// <returns>An async enumerable of streamed tokens.</returns>
     IAsyncEnumerable<AiStreamToken> StreamCompletionAsync(
         IReadOnlyList<AiChatMessage> messages,
         string model,
         JsonElement tools = default,
+        bool streamResponse = true,
         CancellationToken cancellationToken = default);
 
     /// <summary>

@@ -732,18 +732,6 @@ public partial class AiChatPanel : UserControl
         RefreshContextWindowDisplay();
     }
 
-    private void FormattingOptionsButton_Click(object sender, RoutedEventArgs e)
-    {
-        ContextMenu? contextMenu = FormattingOptionsButton.ContextMenu;
-        if (contextMenu is null)
-        {
-            return;
-        }
-
-        contextMenu.PlacementTarget = FormattingOptionsButton;
-        contextMenu.IsOpen = true;
-    }
-
     private void ProviderSelector_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         if (ProviderSelector.SelectedItem is not IAiProvider selected)
@@ -895,6 +883,8 @@ public partial class AiChatPanel : UserControl
         CancellationToken ct = _streamCts.Token;
         bool cutoffMarkerAddedForRequest = false;
         bool rawTextMode = IsRawTextModeEnabled();
+        bool streamingDisabled = IsStreamingDisabled();
+        bool streamResponses = !streamingDisabled;
         bool rawSystemPromptAddedForRequest = false;
 
         try
@@ -950,7 +940,7 @@ public partial class AiChatPanel : UserControl
                     }
                 });
 
-                await foreach (var token in _provider.StreamCompletionAsync(outboundMessages, model, toolsDef, ct)
+                await foreach (AiStreamToken token in _provider.StreamCompletionAsync(outboundMessages, model, toolsDef, streamResponses, ct)
                     .ConfigureAwait(false))
                 {
                     if (token.Type == AiStreamTokenType.Usage)
@@ -961,8 +951,13 @@ public partial class AiChatPanel : UserControl
 
                     if (token.Type == AiStreamTokenType.ToolCall && token.ToolCall is not null)
                     {
-                        var toolCall = token.ToolCall!;
+                        AiStreamToolCall toolCall = token.ToolCall!;
                         streamedToolCalls[toolCall.Index] = toolCall;
+
+                        if (streamingDisabled)
+                        {
+                            continue;
+                        }
 
                         await Dispatcher.InvokeAsync(() =>
                         {
@@ -1024,6 +1019,11 @@ public partial class AiChatPanel : UserControl
                         reasoningBuilder.Append(token.Text);
                         reasoningTokenCount++;
 
+                        if (streamingDisabled)
+                        {
+                            continue;
+                        }
+
                         await Dispatcher.InvokeAsync(() =>
                         {
                             bool shouldStickToBottom = IsMessageScrollerNearBottom();
@@ -1080,6 +1080,11 @@ public partial class AiChatPanel : UserControl
                         responseBuilder.Append(token.Text);
                         contentTokenCount++;
 
+                        if (streamingDisabled)
+                        {
+                            continue;
+                        }
+
                         await Dispatcher.InvokeAsync(() =>
                         {
                             var shouldStickToBottom = IsMessageScrollerNearBottom();
@@ -1101,6 +1106,61 @@ public partial class AiChatPanel : UserControl
                             }
                         });
                     }
+                }
+
+                if (streamingDisabled)
+                {
+                    await Dispatcher.InvokeAsync(() =>
+                    {
+                        bool shouldStickToBottom = IsMessageScrollerNearBottom();
+
+                        if (rawTextMode)
+                        {
+                            if (!string.IsNullOrWhiteSpace(reasoningBuilder.ToString()))
+                            {
+                                AppendRawTranscriptEntry(
+                                    "Thinking",
+                                    reasoningBuilder.ToString(),
+                                    FindBrush("AiChatThinkingForeground"),
+                                    assistantContainer);
+                            }
+
+                            if (!string.IsNullOrWhiteSpace(responseBuilder.ToString()))
+                            {
+                                AppendRawTranscriptEntry(
+                                    "Assistant",
+                                    responseBuilder.ToString(),
+                                    FindBrush("AiChatAssistantForeground"),
+                                    assistantContainer);
+                            }
+                        }
+                        else
+                        {
+                            if (!string.IsNullOrWhiteSpace(reasoningBuilder.ToString()))
+                            {
+                                (thinkingSection, thinkingTextBlock) = CreateThinkingSection(assistantContainer, assistantBlock);
+                                thinkingTextBlock.Text = FormatDisplayedAssistantContent(
+                                    reasoningBuilder.ToString(),
+                                    ShouldRemoveVerticalWhitespace());
+                                thinkingTextBlock.Visibility = Visibility.Visible;
+                                SetInlineSectionHeader(
+                                    thinkingSection,
+                                    reasoningTokenCount > 0
+                                        ? $"Thought for {reasoningTokenCount:N0} tokens"
+                                        : "Thought");
+                            }
+
+                            RenderAssistantContent(assistantBlock, responseBuilder.ToString());
+                            UpdatePinnedSectionHeaders();
+                        }
+
+                        UpdateStatsBar(reasoningTokenCount + contentTokenCount, streamStopwatch);
+
+                        if (shouldStickToBottom)
+                        {
+                            MessageScroller.ScrollToEnd();
+                        }
+                    });
                 }
 
                 if (thinkingSection is not null)
@@ -1619,22 +1679,27 @@ public partial class AiChatPanel : UserControl
 
     private bool IsRawTextModeEnabled()
     {
-        return RawTextMenuItem.IsChecked == true;
+        return RawTextCheckBox.IsChecked == true;
     }
 
     private bool ShouldAutoExpandThinkingSections()
     {
-        return AutoExpandThinkingMenuItem.IsChecked == true;
+        return AutoExpandThinkingCheckBox.IsChecked == true;
     }
 
     private bool ShouldAutoExpandToolSections()
     {
-        return AutoExpandToolsMenuItem.IsChecked == true;
+        return AutoExpandToolsCheckBox.IsChecked == true;
     }
 
     private bool ShouldRemoveVerticalWhitespace()
     {
-        return RemoveVerticalWhitespaceMenuItem.IsChecked == true;
+        return RemoveVerticalWhitespaceCheckBox.IsChecked == true;
+    }
+
+    private bool IsStreamingDisabled()
+    {
+        return DisableStreamingCheckBox.IsChecked == true;
     }
 
     private void RenderAssistantContent(RichTextBox richTextBox, string content)

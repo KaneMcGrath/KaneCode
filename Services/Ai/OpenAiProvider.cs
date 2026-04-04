@@ -40,6 +40,7 @@ internal sealed class OpenAiProvider : IAiProvider, IDisposable
         IReadOnlyList<AiChatMessage> messages,
         string model,
         JsonElement tools = default,
+        bool streamResponse = true,
         [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(messages);
@@ -48,36 +49,20 @@ internal sealed class OpenAiProvider : IAiProvider, IDisposable
         string resolvedModel = ResolveModel(model, _settings.SelectedModel);
         JsonElement serializedMessages = SerializeMessages(messages);
         bool isGroqCompatibleEndpoint = IsGroqCompatibleEndpoint(_settings.Endpoint);
-
-        using var bodyStream = new MemoryStream();
-        using (var writer = new Utf8JsonWriter(bodyStream))
-        {
-            writer.WriteStartObject();
-            writer.WriteString("model", resolvedModel);
-
-            writer.WritePropertyName("messages");
-            serializedMessages.WriteTo(writer);
-
-            writer.WriteBoolean("stream", true);
-
-            if (tools.ValueKind == JsonValueKind.Array && tools.GetArrayLength() > 0)
-            {
-                writer.WritePropertyName("tools");
-                tools.WriteTo(writer);
-            }
-
-            WriteInferenceParameters(writer, _settings, isGroqCompatibleEndpoint);
-
-            writer.WriteEndObject();
-        }
-
-        var json = Encoding.UTF8.GetString(bodyStream.ToArray());
+        string json = BuildChatCompletionRequestJson(
+            resolvedModel,
+            serializedMessages,
+            tools,
+            _settings,
+            isGroqCompatibleEndpoint,
+            streamResponse);
         using var request = new HttpRequestMessage(HttpMethod.Post, url)
         {
             Content = new StringContent(json, Encoding.UTF8, "application/json")
         };
 
-        request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("text/event-stream"));
+        request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue(
+            streamResponse ? "text/event-stream" : "application/json"));
 
         if (!string.IsNullOrWhiteSpace(_settings.ApiKey))
         {
@@ -86,7 +71,7 @@ internal sealed class OpenAiProvider : IAiProvider, IDisposable
 
         using var response = await _httpClient.SendAsync(
             request,
-            HttpCompletionOption.ResponseHeadersRead,
+            streamResponse ? HttpCompletionOption.ResponseHeadersRead : HttpCompletionOption.ResponseContentRead,
             cancellationToken).ConfigureAwait(false);
 
         if (!response.IsSuccessStatusCode)
@@ -139,6 +124,42 @@ internal sealed class OpenAiProvider : IAiProvider, IDisposable
                 yield return token;
             }
         }
+    }
+
+    internal static string BuildChatCompletionRequestJson(
+        string model,
+        JsonElement serializedMessages,
+        JsonElement tools,
+        AiProviderSettings settings,
+        bool isGroqCompatibleEndpoint,
+        bool streamResponse)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(model);
+        ArgumentNullException.ThrowIfNull(settings);
+
+        using MemoryStream bodyStream = new MemoryStream();
+        using (Utf8JsonWriter writer = new Utf8JsonWriter(bodyStream))
+        {
+            writer.WriteStartObject();
+            writer.WriteString("model", model);
+
+            writer.WritePropertyName("messages");
+            serializedMessages.WriteTo(writer);
+
+            writer.WriteBoolean("stream", streamResponse);
+
+            if (tools.ValueKind == JsonValueKind.Array && tools.GetArrayLength() > 0)
+            {
+                writer.WritePropertyName("tools");
+                tools.WriteTo(writer);
+            }
+
+            WriteInferenceParameters(writer, settings, isGroqCompatibleEndpoint);
+
+            writer.WriteEndObject();
+        }
+
+        return Encoding.UTF8.GetString(bodyStream.ToArray());
     }
 
     private static string ResolveModel(string requestedModel, string configuredModel)
