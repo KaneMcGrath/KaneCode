@@ -6,6 +6,7 @@ public class MainViewModelTests
 {
     [Theory]
     [InlineData(@"C:\repo\App.csproj")]
+    [InlineData(@"C:\repo\App.slnx")]
     [InlineData(@"C:\repo\Directory.Build.props")]
     [InlineData(@"C:\repo\Directory.Build.targets")]
     [InlineData(@"C:\repo\Directory.Packages.props")]

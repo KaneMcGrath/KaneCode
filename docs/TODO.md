@@ -142,7 +142,6 @@
 
 #### 4.3 Automated Tests for Code Analysis
 
-- [ ] Create a `KaneCode.Tests` (or similar) test project for analysis subsystem tests
 - [ ] Add tests for loading single-project and multi-project solutions into the Roslyn workspace
 - [ ] Add tests for cross-project Go To Definition
 - [ ] Add tests for Find References returning expected results

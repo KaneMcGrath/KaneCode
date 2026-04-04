@@ -70,6 +70,7 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
     private readonly TimeSpan _analysisDelay = TimeSpan.FromMilliseconds(500);
     private CancellationTokenSource? _loadingStatusClearCts;
     private string? _loadedProjectOrSolutionPath;
+    private List<string> _loadedSolutionProjectPaths = [];
 
     public MainViewModel()
     {
@@ -757,12 +758,11 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
 
             await Application.Current.Dispatcher.InvokeAsync(async () =>
             {
-                var ext = Path.GetExtension(path);
-                if (ext.Equals(".sln", StringComparison.OrdinalIgnoreCase))
+                if (IsSolutionFile(path))
                 {
                     await LoadSolutionFileAsync(path, closeOpenTabs: false);
                 }
-                else if (ext.Equals(".csproj", StringComparison.OrdinalIgnoreCase))
+                else if (Path.GetExtension(path).Equals(".csproj", StringComparison.OrdinalIgnoreCase))
                 {
                     await LoadProjectFileAsync(path, closeOpenTabs: false);
                 }
@@ -787,9 +787,22 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
 
         string fileName = Path.GetFileName(filePath);
         return fileName.EndsWith(".csproj", StringComparison.OrdinalIgnoreCase)
+            || fileName.EndsWith(".slnx", StringComparison.OrdinalIgnoreCase)
             || fileName.Equals("Directory.Build.props", StringComparison.OrdinalIgnoreCase)
             || fileName.Equals("Directory.Build.targets", StringComparison.OrdinalIgnoreCase)
             || fileName.Equals("Directory.Packages.props", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsSolutionFile(string filePath)
+    {
+        if (string.IsNullOrEmpty(filePath))
+        {
+            return false;
+        }
+
+        string fileName = Path.GetFileName(filePath);
+        return fileName.EndsWith(".sln", StringComparison.OrdinalIgnoreCase)
+            || fileName.EndsWith(".slnx", StringComparison.OrdinalIgnoreCase);
     }
 
     private void OnExplorerWatcherChanged(object sender, FileSystemEventArgs e)
@@ -864,19 +877,16 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
         // Rebuild tree based on what was originally loaded
         if (!string.IsNullOrEmpty(_loadedProjectOrSolutionPath))
         {
-            var ext = Path.GetExtension(_loadedProjectOrSolutionPath);
-            if (ext.Equals(".sln", StringComparison.OrdinalIgnoreCase))
+            if (IsSolutionFile(_loadedProjectOrSolutionPath))
             {
-                // Re-discover project paths from the loaded solution result
-                var projectPaths = DiscoverProjectPaths(_loadedProjectOrSolutionPath);
-                var root = EditorService.BuildSolutionTree(_loadedProjectOrSolutionPath, projectPaths);
+                var root = EditorService.BuildSolutionTree(_loadedProjectOrSolutionPath, _loadedSolutionProjectPaths);
                 RestoreExpandedPaths(root, expandedPaths);
                 ProjectItems = new ObservableCollection<ProjectItem> { root };
                 ApplyGitStatusToTree(_gitService.GetStatus());
                 return;
             }
 
-            if (ext.Equals(".csproj", StringComparison.OrdinalIgnoreCase))
+            if (Path.GetExtension(_loadedProjectOrSolutionPath).Equals(".csproj", StringComparison.OrdinalIgnoreCase))
             {
                 var root = EditorService.BuildProjectTree(_loadedProjectOrSolutionPath);
                 RestoreExpandedPaths(root, expandedPaths);
@@ -891,37 +901,6 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
         RestoreExpandedPaths(folderRoot, expandedPaths);
         ProjectItems = new ObservableCollection<ProjectItem>(folderRoot.Children);
         ApplyGitStatusToTree(_gitService.GetStatus());
-    }
-
-    /// <summary>
-    /// Discovers .csproj paths referenced in a .sln file by parsing Project lines.
-    /// </summary>
-    private static List<string> DiscoverProjectPaths(string solutionPath)
-    {
-        var solutionDir = Path.GetDirectoryName(solutionPath)!;
-        var projectPaths = new List<string>();
-        var lines = File.ReadAllLines(solutionPath);
-
-        foreach (var line in lines)
-        {
-            if (!line.StartsWith("Project(", StringComparison.Ordinal))
-            {
-                continue;
-            }
-
-            var parts = line.Split('"');
-            if (parts.Length >= 6)
-            {
-                var relativePath = parts[5].Replace('\\', Path.DirectorySeparatorChar);
-                var fullPath = Path.GetFullPath(Path.Combine(solutionDir, relativePath));
-                if (fullPath.EndsWith(".csproj", StringComparison.OrdinalIgnoreCase))
-                {
-                    projectPaths.Add(fullPath);
-                }
-            }
-        }
-
-        return projectPaths;
     }
 
     private static void CollectExpandedPaths(IEnumerable<ProjectItem> items, HashSet<string> expandedPaths)
@@ -997,7 +976,7 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
     {
         var dialog = new OpenFileDialog
         {
-            Filter = "Solution Files (*.sln)|*.sln",
+            Filter = "Solution Files (*.sln;*.slnx)|*.sln;*.slnx",
             Title = "Open Solution"
         };
 
@@ -1121,6 +1100,7 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
 
             ProjectRootPath = solutionDir;
             _loadedProjectOrSolutionPath = solutionPath;
+            _loadedSolutionProjectPaths = result.Projects.Select(p => p.ProjectPath).ToList();
             var projectPaths = result.Projects.Select(p => p.ProjectPath).ToList();
             var root = EditorService.BuildSolutionTree(solutionPath, projectPaths);
             ProjectItems = new ObservableCollection<ProjectItem> { root };
@@ -3845,14 +3825,14 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
             return _loadedProjectOrSolutionPath;
         }
 
-        if (!extension.Equals(".sln", StringComparison.OrdinalIgnoreCase))
+        if (!IsSolutionFile(_loadedProjectOrSolutionPath))
         {
             return null;
         }
 
         try
         {
-            return DiscoverProjectPaths(_loadedProjectOrSolutionPath)
+            return _loadedSolutionProjectPaths
                 .FirstOrDefault(File.Exists);
         }
         catch (IOException)
