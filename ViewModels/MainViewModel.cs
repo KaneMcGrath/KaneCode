@@ -99,6 +99,7 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
         GoToImplementationCommand = new RelayCommand(async _ => await GoToImplementationAsync(), _ => CanGoToDefinition());
         GoToDerivedTypesCommand = new RelayCommand(async _ => await GoToDerivedTypesAsync(), _ => CanGoToDefinition());
         FindReferencesCommand = new RelayCommand(async _ => await FindReferencesAsync(), _ => CanGoToDefinition());
+        GoToSymbolCommand = new RelayCommand(async _ => await GoToSymbolAsync(), _ => CanSearchSymbols());
         CloseTabCommand = new RelayCommand(param => CloseTab(param as OpenFileTab), _ => ActiveTab is not null);
         ExitCommand = new RelayCommand(_ => ExitApplication());
         OpenOptionsCommand = new RelayCommand(_ => OpenOptions());
@@ -152,6 +153,7 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
     public ICommand GoToImplementationCommand { get; }
     public ICommand GoToDerivedTypesCommand { get; }
     public ICommand FindReferencesCommand { get; }
+    public ICommand GoToSymbolCommand { get; }
     public ICommand CloseTabCommand { get; }
     public ICommand ExitCommand { get; }
     public ICommand OpenOptionsCommand { get; }
@@ -248,6 +250,22 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
     {
         get => _findReferencesStatusText;
         private set => SetProperty(ref _findReferencesStatusText, value);
+    }
+
+    private string _referencePeekHeaderText = "Select a result to preview";
+    /// <summary>Header text shown above the inline peek definition preview.</summary>
+    public string ReferencePeekHeaderText
+    {
+        get => _referencePeekHeaderText;
+        private set => SetProperty(ref _referencePeekHeaderText, value);
+    }
+
+    private string _referencePeekContentText = string.Empty;
+    /// <summary>Inline preview text shown for the currently selected navigation result.</summary>
+    public string ReferencePeekContentText
+    {
+        get => _referencePeekContentText;
+        private set => SetProperty(ref _referencePeekContentText, value);
     }
 
     /// <summary>Files with unstaged working-directory changes, shown in the Git Changes panel.</summary>
@@ -596,6 +614,71 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
         buttonPanel.Children.Add(okButton);
 
         var cancelButton = new System.Windows.Controls.Button
+        {
+            Content = "Cancel",
+            Width = 75,
+            IsCancel = true
+        };
+        buttonPanel.Children.Add(cancelButton);
+
+        panel.Children.Add(buttonPanel);
+        inputWindow.Content = panel;
+
+        textBox.Loaded += (_, _) => textBox.Focus();
+
+        inputWindow.ShowDialog();
+        return result;
+    }
+
+    private static string? PromptForSymbolSearch()
+    {
+        System.Windows.Window inputWindow = new()
+        {
+            Title = "Go To Symbol",
+            Width = 420,
+            Height = 160,
+            WindowStartupLocation = System.Windows.WindowStartupLocation.CenterOwner,
+            ResizeMode = System.Windows.ResizeMode.NoResize,
+            Owner = System.Windows.Application.Current.MainWindow
+        };
+
+        string? result = null;
+        System.Windows.Controls.StackPanel panel = new() { Margin = new System.Windows.Thickness(12) };
+
+        System.Windows.Controls.TextBlock label = new()
+        {
+            Text = "Symbol name:",
+            Margin = new System.Windows.Thickness(0, 0, 0, 6)
+        };
+        panel.Children.Add(label);
+
+        System.Windows.Controls.TextBox textBox = new()
+        {
+            Margin = new System.Windows.Thickness(0, 0, 0, 12)
+        };
+        panel.Children.Add(textBox);
+
+        System.Windows.Controls.StackPanel buttonPanel = new()
+        {
+            Orientation = System.Windows.Controls.Orientation.Horizontal,
+            HorizontalAlignment = System.Windows.HorizontalAlignment.Right
+        };
+
+        System.Windows.Controls.Button okButton = new()
+        {
+            Content = "Search",
+            Width = 75,
+            Margin = new System.Windows.Thickness(0, 0, 8, 0),
+            IsDefault = true
+        };
+        okButton.Click += (_, _) =>
+        {
+            result = textBox.Text.Trim();
+            inputWindow.DialogResult = true;
+        };
+        buttonPanel.Children.Add(okButton);
+
+        System.Windows.Controls.Button cancelButton = new()
         {
             Content = "Cancel",
             Width = 75,
@@ -2540,6 +2623,11 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
             && RoslynWorkspaceService.IsCSharpFile(ActiveTab.FilePath);
     }
 
+    private bool CanSearchSymbols()
+    {
+        return !string.IsNullOrWhiteSpace(_loadedProjectOrSolutionPath);
+    }
+
     /// <summary>
     /// Navigates to symbol implementations for the symbol at the caret.
     /// When multiple implementations are found, populates the Find References panel.
@@ -2601,6 +2689,7 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
 
         FindReferencesStatusText = "Searching...";
         ReferenceItems.Clear();
+        ClearReferencePeek();
 
         try
         {
@@ -2611,16 +2700,46 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
                 .FindReferencesAsync(ActiveTab.FilePath, caretOffset, ct)
                 .ConfigureAwait(true);
 
-            ReferenceItems.Clear();
-            foreach (var item in results)
-            {
-                ReferenceItems.Add(item);
-            }
+            ShowReferenceResults(results, "reference(s)", "No references found");
+        }
+        catch (OperationCanceledException)
+        {
+            // Superseded by a newer request
+        }
+    }
 
-            var symbolName = results.Count > 0 ? results[0].SymbolName : string.Empty;
-            FindReferencesStatusText = results.Count > 0
-                ? $"{symbolName} — {results.Count} reference(s)"
-                : "No references found";
+    /// <summary>
+    /// Searches the loaded workspace for symbol declarations matching a user-provided name.
+    /// </summary>
+    public async Task GoToSymbolAsync()
+    {
+        if (!CanSearchSymbols())
+        {
+            return;
+        }
+
+        string? searchText = PromptForSymbolSearch();
+        if (string.IsNullOrWhiteSpace(searchText))
+        {
+            return;
+        }
+
+        _findReferencesCts?.Cancel();
+        _findReferencesCts?.Dispose();
+        _findReferencesCts = new CancellationTokenSource();
+        CancellationToken ct = _findReferencesCts.Token;
+
+        FindReferencesStatusText = $"Searching symbols for '{searchText}'...";
+        ReferenceItems.Clear();
+        ClearReferencePeek();
+
+        try
+        {
+            IReadOnlyList<ReferenceItem> results = await _navigationService
+                .SearchSymbolsAsync(searchText, ct)
+                .ConfigureAwait(true);
+
+            ShowReferenceResults(results, "symbol(s)", $"No symbols found for '{searchText}'");
         }
         catch (OperationCanceledException)
         {
@@ -2646,25 +2765,14 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
 
         FindReferencesStatusText = searchingText;
         ReferenceItems.Clear();
+        ClearReferencePeek();
 
         try
         {
             await _roslynService.UpdateDocumentTextAsync(ActiveTab.FilePath, _editor.Text, ct).ConfigureAwait(true);
 
             var results = await searchAsync(ct).ConfigureAwait(true);
-            if (results.Count == 0)
-            {
-                FindReferencesStatusText = notFoundText;
-                return;
-            }
-
-            foreach (var item in results)
-            {
-                ReferenceItems.Add(item);
-            }
-
-            var symbolName = results[0].SymbolName;
-            FindReferencesStatusText = $"{symbolName} — {results.Count} {successSuffix}";
+            ShowReferenceResults(results, successSuffix, notFoundText);
 
             if (results.Count == 1)
             {
@@ -2675,6 +2783,97 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
         {
             // Superseded by a newer request
         }
+    }
+
+    internal void UpdateReferencePeek(ReferenceItem? item)
+    {
+        if (item is null)
+        {
+            ClearReferencePeek();
+            return;
+        }
+
+        ReferencePeekHeaderText = $"{item.KindDisplayName} — {item.SymbolName} ({item.FileName}:{item.Line})";
+
+        string? fileText = null;
+        OpenFileTab? openTab = OpenTabs.FirstOrDefault(t => string.Equals(t.FilePath, item.FilePath, StringComparison.OrdinalIgnoreCase));
+        if (openTab is not null)
+        {
+            fileText = openTab.Document.Text;
+        }
+        else
+        {
+            try
+            {
+                fileText = File.Exists(item.FilePath) ? File.ReadAllText(item.FilePath) : null;
+            }
+            catch (IOException)
+            {
+                fileText = null;
+            }
+            catch (UnauthorizedAccessException)
+            {
+                fileText = null;
+            }
+        }
+
+        ReferencePeekContentText = string.IsNullOrEmpty(fileText)
+            ? "Preview unavailable."
+            : BuildPeekContent(fileText, item.Line, 2);
+    }
+
+    private void ShowReferenceResults(
+        IReadOnlyList<ReferenceItem> results,
+        string successSuffix,
+        string notFoundText)
+    {
+        ReferenceItems.Clear();
+
+        if (results.Count == 0)
+        {
+            FindReferencesStatusText = notFoundText;
+            ClearReferencePeek();
+            return;
+        }
+
+        foreach (ReferenceItem item in results)
+        {
+            ReferenceItems.Add(item);
+        }
+
+        string symbolName = results[0].SymbolName;
+        FindReferencesStatusText = $"{symbolName} — {results.Count} {successSuffix}";
+        UpdateReferencePeek(results[0]);
+    }
+
+    private void ClearReferencePeek()
+    {
+        ReferencePeekHeaderText = "Select a result to preview";
+        ReferencePeekContentText = string.Empty;
+    }
+
+    internal static string BuildPeekContent(string fileText, int lineNumber, int contextLineCount)
+    {
+        ArgumentNullException.ThrowIfNull(fileText);
+
+        string[] lines = fileText.Replace("\r\n", "\n", StringComparison.Ordinal).Split('\n');
+        if (lines.Length == 0)
+        {
+            return string.Empty;
+        }
+
+        int targetIndex = Math.Clamp(lineNumber - 1, 0, lines.Length - 1);
+        int startLine = Math.Max(0, targetIndex - contextLineCount);
+        int endLine = Math.Min(lines.Length - 1, targetIndex + contextLineCount);
+
+        List<string> previewLines = [];
+        for (int index = startLine; index <= endLine; index++)
+        {
+            string marker = index == targetIndex ? ">" : " ";
+            previewLines.Add($"{marker} {index + 1,4}: {lines[index]}");
+        }
+
+        return string.Join(Environment.NewLine, previewLines);
     }
 
     /// <summary>

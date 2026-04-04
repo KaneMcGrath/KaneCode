@@ -116,10 +116,10 @@
 
 #### 3.7 Navigation Enhancements
 
-- [ ] Group Find References results by project → file → definition vs. reference vs. implementation
-- [ ] Add visual distinction (icons/colors) for definition, reference, and implementation results
-- [ ] Add peek definition (inline preview without navigating away)
-- [ ] Add symbol search / Go To Symbol command (search by name across the solution)
+- [x] Group Find References results by project → file → definition vs. reference vs. implementation
+- [x] Add visual distinction (icons/colors) for definition, reference, and implementation results
+- [x] Add peek definition (inline preview without navigating away)
+- [x] Add symbol search / Go To Symbol command (search by name across the solution)
 
 ---
 

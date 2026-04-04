@@ -67,6 +67,7 @@ ResizeMode="CanResizeWithGrip">
                 <Separator />
                 <MenuItem Header="Go to _Definition" Command="{Binding GoToDefinitionCommand}" />
                 <MenuItem Header="Find _References" Command="{Binding FindReferencesCommand}" />
+                <MenuItem Header="Go To _Symbol..." Command="{Binding GoToSymbolCommand}" />
                 <MenuItem Header="Code _Actions" Command="{Binding CodeActionsCommand}" />
                 <MenuItem Header="_Rename" Command="{Binding RenameCommand}" />
                 <MenuItem Header="_Extract Method" Command="{Binding ExtractMethodCommand}" />
@@ -465,6 +466,9 @@ ResizeMode="CanResizeWithGrip">
                                 <controls:FindReferencesPanel x:Name="FindReferencesPanel"
                                                               References="{Binding ReferenceItems}"
                                                               PanelStatusText="{Binding FindReferencesStatusText}"
+                                                              PeekHeaderText="{Binding ReferencePeekHeaderText}"
+                                                              PeekContentText="{Binding ReferencePeekContentText}"
+                                                              PreviewRequested="FindReferencesPanel_PreviewRequested"
                                                               NavigateRequested="FindReferencesPanel_NavigateRequested" />
                             </avalonDock:LayoutAnchorable>
                             <avalonDock:LayoutAnchorable x:Name="GitChangesAnchorable" Title="Git Changes"

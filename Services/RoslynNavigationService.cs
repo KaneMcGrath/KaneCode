@@ -111,50 +111,58 @@ internal sealed class RoslynNavigationService
             symbol = aliasSymbol.Target;
         }
 
+        Solution solution = document.Project.Solution;
         var symbolName = symbol.Name;
         var referencedSymbols = await SymbolFinder.FindReferencesAsync(
-            symbol, document.Project.Solution, cancellationToken).ConfigureAwait(false);
+            symbol, solution, cancellationToken).ConfigureAwait(false);
 
+        HashSet<(string FilePath, int StartOffset, ReferenceKind Kind)> seen = new();
         var results = new List<ReferenceItem>();
 
         foreach (var referencedSymbol in referencedSymbols)
         {
-            // Include the definition itself
-            foreach (var loc in referencedSymbol.Definition.Locations)
+            foreach (Location definitionLocation in referencedSymbol.Definition.Locations)
             {
-                if (!loc.IsInSource || loc.SourceTree is null)
+                if (!definitionLocation.IsInSource || definitionLocation.SourceTree is null)
                 {
                     continue;
                 }
 
-                var refFilePath = loc.SourceTree.FilePath;
-                var item = await BuildReferenceItemAsync(
-                    symbolName, refFilePath, loc.SourceSpan, loc.SourceTree, cancellationToken)
+                ReferenceItem? item = await BuildReferenceItemAsync(
+                    symbolName,
+                    solution,
+                    definitionLocation.SourceSpan,
+                    definitionLocation.SourceTree,
+                    ReferenceKind.Definition,
+                    cancellationToken)
                     .ConfigureAwait(false);
 
-                if (item is not null)
+                if (item is not null && seen.Add((item.FilePath, item.StartOffset, item.Kind)))
                 {
                     results.Add(item);
                 }
             }
 
-            // Include all usage references
-            foreach (var location in referencedSymbol.Locations)
+            foreach (ReferenceLocation referenceLocation in referencedSymbol.Locations)
             {
                 cancellationToken.ThrowIfCancellationRequested();
 
-                var loc = location.Location;
+                Location loc = referenceLocation.Location;
                 if (!loc.IsInSource || loc.SourceTree is null)
                 {
                     continue;
                 }
 
-                var refFilePath = loc.SourceTree.FilePath;
-                var item = await BuildReferenceItemAsync(
-                    symbolName, refFilePath, loc.SourceSpan, loc.SourceTree, cancellationToken)
+                ReferenceItem? item = await BuildReferenceItemAsync(
+                    symbolName,
+                    solution,
+                    loc.SourceSpan,
+                    loc.SourceTree,
+                    ReferenceKind.Reference,
+                    cancellationToken)
                     .ConfigureAwait(false);
 
-                if (item is not null)
+                if (item is not null && seen.Add((item.FilePath, item.StartOffset, item.Kind)))
                 {
                     results.Add(item);
                 }
@@ -190,6 +198,7 @@ internal sealed class RoslynNavigationService
         return await BuildSymbolReferenceItemsAsync(
             symbol.Name,
             implementations,
+            ReferenceKind.Implementation,
             cancellationToken).ConfigureAwait(false);
     }
 
@@ -215,6 +224,44 @@ internal sealed class RoslynNavigationService
         return await BuildSymbolReferenceItemsAsync(
             typeSymbol.Name,
             derivedClasses,
+            ReferenceKind.Implementation,
+            cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Finds source declarations whose names match the provided search text.
+    /// </summary>
+    public async Task<IReadOnlyList<ReferenceItem>> SearchSymbolsAsync(
+        string searchText,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(searchText);
+
+        Solution solution = _roslynService.Workspace.CurrentSolution;
+        List<ISymbol> symbols = [];
+
+        foreach (Project project in solution.Projects)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            if (project.Language != LanguageNames.CSharp)
+            {
+                continue;
+            }
+
+            IEnumerable<ISymbol> projectSymbols = await SymbolFinder.FindSourceDeclarationsAsync(
+                project,
+                name => name.Contains(searchText, StringComparison.OrdinalIgnoreCase),
+                SymbolFilter.TypeAndMember | SymbolFilter.Namespace,
+                cancellationToken).ConfigureAwait(false);
+
+            symbols.AddRange(projectSymbols);
+        }
+
+        return await BuildSymbolReferenceItemsAsync(
+            searchText,
+            symbols,
+            ReferenceKind.Definition,
             cancellationToken).ConfigureAwait(false);
     }
 
@@ -252,38 +299,44 @@ internal sealed class RoslynNavigationService
     private static async Task<IReadOnlyList<ReferenceItem>> BuildSymbolReferenceItemsAsync(
         string symbolName,
         IEnumerable<ISymbol> symbols,
+        ReferenceKind kind,
         CancellationToken cancellationToken)
     {
-        var seen = new HashSet<(string FilePath, int Start)>();
-        var results = new List<ReferenceItem>();
+        HashSet<(string FilePath, int Start, ReferenceKind Kind)> seen = new();
+        List<ReferenceItem> results = [];
 
-        foreach (var symbol in symbols)
+        foreach (ISymbol symbol in symbols)
         {
             cancellationToken.ThrowIfCancellationRequested();
 
-            foreach (var loc in symbol.Locations)
+            foreach (Location loc in symbol.Locations)
             {
                 if (!loc.IsInSource || loc.SourceTree is null)
                 {
                     continue;
                 }
 
-                var refFilePath = loc.SourceTree.FilePath;
+                string? refFilePath = loc.SourceTree.FilePath;
                 if (string.IsNullOrWhiteSpace(refFilePath))
                 {
                     continue;
                 }
 
-                if (!seen.Add((refFilePath, loc.SourceSpan.Start)))
+                if (!seen.Add((refFilePath, loc.SourceSpan.Start, kind)))
                 {
                     continue;
                 }
 
-                var item = await BuildReferenceItemAsync(
-                    symbolName,
-                    refFilePath,
+                string displayName = kind == ReferenceKind.Definition
+                    ? symbol.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat)
+                    : symbolName;
+
+                ReferenceItem? item = await BuildReferenceItemAsync(
+                    displayName,
+                    symbol.ContainingAssembly,
                     loc.SourceSpan,
                     loc.SourceTree,
+                    kind,
                     cancellationToken).ConfigureAwait(false);
 
                 if (item is not null)
@@ -302,35 +355,83 @@ internal sealed class RoslynNavigationService
 
     private static async Task<ReferenceItem?> BuildReferenceItemAsync(
         string symbolName,
-        string refFilePath,
+        Solution solution,
         TextSpan span,
         Microsoft.CodeAnalysis.SyntaxTree syntaxTree,
+        ReferenceKind kind,
         CancellationToken cancellationToken)
     {
+        ArgumentNullException.ThrowIfNull(solution);
+
+        string? refFilePath = syntaxTree.FilePath;
         if (string.IsNullOrWhiteSpace(refFilePath))
         {
             return null;
         }
 
-        var sourceText = await syntaxTree.GetTextAsync(cancellationToken).ConfigureAwait(false);
-        var linePosition = sourceText.Lines.GetLinePosition(span.Start);
-        var line = linePosition.Line + 1;
-        var column = linePosition.Character + 1;
+        SourceText sourceText = await syntaxTree.GetTextAsync(cancellationToken).ConfigureAwait(false);
+        LinePosition linePosition = sourceText.Lines.GetLinePosition(span.Start);
+        int line = linePosition.Line + 1;
+        int column = linePosition.Character + 1;
 
-        var preview = string.Empty;
+        string preview = string.Empty;
         if (linePosition.Line >= 0 && linePosition.Line < sourceText.Lines.Count)
         {
             preview = sourceText.Lines[linePosition.Line].ToString().Trim();
         }
 
+        Document? document = solution.GetDocument(syntaxTree);
+        string projectName = document?.Project.Name ?? string.Empty;
+
         return new ReferenceItem(
             symbolName,
             refFilePath,
             Path.GetFileName(refFilePath),
+            projectName,
             line,
             column,
             span.Start,
-            preview);
+            preview,
+            kind);
+    }
+
+    private static async Task<ReferenceItem?> BuildReferenceItemAsync(
+        string symbolName,
+        IAssemblySymbol? containingAssembly,
+        TextSpan span,
+        Microsoft.CodeAnalysis.SyntaxTree syntaxTree,
+        ReferenceKind kind,
+        CancellationToken cancellationToken)
+    {
+        string? refFilePath = syntaxTree.FilePath;
+        if (string.IsNullOrWhiteSpace(refFilePath))
+        {
+            return null;
+        }
+
+        SourceText sourceText = await syntaxTree.GetTextAsync(cancellationToken).ConfigureAwait(false);
+        LinePosition linePosition = sourceText.Lines.GetLinePosition(span.Start);
+        int line = linePosition.Line + 1;
+        int column = linePosition.Character + 1;
+
+        string preview = string.Empty;
+        if (linePosition.Line >= 0 && linePosition.Line < sourceText.Lines.Count)
+        {
+            preview = sourceText.Lines[linePosition.Line].ToString().Trim();
+        }
+
+        string projectName = containingAssembly?.Name ?? string.Empty;
+
+        return new ReferenceItem(
+            symbolName,
+            refFilePath,
+            Path.GetFileName(refFilePath),
+            projectName,
+            line,
+            column,
+            span.Start,
+            preview,
+            kind);
     }
 }
 

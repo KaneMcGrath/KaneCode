@@ -23,4 +23,14 @@ public class MainViewModelTests
     {
         Assert.False(MainViewModel.IsProjectConfigFile(filePath));
     }
+
+    [Fact]
+    public void WhenBuildingPeekContentThenTargetLineIsMarkedAndContextIncluded()
+    {
+        string fileText = "first\nsecond\nthird\nfourth";
+
+        string preview = MainViewModel.BuildPeekContent(fileText, 3, 1);
+
+        Assert.Equal("     2: second\r\n>    3: third\r\n     4: fourth", preview);
+    }
 }

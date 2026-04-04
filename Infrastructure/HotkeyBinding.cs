@@ -24,6 +24,7 @@ internal enum HotkeyAction
     Replace,
     GoToDefinition,
     FindReferences,
+    GoToSymbol,
     TriggerCompletion,
     CodeActions,
     Rename,

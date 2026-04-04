@@ -297,6 +297,7 @@ public partial class MainWindow : Window
         AddWindowBinding(HotkeyAction.Save, _viewModel.SaveCommand);
         AddWindowBinding(HotkeyAction.SaveAs, _viewModel.SaveAsCommand);
         AddWindowBinding(HotkeyAction.CloseTab, _viewModel.CloseTabCommand);
+        AddWindowBinding(HotkeyAction.GoToSymbol, _viewModel.GoToSymbolCommand);
         AddWindowBinding(HotkeyAction.Undo, _viewModel.UndoCommand);
         AddWindowBinding(HotkeyAction.Redo, _viewModel.RedoCommand);
         AddWindowBinding(HotkeyAction.Cut, _viewModel.CutCommand);
@@ -437,6 +438,7 @@ public partial class MainWindow : Window
         ["_Paste"] = HotkeyAction.Paste,
         ["Go to _Definition"] = HotkeyAction.GoToDefinition,
         ["Find _References"] = HotkeyAction.FindReferences,
+        ["Go To _Symbol..."] = HotkeyAction.GoToSymbol,
         ["Code _Actions"] = HotkeyAction.CodeActions,
         ["_Rename"] = HotkeyAction.Rename,
         ["_Extract Method"] = HotkeyAction.ExtractMethod,
@@ -501,6 +503,11 @@ public partial class MainWindow : Window
     private void FindReferencesPanel_NavigateRequested(object? sender, ReferenceItem item)
     {
         _viewModel.NavigateToReference(item);
+    }
+
+    private void FindReferencesPanel_PreviewRequested(object? sender, ReferenceItem? item)
+    {
+        _viewModel.UpdateReferencePeek(item);
     }
 
     private void GitChangesPanel_RefreshRequested(object? sender, EventArgs e)
