@@ -21,6 +21,7 @@ public partial class AiChatPanel : UserControl
 {
     private readonly List<AiChatMessage> _conversationHistory = [];
     private readonly List<AiChatReference> _references = [];
+    private readonly List<StreamSectionVisual> _streamSections = [];
     private IAiProvider? _provider;
     private AiProviderRegistry? _providerRegistry;
     private string? _model;
@@ -39,10 +40,48 @@ public partial class AiChatPanel : UserControl
     private const int DefaultOutboundTokenBudget = AiProviderSettings.DefaultContextLength;
     private const int MaxToolCallIterations = 40;
 
+    private sealed class StreamSectionVisual(
+        Border root,
+        Border headerBar,
+        TextBlock headerGlyph,
+        TextBlock headerText,
+        Border contentBorder,
+        StackPanel contentPanel,
+        Brush headerBackground,
+        Brush contentBackground,
+        Brush foreground,
+        Brush borderBrush)
+    {
+        public Border Root { get; } = root;
+
+        public Border HeaderBar { get; } = headerBar;
+
+        public TextBlock HeaderGlyph { get; } = headerGlyph;
+
+        public TextBlock HeaderText { get; } = headerText;
+
+        public Border ContentBorder { get; } = contentBorder;
+
+        public StackPanel ContentPanel { get; } = contentPanel;
+
+        public Brush HeaderBackground { get; } = headerBackground;
+
+        public Brush ContentBackground { get; } = contentBackground;
+
+        public Brush Foreground { get; } = foreground;
+
+        public Brush BorderBrush { get; } = borderBrush;
+
+        public bool IsExpanded { get; set; }
+    }
+
     public AiChatPanel()
     {
         InitializeComponent();
         ResetContextWindowBar();
+        Loaded += AiChatPanel_Loaded;
+        MessageScroller.ScrollChanged += MessageScroller_ScrollChanged;
+        MessageScroller.SizeChanged += MessageScroller_SizeChanged;
     }
 
     /// <summary>
@@ -617,7 +656,10 @@ public partial class AiChatPanel : UserControl
     {
         CancelStreaming();
         _conversationHistory.Clear();
+        _streamSections.Clear();
         MessagePanel.Children.Clear();
+        PinnedSectionPanel.Children.Clear();
+        PinnedSectionPanel.Visibility = Visibility.Collapsed;
         _pendingSelectionContext = null;
         _projectContextInjected = false;
         ResetContextWindowBar();
@@ -823,18 +865,17 @@ public partial class AiChatPanel : UserControl
 
                 System.Text.StringBuilder responseBuilder = new();
                 System.Text.StringBuilder reasoningBuilder = new();
-                Expander? thinkingExpander = null;
-                StackPanel? thinkingPanel = null;
+                StreamSectionVisual? thinkingSection = null;
                 TextBlock? thinkingTextBlock = null;
                 TextBlock? rawThinkingBlock = null;
                 Dictionary<int, AiStreamToolCall> streamedToolCalls = new();
-                Dictionary<int, (Expander expander, TextBlock argumentsBlock, TextBlock resultBlock)> toolCallBlocks = new();
+                Dictionary<int, (StreamSectionVisual section, TextBlock resultBlock)> toolCallBlocks = new();
                 Dictionary<int, TextBlock> rawToolCallBlocks = new();
 
                 // UI element creation must happen on the dispatcher thread.
                 // After the first iteration, we may be on a thread-pool thread
                 // due to ConfigureAwait(false) in tool execution.
-                RichTextBox assistantBlock = await Dispatcher.InvokeAsync(CreateAssistantMessageBlock);
+                (StackPanel assistantContainer, RichTextBox assistantBlock) = await Dispatcher.InvokeAsync(CreateAssistantMessageBlock);
 
                 bool toolsEnabled = _activeMode?.ToolsEnabled == true;
                 int outboundTokenBudget = GetOutboundTokenBudget();
@@ -850,7 +891,7 @@ public partial class AiChatPanel : UserControl
                         outboundMessages.Count > 0 &&
                         outboundMessages[0].Role == AiChatRole.System)
                     {
-                        AppendRawTranscriptEntry("System Prompt", outboundMessages[0].Content, FindBrush("AiChatSecondaryForeground"), assistantBlock);
+                        AppendRawTranscriptEntry("System Prompt", outboundMessages[0].Content, FindBrush("AiChatSecondaryForeground"), assistantContainer);
                         rawSystemPromptAddedForRequest = true;
                     }
 
@@ -891,7 +932,7 @@ public partial class AiChatPanel : UserControl
                                         $"Tool Call ({toolCall.FunctionName})",
                                         FormatToolArgs(toolCall.ArgumentsJson),
                                         FindBrush(ThemeResourceKeys.AiChatToolCallForeground),
-                                        assistantBlock);
+                                        assistantContainer);
                                     rawToolCallBlocks[toolCall.Index] = rawBlock;
                                 }
                                 else
@@ -907,23 +948,18 @@ public partial class AiChatPanel : UserControl
                                 return;
                             }
 
-                            if (!toolCallBlocks.TryGetValue(toolCall.Index, out var block))
+                            if (!toolCallBlocks.TryGetValue(toolCall.Index, out (StreamSectionVisual section, TextBlock resultBlock) block))
                             {
-                                if (thinkingExpander is null)
-                                {
-                                    (thinkingExpander, thinkingPanel, thinkingTextBlock) = CreateThinkingExpander(assistantBlock);
-                                }
-
                                 block = CreateToolCallBlock(
                                     toolCall.FunctionName,
                                     toolCall.ArgumentsJson,
-                                    thinkingPanel ?? MessagePanel,
-                                    nestedInThinking: thinkingPanel is not null);
+                                    assistantContainer,
+                                    assistantBlock);
                                 toolCallBlocks[toolCall.Index] = block;
                             }
                             else
                             {
-                                UpdateToolCallBlock(block.expander, block.argumentsBlock, toolCall.FunctionName, toolCall.ArgumentsJson);
+                                UpdateToolCallBlock(block.section, toolCall.FunctionName, toolCall.ArgumentsJson);
                             }
 
                             if (shouldStickToBottom)
@@ -952,7 +988,7 @@ public partial class AiChatPanel : UserControl
                                         "Thinking",
                                         reasoningBuilder.ToString(),
                                         FindBrush("AiChatThinkingForeground"),
-                                        assistantBlock);
+                                        assistantContainer);
                                 }
                                 else
                                 {
@@ -969,16 +1005,17 @@ public partial class AiChatPanel : UserControl
                                 return;
                             }
 
-                            if (thinkingExpander is null)
+                            if (thinkingSection is null)
                             {
-                                (thinkingExpander, thinkingPanel, thinkingTextBlock) = CreateThinkingExpander(assistantBlock);
+                                (thinkingSection, thinkingTextBlock) = CreateThinkingSection(assistantContainer, assistantBlock);
                             }
 
                             thinkingTextBlock!.Text = reasoningBuilder.ToString();
                             thinkingTextBlock.Visibility = string.IsNullOrWhiteSpace(thinkingTextBlock.Text)
                                 ? Visibility.Collapsed
                                 : Visibility.Visible;
-                            thinkingExpander.Header = $"💭 Thinking ({reasoningTokenCount:N0} tokens)...";
+                            SetInlineSectionHeader(thinkingSection, $"Thinking ({reasoningTokenCount:N0} tokens)...");
+                            UpdatePinnedSectionHeaders();
 
                             UpdateStatsBar(reasoningTokenCount + contentTokenCount, streamStopwatch);
 
@@ -998,14 +1035,14 @@ public partial class AiChatPanel : UserControl
                             var shouldStickToBottom = IsMessageScrollerNearBottom();
 
                             // Finalize the thinking header once content starts
-                            if (thinkingExpander is not null &&
-                                thinkingExpander.Header is string header &&
-                                header.EndsWith("...", StringComparison.Ordinal))
+                            if (thinkingSection is not null &&
+                                thinkingSection.HeaderText.Text.EndsWith("...", StringComparison.Ordinal))
                             {
-                                thinkingExpander.Header = $"💭 Thought for {reasoningTokenCount:N0} tokens";
+                                SetInlineSectionHeader(thinkingSection, $"Thought for {reasoningTokenCount:N0} tokens");
                             }
 
                             RenderAssistantContent(assistantBlock, responseBuilder.ToString());
+                            UpdatePinnedSectionHeaders();
                             UpdateStatsBar(reasoningTokenCount + contentTokenCount, streamStopwatch);
 
                             if (shouldStickToBottom)
@@ -1016,23 +1053,24 @@ public partial class AiChatPanel : UserControl
                     }
                 }
 
-                if (thinkingExpander is not null)
+                if (thinkingSection is not null)
                 {
                     await Dispatcher.InvokeAsync(() =>
                     {
-                        if (thinkingExpander.Header is string thinkingHeader &&
-                            thinkingHeader.EndsWith("...", StringComparison.Ordinal))
+                        if (thinkingSection.HeaderText.Text.EndsWith("...", StringComparison.Ordinal))
                         {
-                            thinkingExpander.Header = reasoningTokenCount > 0
-                                ? $"💭 Thought for {reasoningTokenCount:N0} tokens"
-                                : "💭 Thought";
+                            SetInlineSectionHeader(
+                                thinkingSection,
+                                reasoningTokenCount > 0
+                                    ? $"Thought for {reasoningTokenCount:N0} tokens"
+                                    : "Thought");
                         }
                     });
                 }
 
                 if (rawTextMode && string.IsNullOrWhiteSpace(responseBuilder.ToString()))
                 {
-                    await Dispatcher.InvokeAsync(() => MessagePanel.Children.Remove(assistantBlock));
+                    await Dispatcher.InvokeAsync(() => MessagePanel.Children.Remove(assistantContainer));
                 }
 
                 // If tool calls were requested, execute them and loop
@@ -1081,7 +1119,7 @@ public partial class AiChatPanel : UserControl
                             ? $"tool_call_{toolCall.Index}"
                             : toolCall.Id;
 
-                        Expander? toolExpander = null;
+                        StreamSectionVisual? toolSection = null;
                         TextBlock? toolResultBlock = null;
                         await Dispatcher.InvokeAsync(() =>
                         {
@@ -1093,33 +1131,28 @@ public partial class AiChatPanel : UserControl
                                         $"Tool Call ({toolCall.FunctionName})",
                                         FormatToolArgs(toolCall.ArgumentsJson),
                                         FindBrush(ThemeResourceKeys.AiChatToolCallForeground),
-                                        assistantBlock);
+                                        assistantContainer);
                                     rawToolCallBlocks[toolCall.Index] = rawBlock;
                                 }
 
                                 return;
                             }
 
-                            if (!toolCallBlocks.TryGetValue(toolCall.Index, out var block))
+                            if (!toolCallBlocks.TryGetValue(toolCall.Index, out (StreamSectionVisual section, TextBlock resultBlock) block))
                             {
-                                if (thinkingExpander is null)
-                                {
-                                    (thinkingExpander, thinkingPanel, thinkingTextBlock) = CreateThinkingExpander(assistantBlock);
-                                }
-
                                 block = CreateToolCallBlock(
                                     toolCall.FunctionName,
                                     toolCall.ArgumentsJson,
-                                    thinkingPanel ?? MessagePanel,
-                                    nestedInThinking: thinkingPanel is not null);
+                                    assistantContainer,
+                                    assistantBlock);
                                 toolCallBlocks[toolCall.Index] = block;
                             }
                             else
                             {
-                                UpdateToolCallBlock(block.expander, block.argumentsBlock, toolCall.FunctionName, toolCall.ArgumentsJson);
+                                UpdateToolCallBlock(block.section, toolCall.FunctionName, toolCall.ArgumentsJson);
                             }
 
-                            toolExpander = block.expander;
+                            toolSection = block.section;
                             toolResultBlock = block.resultBlock;
                         });
 
@@ -1173,11 +1206,11 @@ public partial class AiChatPanel : UserControl
                                     result.Success
                                         ? FindBrush(ThemeResourceKeys.AiChatToolCallSuccessForeground)
                                         : FindBrush(ThemeResourceKeys.AiChatToolCallErrorForeground),
-                                    assistantBlock);
+                                    assistantContainer);
                                 return;
                             }
 
-                            FinalizeToolCallBlock(toolExpander!, toolResultBlock!, toolCall.FunctionName, result);
+                            FinalizeToolCallBlock(toolSection!, toolResultBlock!, toolCall.FunctionName, result);
                         });
                     }
 
@@ -1498,11 +1531,17 @@ public partial class AiChatPanel : UserControl
     }
 
     /// <summary>
-    /// Creates an empty assistant message block and returns the RichTextBox for progressive rendering.
-    /// Assistant content is rendered full-width (no bubble) for readability in narrow panels.
+    /// Creates an empty assistant message container and returns the RichTextBox used for progressive rendering.
+    /// Thinking and tool call sections are inserted into the same container so the stream stays in order.
     /// </summary>
-    private RichTextBox CreateAssistantMessageBlock()
+    private (StackPanel container, RichTextBox contentBlock) CreateAssistantMessageBlock()
     {
+        StackPanel container = new()
+        {
+            Margin = new Thickness(4, 4, 4, 6),
+            HorizontalAlignment = HorizontalAlignment.Stretch
+        };
+
         RichTextBox rtb = new()
         {
             IsReadOnly = true,
@@ -1513,11 +1552,9 @@ public partial class AiChatPanel : UserControl
             FontFamily = new FontFamily("Segoe UI"),
             IsDocumentEnabled = true,
             Padding = new Thickness(0),
-            Margin = new Thickness(4, 4, 4, 6),
             HorizontalAlignment = HorizontalAlignment.Stretch
         };
 
-        // Single-column flow and tighter padding for readable assistant output in narrow panes
         rtb.Document = new FlowDocument
         {
             PagePadding = new Thickness(0),
@@ -1525,8 +1562,9 @@ public partial class AiChatPanel : UserControl
             LineHeight = 20
         };
 
-        MessagePanel.Children.Add(rtb);
-        return rtb;
+        container.Children.Add(rtb);
+        MessagePanel.Children.Add(container);
+        return (container, rtb);
     }
 
     private bool IsRawTextModeEnabled()
@@ -1581,63 +1619,191 @@ public partial class AiChatPanel : UserControl
     }
 
     /// <summary>
-    /// Creates a collapsible thinking/reasoning expander (collapsed by default)
-    /// and adds it to the message panel. If <paramref name="insertBefore"/> is supplied,
-    /// the expander is inserted before that element.
-    /// Returns both the expander and the inner TextBlock so reasoning tokens
-    /// can be appended progressively.
+    /// Creates a subtle collapsible section for streamed thinking content.
     /// </summary>
-    private (Expander expander, StackPanel contentPanel, TextBlock textBlock) CreateThinkingExpander(UIElement? insertBefore = null)
+    private (StreamSectionVisual section, TextBlock textBlock) CreateThinkingSection(Panel hostPanel, UIElement insertBefore)
     {
+        Brush thinkingBackground = FindBrush("AiChatThinkingBackground");
+        Brush thinkingForeground = FindBrush("AiChatThinkingForeground");
+        Brush thinkingBorder = FindBrush("AiChatThinkingBorder");
+        StreamSectionVisual section = CreateInlineSection(
+            "Thinking...",
+            thinkingBackground,
+            thinkingBackground,
+            thinkingForeground,
+            thinkingBorder,
+            hostPanel,
+            insertBefore);
+
         TextBlock textBlock = new()
         {
             TextWrapping = TextWrapping.Wrap,
-            Foreground = FindBrush("AiChatThinkingForeground"),
+            Foreground = thinkingForeground,
             FontSize = 12,
             FontFamily = new FontFamily("Segoe UI"),
-            Margin = new Thickness(0, 4, 0, 0),
             Visibility = Visibility.Collapsed
         };
 
-        StackPanel contentPanel = new();
-        contentPanel.Children.Add(textBlock);
+        section.ContentPanel.Children.Add(textBlock);
+        SetInlineSectionExpanded(section, isExpanded: false);
+        return (section, textBlock);
+    }
 
-        Expander expander = new()
+    private StreamSectionVisual CreateInlineSection(
+        string header,
+        Brush headerBackground,
+        Brush contentBackground,
+        Brush foreground,
+        Brush borderBrush,
+        Panel hostPanel,
+        UIElement insertBefore)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(header);
+        ArgumentNullException.ThrowIfNull(headerBackground);
+        ArgumentNullException.ThrowIfNull(contentBackground);
+        ArgumentNullException.ThrowIfNull(foreground);
+        ArgumentNullException.ThrowIfNull(borderBrush);
+        ArgumentNullException.ThrowIfNull(hostPanel);
+        ArgumentNullException.ThrowIfNull(insertBefore);
+
+        TextBlock glyphBlock;
+        TextBlock headerTextBlock;
+        Border headerBar = CreateSectionHeaderBar(header, foreground, headerBackground, borderBrush, out glyphBlock, out headerTextBlock);
+
+        StackPanel contentPanel = new();
+        Border contentBorder = new()
         {
-            Header = "💭 Thinking...",
-            IsExpanded = false,
-            Foreground = FindBrush("AiChatThinkingForeground"),
-            FontSize = 12,
-            Margin = new Thickness(4, 4, 40, 0),
-            Content = new Border
-            {
-                Background = FindBrush("AiChatThinkingBackground"),
-                CornerRadius = new CornerRadius(4),
-                Padding = new Thickness(8, 6, 8, 6),
-                BorderBrush = FindBrush("AiChatThinkingBorder"),
-                BorderThickness = new Thickness(1),
-                Child = contentPanel
-            }
+            Background = contentBackground,
+            Padding = new Thickness(8, 6, 8, 6),
+            Visibility = Visibility.Collapsed,
+            Child = contentPanel
         };
 
-        if (insertBefore is not null)
+        StackPanel sectionLayout = new();
+        sectionLayout.Children.Add(headerBar);
+        sectionLayout.Children.Add(contentBorder);
+
+        Border root = new()
         {
-            var index = MessagePanel.Children.IndexOf(insertBefore);
-            if (index >= 0)
-            {
-                MessagePanel.Children.Insert(index, expander);
-            }
-            else
-            {
-                MessagePanel.Children.Add(expander);
-            }
-        }
-        else
+            Background = contentBackground,
+            CornerRadius = new CornerRadius(4),
+            BorderBrush = borderBrush,
+            BorderThickness = new Thickness(1),
+            Margin = new Thickness(0, 4, 0, 0),
+            Child = sectionLayout
+        };
+
+        StreamSectionVisual section = new(
+            root,
+            headerBar,
+            glyphBlock,
+            headerTextBlock,
+            contentBorder,
+            contentPanel,
+            headerBackground,
+            contentBackground,
+            foreground,
+            borderBrush);
+
+        headerBar.MouseLeftButtonUp += (_, _) => ToggleInlineSection(section);
+        InsertBefore(hostPanel, root, insertBefore);
+        _streamSections.Add(section);
+        UpdateInlineSectionState(section);
+        return section;
+    }
+
+    private static Border CreateSectionHeaderBar(
+        string title,
+        Brush foreground,
+        Brush background,
+        Brush borderBrush,
+        out TextBlock glyphBlock,
+        out TextBlock titleBlock)
+    {
+        glyphBlock = new TextBlock
         {
-            MessagePanel.Children.Add(expander);
+            Text = "▸",
+            FontSize = 11,
+            FontWeight = FontWeights.SemiBold,
+            VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(0, 0, 6, 0),
+            Foreground = foreground
+        };
+
+        titleBlock = new TextBlock
+        {
+            Text = title,
+            TextWrapping = TextWrapping.NoWrap,
+            TextTrimming = TextTrimming.CharacterEllipsis,
+            FontSize = 11,
+            FontWeight = FontWeights.SemiBold,
+            VerticalAlignment = VerticalAlignment.Center,
+            Foreground = foreground
+        };
+
+        StackPanel headerContent = new()
+        {
+            Orientation = Orientation.Horizontal
+        };
+        headerContent.Children.Add(glyphBlock);
+        headerContent.Children.Add(titleBlock);
+
+        return new Border
+        {
+            Background = background,
+            BorderBrush = borderBrush,
+            BorderThickness = new Thickness(0),
+            Padding = new Thickness(8, 5, 8, 5),
+            Cursor = Cursors.Hand,
+            Child = headerContent
+        };
+    }
+
+    private static void InsertBefore(Panel hostPanel, UIElement element, UIElement insertBefore)
+    {
+        ArgumentNullException.ThrowIfNull(hostPanel);
+        ArgumentNullException.ThrowIfNull(element);
+        ArgumentNullException.ThrowIfNull(insertBefore);
+
+        int index = hostPanel.Children.IndexOf(insertBefore);
+        if (index >= 0)
+        {
+            hostPanel.Children.Insert(index, element);
+            return;
         }
 
-        return (expander, contentPanel, textBlock);
+        hostPanel.Children.Add(element);
+    }
+
+    private void ToggleInlineSection(StreamSectionVisual section)
+    {
+        ArgumentNullException.ThrowIfNull(section);
+        SetInlineSectionExpanded(section, !section.IsExpanded);
+    }
+
+    private void SetInlineSectionExpanded(StreamSectionVisual section, bool isExpanded)
+    {
+        ArgumentNullException.ThrowIfNull(section);
+        section.IsExpanded = isExpanded;
+        UpdateInlineSectionState(section);
+        UpdatePinnedSectionHeaders();
+    }
+
+    private void SetInlineSectionHeader(StreamSectionVisual section, string header)
+    {
+        ArgumentNullException.ThrowIfNull(section);
+        ArgumentException.ThrowIfNullOrWhiteSpace(header);
+        section.HeaderText.Text = header;
+        UpdatePinnedSectionHeaders();
+    }
+
+    private static void UpdateInlineSectionState(StreamSectionVisual section)
+    {
+        ArgumentNullException.ThrowIfNull(section);
+
+        section.ContentBorder.Visibility = section.IsExpanded ? Visibility.Visible : Visibility.Collapsed;
+        section.HeaderGlyph.Text = section.IsExpanded ? "▾" : "▸";
+        section.HeaderBar.BorderThickness = section.IsExpanded ? new Thickness(0, 0, 0, 1) : new Thickness(0);
     }
 
     private void AppendSystemMessage(string text)
@@ -1700,98 +1866,76 @@ public partial class AiChatPanel : UserControl
     }
 
     /// <summary>
-    /// Creates a collapsible tool-call block showing the tool name, arguments, and a spinner.
-    /// Returns the expander, the status TextBlock (for updating header), and the result TextBlock
-    /// (for filling in when the tool finishes).
+    /// Creates a collapsible tool-call block with a single-line header and streamed result content.
     /// </summary>
-    private (Expander expander, TextBlock argumentsBlock, TextBlock resultBlock) CreateToolCallBlock(
+    private (StreamSectionVisual section, TextBlock resultBlock) CreateToolCallBlock(
         string toolName,
         string argumentsJson,
         Panel hostPanel,
-        bool nestedInThinking)
+        UIElement insertBefore)
     {
-        string argsDisplay = FormatToolArgs(argumentsJson);
-
-        TextBlock argsBlock = new()
-        {
-            Text = argsDisplay,
-            TextWrapping = TextWrapping.Wrap,
-            Foreground = FindBrush(ThemeResourceKeys.AiChatToolCallForeground),
-            FontSize = 11,
-            FontFamily = new FontFamily("Cascadia Code, Consolas, Courier New"),
-            Margin = new Thickness(0, 2, 0, 4)
-        };
+        Brush toolBackground = FindBrush(ThemeResourceKeys.AiChatToolCallBackground);
+        Brush toolForeground = FindBrush(ThemeResourceKeys.AiChatToolCallForeground);
+        Brush toolBorder = FindBrush(ThemeResourceKeys.AiChatToolCallBorder);
+        StreamSectionVisual section = CreateInlineSection(
+            FormatToolCallHeader(toolName, argumentsJson, "Running"),
+            toolBackground,
+            toolBackground,
+            toolForeground,
+            toolBorder,
+            hostPanel,
+            insertBefore);
 
         TextBlock resultBlock = new()
         {
+            Text = "Running tool...",
             TextWrapping = TextWrapping.Wrap,
+            Foreground = toolForeground,
             FontSize = 11,
-            Margin = new Thickness(0, 4, 0, 0)
+            FontFamily = new FontFamily("Cascadia Code, Consolas, Courier New")
         };
 
-        StackPanel contentPanel = new();
-        contentPanel.Children.Add(argsBlock);
-        contentPanel.Children.Add(resultBlock);
+        section.ContentPanel.Children.Add(resultBlock);
+        SetInlineSectionExpanded(section, isExpanded: true);
 
-        Expander expander = new()
-        {
-            Header = $"⏳ {toolName}",
-            IsExpanded = false,
-            Foreground = FindBrush(ThemeResourceKeys.AiChatToolCallForeground),
-            FontSize = 12,
-            Margin = nestedInThinking
-                ? new Thickness(0, 4, 0, 0)
-                : new Thickness(4, 4, 40, 0),
-            Content = new Border
-            {
-                Background = FindBrush(ThemeResourceKeys.AiChatToolCallBackground),
-                CornerRadius = new CornerRadius(4),
-                Padding = new Thickness(8, 6, 8, 6),
-                BorderBrush = FindBrush(ThemeResourceKeys.AiChatToolCallBorder),
-                BorderThickness = new Thickness(1),
-                Child = contentPanel
-            }
-        };
-
-        hostPanel.Children.Add(expander);
-
-        var shouldStickToBottom = IsMessageScrollerNearBottom();
+        bool shouldStickToBottom = IsMessageScrollerNearBottom();
         if (shouldStickToBottom)
         {
             MessageScroller.ScrollToEnd();
         }
 
-        return (expander, argsBlock, resultBlock);
+        return (section, resultBlock);
     }
 
     /// <summary>
     /// Updates a tool-call block while the call arguments are still streaming.
     /// </summary>
-    private void UpdateToolCallBlock(Expander expander, TextBlock argumentsBlock, string toolName, string argumentsJson)
+    private void UpdateToolCallBlock(StreamSectionVisual section, string toolName, string argumentsJson)
     {
-        expander.Header = $"⏳ {toolName}";
-        argumentsBlock.Text = FormatToolArgs(argumentsJson);
+        SetInlineSectionHeader(section, FormatToolCallHeader(toolName, argumentsJson, "Running"));
     }
 
     /// <summary>
-    /// Updates a tool-call expander with the final result (success or error).
+    /// Updates a tool-call block with the final result (success or error).
     /// </summary>
-    private void FinalizeToolCallBlock(Expander expander, TextBlock resultBlock, string toolName, ToolCallResult result)
+    private void FinalizeToolCallBlock(StreamSectionVisual section, TextBlock resultBlock, string toolName, ToolCallResult result)
     {
         if (result.Success)
         {
-            expander.Header = $"✅ {toolName}";
+            SetToolCallSectionStatus(section, "Completed");
             resultBlock.Text = result.Output;
             resultBlock.Foreground = FindBrush(ThemeResourceKeys.AiChatToolCallSuccessForeground);
         }
         else
         {
-            expander.Header = $"❌ {toolName}";
+            SetToolCallSectionStatus(section, "Failed");
             resultBlock.Text = result.Error ?? "Unknown error";
             resultBlock.Foreground = FindBrush(ThemeResourceKeys.AiChatToolCallErrorForeground);
         }
 
-        var shouldStickToBottom = IsMessageScrollerNearBottom();
+        bool shouldStickToBottom = IsMessageScrollerNearBottom();
+        UpdatePinnedSectionHeaders();
+
         if (shouldStickToBottom)
         {
             MessageScroller.ScrollToEnd();
@@ -1827,6 +1971,139 @@ public partial class AiChatPanel : UserControl
         {
             return argumentsJson;
         }
+    }
+
+    internal static string FormatToolCallHeader(string toolName, string argumentsJson, string status)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(toolName);
+        ArgumentException.ThrowIfNullOrWhiteSpace(status);
+
+        string normalizedArgs = FormatToolArgs(argumentsJson)
+            .Replace("\r", string.Empty, StringComparison.Ordinal)
+            .Replace("\n", " • ", StringComparison.Ordinal);
+
+        string body = normalizedArgs == "(no arguments)"
+            ? $"{toolName}"
+            : $"{toolName} — {normalizedArgs}";
+
+        return Truncate($"{status} | {body}", 180);
+    }
+
+    internal static IReadOnlyList<int> GetPinnedSectionIndexes(
+        IReadOnlyList<(double Top, double Bottom, bool IsExpanded)> sectionBounds,
+        double pinLine)
+    {
+        ArgumentNullException.ThrowIfNull(sectionBounds);
+
+        List<int> pinnedIndexes = [];
+        for (int i = 0; i < sectionBounds.Count; i++)
+        {
+            (double Top, double Bottom, bool IsExpanded) section = sectionBounds[i];
+            if (section.IsExpanded && section.Top < pinLine && section.Bottom > pinLine)
+            {
+                pinnedIndexes.Add(i);
+            }
+        }
+
+        return pinnedIndexes;
+    }
+
+    private void SetToolCallSectionStatus(StreamSectionVisual section, string status)
+    {
+        ArgumentNullException.ThrowIfNull(section);
+        ArgumentException.ThrowIfNullOrWhiteSpace(status);
+
+        string currentHeader = section.HeaderText.Text;
+        int separatorIndex = currentHeader.IndexOf('|');
+        string body = separatorIndex >= 0
+            ? currentHeader[(separatorIndex + 1)..].TrimStart()
+            : currentHeader;
+
+        SetInlineSectionHeader(section, $"{status} | {body}");
+    }
+
+    private void AiChatPanel_Loaded(object sender, RoutedEventArgs e)
+    {
+        UpdatePinnedSectionHeaders();
+    }
+
+    private void MessageScroller_ScrollChanged(object sender, ScrollChangedEventArgs e)
+    {
+        if (e.VerticalChange != 0 || e.ExtentHeightChange != 0 || e.ViewportHeightChange != 0)
+        {
+            UpdatePinnedSectionHeaders();
+        }
+    }
+
+    private void MessageScroller_SizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        UpdatePinnedSectionHeaders();
+    }
+
+    private void UpdatePinnedSectionHeaders()
+    {
+        if (!IsLoaded)
+        {
+            return;
+        }
+
+        List<StreamSectionVisual> measuredSections = [];
+        List<(double Top, double Bottom, bool IsExpanded)> sectionBounds = [];
+
+        foreach (StreamSectionVisual section in _streamSections)
+        {
+            if (section.Root.Parent is null || section.Root.Visibility != Visibility.Visible)
+            {
+                continue;
+            }
+
+            if (!section.Root.IsLoaded || !section.Root.IsArrangeValid)
+            {
+                continue;
+            }
+
+            GeneralTransform transform = section.Root.TransformToAncestor(MessageScroller);
+            Point topLeft = transform.Transform(new Point(0, 0));
+            double top = topLeft.Y;
+            double bottom = top + section.Root.ActualHeight;
+            measuredSections.Add(section);
+            sectionBounds.Add((top, bottom, section.IsExpanded));
+        }
+
+        IReadOnlyList<int> pinnedIndexes = GetPinnedSectionIndexes(sectionBounds, 0.0);
+        PinnedSectionPanel.Children.Clear();
+
+        foreach (int pinnedIndex in pinnedIndexes)
+        {
+            Border pinnedHeader = CreatePinnedHeader(measuredSections[pinnedIndex]);
+            PinnedSectionPanel.Children.Add(pinnedHeader);
+        }
+
+        PinnedSectionPanel.Visibility = pinnedIndexes.Count > 0
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+    }
+
+    private Border CreatePinnedHeader(StreamSectionVisual section)
+    {
+        ArgumentNullException.ThrowIfNull(section);
+
+        TextBlock glyphBlock;
+        TextBlock titleBlock;
+        Border pinnedHeader = CreateSectionHeaderBar(
+            section.HeaderText.Text,
+            section.Foreground,
+            section.HeaderBackground,
+            section.BorderBrush,
+            out glyphBlock,
+            out titleBlock);
+
+        pinnedHeader.Margin = new Thickness(0, 0, 0, 4);
+        pinnedHeader.CornerRadius = new CornerRadius(4);
+        pinnedHeader.BorderThickness = new Thickness(1);
+        glyphBlock.Text = section.HeaderGlyph.Text;
+        pinnedHeader.MouseLeftButtonUp += (_, _) => ToggleInlineSection(section);
+        return pinnedHeader;
     }
 
     /// <summary>

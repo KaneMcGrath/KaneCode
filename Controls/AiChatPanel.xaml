@@ -199,17 +199,25 @@
         </Border>
 
         <!-- Message area (scrollable) -->
-        <ScrollViewer x:Name="MessageScroller"
-                      VerticalScrollBarVisibility="Auto"
-                      HorizontalScrollBarVisibility="Disabled"
-                      Background="{DynamicResource AiChatBackground}">
-            <ScrollViewer.ContextMenu>
-                <ContextMenu>
-                    <MenuItem Header="Save Conversation..." Click="MessageArea_SaveConversation" />
-                </ContextMenu>
-            </ScrollViewer.ContextMenu>
-            <StackPanel x:Name="MessagePanel"
-                        Margin="8,8,8,8" />
-        </ScrollViewer>
+        <Grid Background="{DynamicResource AiChatBackground}">
+            <ScrollViewer x:Name="MessageScroller"
+                          VerticalScrollBarVisibility="Auto"
+                          HorizontalScrollBarVisibility="Disabled"
+                          Background="{DynamicResource AiChatBackground}">
+                <ScrollViewer.ContextMenu>
+                    <ContextMenu>
+                        <MenuItem Header="Save Conversation..." Click="MessageArea_SaveConversation" />
+                    </ContextMenu>
+                </ScrollViewer.ContextMenu>
+                <StackPanel x:Name="MessagePanel"
+                            Margin="8,8,8,8" />
+            </ScrollViewer>
+
+            <StackPanel x:Name="PinnedSectionPanel"
+                        VerticalAlignment="Top"
+                        Margin="12,12,12,0"
+                        Panel.ZIndex="1"
+                        Visibility="Collapsed" />
+        </Grid>
     </DockPanel>
 </UserControl>
