@@ -49,6 +49,36 @@ public class AiChatPanelTests
     }
 
     [Fact]
+    public void WhenVerticalWhitespaceRemovalDisabledThenDisplayedAssistantContentIsUnchanged()
+    {
+        string content = "Line 1\n\nLine 2";
+
+        string result = AiChatPanel.FormatDisplayedAssistantContent(content, removeVerticalWhitespace: false);
+
+        Assert.Equal(content, result);
+    }
+
+    [Fact]
+    public void WhenVerticalWhitespaceRemovalEnabledThenBlankLinesOutsideCodeBlocksAreRemoved()
+    {
+        string content = "Intro\n\nDetails\n\n- Item";
+
+        string result = AiChatPanel.FormatDisplayedAssistantContent(content, removeVerticalWhitespace: true);
+
+        Assert.Equal("Intro\nDetails\n- Item", result);
+    }
+
+    [Fact]
+    public void WhenVerticalWhitespaceRemovalEnabledThenBlankLinesInsideCodeBlocksArePreserved()
+    {
+        string content = "Before\n\n```csharp\nint a = 1;\n\nint b = 2;\n```\n\nAfter";
+
+        string result = AiChatPanel.FormatDisplayedAssistantContent(content, removeVerticalWhitespace: true);
+
+        Assert.Equal("Before\n```csharp\nint a = 1;\n\nint b = 2;\n```\nAfter", result);
+    }
+
+    [Fact]
     public void WhenFormattingToolCallHeaderThenStatusAndArgumentsAreFlattenedIntoSingleLine()
     {
         string result = AiChatPanel.FormatToolCallHeader("search_files", "{\"query\":\"hotkey\",\"limit\":5}", "Running");

@@ -229,6 +229,54 @@ public partial class AiChatPanel : UserControl
             : $"{label}:\n{content}";
     }
 
+    internal static string FormatDisplayedAssistantContent(string content, bool removeVerticalWhitespace)
+    {
+        ArgumentNullException.ThrowIfNull(content);
+
+        if (!removeVerticalWhitespace)
+        {
+            return content;
+        }
+
+        return RemoveVerticalWhitespace(content);
+    }
+
+    internal static string RemoveVerticalWhitespace(string content)
+    {
+        ArgumentNullException.ThrowIfNull(content);
+
+        string normalizedContent = content
+            .Replace("\r\n", "\n", StringComparison.Ordinal)
+            .Replace("\r", "\n", StringComparison.Ordinal);
+
+        string[] lines = normalizedContent.Split('\n');
+        List<string> compactedLines = [];
+        bool inCodeBlock = false;
+
+        foreach (string line in lines)
+        {
+            if (line.TrimStart().StartsWith("```", StringComparison.Ordinal))
+            {
+                compactedLines.Add(line);
+                inCodeBlock = !inCodeBlock;
+                continue;
+            }
+
+            if (inCodeBlock)
+            {
+                compactedLines.Add(line);
+                continue;
+            }
+
+            if (!string.IsNullOrWhiteSpace(line))
+            {
+                compactedLines.Add(line);
+            }
+        }
+
+        return string.Join("\n", compactedLines);
+    }
+
     // ── Conversation persistence and token budgeting ───────────────
 
     private void TryLoadPersistedConversation()
@@ -684,16 +732,16 @@ public partial class AiChatPanel : UserControl
         RefreshContextWindowDisplay();
     }
 
-    private void AiSettingsButton_Click(object sender, RoutedEventArgs e)
+    private void FormattingOptionsButton_Click(object sender, RoutedEventArgs e)
     {
-        Window? owner = Window.GetWindow(this);
-        ThemeManager? themeManager = (owner as MainWindow)?.ThemeManagerInstance;
-        OptionsWindow optionsWindow = new OptionsWindow(themeManager!, OptionsWindow.AiSettingsCategoryName)
+        ContextMenu? contextMenu = FormattingOptionsButton.ContextMenu;
+        if (contextMenu is null)
         {
-            Owner = owner
-        };
+            return;
+        }
 
-        optionsWindow.ShowDialog();
+        contextMenu.PlacementTarget = FormattingOptionsButton;
+        contextMenu.IsOpen = true;
     }
 
     private void ProviderSelector_SelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -1010,7 +1058,9 @@ public partial class AiChatPanel : UserControl
                                 (thinkingSection, thinkingTextBlock) = CreateThinkingSection(assistantContainer, assistantBlock);
                             }
 
-                            thinkingTextBlock!.Text = reasoningBuilder.ToString();
+                            thinkingTextBlock!.Text = FormatDisplayedAssistantContent(
+                                reasoningBuilder.ToString(),
+                                ShouldRemoveVerticalWhitespace());
                             thinkingTextBlock.Visibility = string.IsNullOrWhiteSpace(thinkingTextBlock.Text)
                                 ? Visibility.Collapsed
                                 : Visibility.Visible;
@@ -1569,7 +1619,22 @@ public partial class AiChatPanel : UserControl
 
     private bool IsRawTextModeEnabled()
     {
-        return RawTextCheckBox.IsChecked == true;
+        return RawTextMenuItem.IsChecked == true;
+    }
+
+    private bool ShouldAutoExpandThinkingSections()
+    {
+        return AutoExpandThinkingMenuItem.IsChecked == true;
+    }
+
+    private bool ShouldAutoExpandToolSections()
+    {
+        return AutoExpandToolsMenuItem.IsChecked == true;
+    }
+
+    private bool ShouldRemoveVerticalWhitespace()
+    {
+        return RemoveVerticalWhitespaceMenuItem.IsChecked == true;
     }
 
     private void RenderAssistantContent(RichTextBox richTextBox, string content)
@@ -1588,7 +1653,8 @@ public partial class AiChatPanel : UserControl
             return;
         }
 
-        RenderMarkdownInto(richTextBox, content);
+        string formattedContent = FormatDisplayedAssistantContent(content, ShouldRemoveVerticalWhitespace());
+        RenderMarkdownInto(richTextBox, formattedContent);
     }
 
     private static void RenderPlainTextInto(RichTextBox richTextBox, string text, Brush foreground, double lineHeight, bool useMonospace)
@@ -1645,7 +1711,7 @@ public partial class AiChatPanel : UserControl
         };
 
         section.ContentPanel.Children.Add(textBlock);
-        SetInlineSectionExpanded(section, isExpanded: false);
+        SetInlineSectionExpanded(section, isExpanded: ShouldAutoExpandThinkingSections());
         return (section, textBlock);
     }
 
@@ -1896,7 +1962,7 @@ public partial class AiChatPanel : UserControl
         };
 
         section.ContentPanel.Children.Add(resultBlock);
-        SetInlineSectionExpanded(section, isExpanded: true);
+        SetInlineSectionExpanded(section, isExpanded: ShouldAutoExpandToolSections());
 
         bool shouldStickToBottom = IsMessageScrollerNearBottom();
         if (shouldStickToBottom)

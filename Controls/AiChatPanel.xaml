@@ -43,16 +43,10 @@
                     </ComboBox.Resources>
                 </ComboBox>
                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
-                    <CheckBox x:Name="RawTextCheckBox"
-                              Content="Raw"
-                              Margin="0,0,8,0"
-                              VerticalAlignment="Center"
-                              Foreground="{DynamicResource AiChatForeground}"
-                              ToolTip="Show raw text sent to and received from the model, without markdown formatting." />
-                    <Button x:Name="AiSettingsButton"
-                            Content="⚙"
-                            Click="AiSettingsButton_Click"
-                            Width="24"
+                    <Button x:Name="FormattingOptionsButton"
+                            Content="⚙ ▾"
+                            Click="FormattingOptionsButton_Click"
+                            Width="34"
                             Height="22"
                             Padding="0"
                             Margin="0,0,6,0"
@@ -62,7 +56,46 @@
                             BorderBrush="{DynamicResource AiChatBorder}"
                             BorderThickness="1"
                             Cursor="Hand"
-                            ToolTip="AI Settings" />
+                            ToolTip="Formatting options">
+                        <Button.ContextMenu>
+                            <ContextMenu Background="{DynamicResource AiChatInputBackground}"
+                                         Foreground="{DynamicResource AiChatForeground}"
+                                         BorderBrush="{DynamicResource AiChatBorder}"
+                                         BorderThickness="1">
+                                <ContextMenu.Resources>
+                                    <Style TargetType="MenuItem">
+                                        <Setter Property="Background" Value="{DynamicResource AiChatInputBackground}" />
+                                        <Setter Property="Foreground" Value="{DynamicResource AiChatForeground}" />
+                                        <Setter Property="Padding" Value="8,4" />
+                                        <Setter Property="FontSize" Value="11" />
+                                        <Style.Triggers>
+                                            <Trigger Property="IsHighlighted" Value="True">
+                                                <Setter Property="Background" Value="{DynamicResource ButtonMouseOverBackground}" />
+                                                <Setter Property="Foreground" Value="{DynamicResource AiChatSendButtonForeground}" />
+                                            </Trigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </ContextMenu.Resources>
+                                <MenuItem x:Name="AutoExpandThinkingMenuItem"
+                                          Header="Auto expand thinking"
+                                          IsCheckable="True"
+                                          ToolTip="Expand thinking sections by default when they are shown." />
+                                <MenuItem x:Name="AutoExpandToolsMenuItem"
+                                          Header="Auto expand tools"
+                                          IsCheckable="True"
+                                          ToolTip="Expand tool call sections by default when they are shown." />
+                                <MenuItem x:Name="RemoveVerticalWhitespaceMenuItem"
+                                          Header="Remove vertical whitespace"
+                                          IsCheckable="True"
+                                          ToolTip="Remove empty lines from rendered assistant output to make responses more compact." />
+                                <Separator />
+                                <MenuItem x:Name="RawTextMenuItem"
+                                          Header="Raw mode"
+                                          IsCheckable="True"
+                                          ToolTip="Show raw text sent to and received from the model, without markdown formatting." />
+                            </ContextMenu>
+                        </Button.ContextMenu>
+                    </Button>
                     <Button x:Name="ClearButton"
                             Content="Clear"
                             Click="ClearButton_Click"
