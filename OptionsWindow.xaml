@@ -195,35 +195,59 @@
                                 <TextBlock Text="Inference Parameters" FontSize="12" FontWeight="SemiBold"
                                            Foreground="{DynamicResource WindowForeground}" Margin="0,4,0,8" />
 
-                                <TextBlock Text="Temperature" FontSize="12" FontWeight="SemiBold"
-                                           Foreground="{DynamicResource WindowForeground}" Margin="0,0,0,4" />
+                                <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
+                                    <CheckBox IsChecked="{Binding IsTemperatureEnabled}" VerticalAlignment="Center" Margin="0,0,8,0" />
+                                    <TextBlock Text="Temperature" FontSize="12" FontWeight="SemiBold"
+                                               Foreground="{DynamicResource WindowForeground}" VerticalAlignment="Center" />
+                                </StackPanel>
                                 <TextBox Text="{Binding Temperature, UpdateSourceTrigger=PropertyChanged}"
-                                         Width="120" HorizontalAlignment="Left" Margin="0,0,0,10" />
+                                         Width="120" HorizontalAlignment="Left" Margin="0,0,0,10"
+                                         IsEnabled="{Binding IsTemperatureEnabled}" />
 
-                                <TextBlock Text="Top P" FontSize="12" FontWeight="SemiBold"
-                                           Foreground="{DynamicResource WindowForeground}" Margin="0,0,0,4" />
+                                <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
+                                    <CheckBox IsChecked="{Binding IsTopPEnabled}" VerticalAlignment="Center" Margin="0,0,8,0" />
+                                    <TextBlock Text="Top P" FontSize="12" FontWeight="SemiBold"
+                                               Foreground="{DynamicResource WindowForeground}" VerticalAlignment="Center" />
+                                </StackPanel>
                                 <TextBox Text="{Binding TopP, UpdateSourceTrigger=PropertyChanged}"
-                                         Width="120" HorizontalAlignment="Left" Margin="0,0,0,10" />
+                                         Width="120" HorizontalAlignment="Left" Margin="0,0,0,10"
+                                         IsEnabled="{Binding IsTopPEnabled}" />
 
-                                <TextBlock Text="Top K" FontSize="12" FontWeight="SemiBold"
-                                           Foreground="{DynamicResource WindowForeground}" Margin="0,0,0,4" />
+                                <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
+                                    <CheckBox IsChecked="{Binding IsTopKEnabled}" VerticalAlignment="Center" Margin="0,0,8,0" />
+                                    <TextBlock Text="Top K" FontSize="12" FontWeight="SemiBold"
+                                               Foreground="{DynamicResource WindowForeground}" VerticalAlignment="Center" />
+                                </StackPanel>
                                 <TextBox Text="{Binding TopK, UpdateSourceTrigger=PropertyChanged}"
-                                         Width="120" HorizontalAlignment="Left" Margin="0,0,0,10" />
+                                         Width="120" HorizontalAlignment="Left" Margin="0,0,0,10"
+                                         IsEnabled="{Binding IsTopKEnabled}" />
 
-                                <TextBlock Text="Min P" FontSize="12" FontWeight="SemiBold"
-                                           Foreground="{DynamicResource WindowForeground}" Margin="0,0,0,4" />
+                                <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
+                                    <CheckBox IsChecked="{Binding IsMinPEnabled}" VerticalAlignment="Center" Margin="0,0,8,0" />
+                                    <TextBlock Text="Min P" FontSize="12" FontWeight="SemiBold"
+                                               Foreground="{DynamicResource WindowForeground}" VerticalAlignment="Center" />
+                                </StackPanel>
                                 <TextBox Text="{Binding MinP, UpdateSourceTrigger=PropertyChanged}"
-                                         Width="120" HorizontalAlignment="Left" Margin="0,0,0,10" />
+                                         Width="120" HorizontalAlignment="Left" Margin="0,0,0,10"
+                                         IsEnabled="{Binding IsMinPEnabled}" />
 
-                                <TextBlock Text="Presence Penalty" FontSize="12" FontWeight="SemiBold"
-                                           Foreground="{DynamicResource WindowForeground}" Margin="0,0,0,4" />
+                                <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
+                                    <CheckBox IsChecked="{Binding IsPresencePenaltyEnabled}" VerticalAlignment="Center" Margin="0,0,8,0" />
+                                    <TextBlock Text="Presence Penalty" FontSize="12" FontWeight="SemiBold"
+                                               Foreground="{DynamicResource WindowForeground}" VerticalAlignment="Center" />
+                                </StackPanel>
                                 <TextBox Text="{Binding PresencePenalty, UpdateSourceTrigger=PropertyChanged}"
-                                         Width="120" HorizontalAlignment="Left" Margin="0,0,0,10" />
+                                         Width="120" HorizontalAlignment="Left" Margin="0,0,0,10"
+                                         IsEnabled="{Binding IsPresencePenaltyEnabled}" />
 
-                                <TextBlock Text="Repetition Penalty" FontSize="12" FontWeight="SemiBold"
-                                           Foreground="{DynamicResource WindowForeground}" Margin="0,0,0,4" />
+                                <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
+                                    <CheckBox IsChecked="{Binding IsRepetitionPenaltyEnabled}" VerticalAlignment="Center" Margin="0,0,8,0" />
+                                    <TextBlock Text="Repetition Penalty" FontSize="12" FontWeight="SemiBold"
+                                               Foreground="{DynamicResource WindowForeground}" VerticalAlignment="Center" />
+                                </StackPanel>
                                 <TextBox Text="{Binding RepetitionPenalty, UpdateSourceTrigger=PropertyChanged}"
-                                         Width="120" HorizontalAlignment="Left" Margin="0,0,0,10" />
+                                         Width="120" HorizontalAlignment="Left" Margin="0,0,0,10"
+                                         IsEnabled="{Binding IsRepetitionPenaltyEnabled}" />
                             </StackPanel>
                         </ScrollViewer>
                     </Grid>

@@ -59,12 +59,6 @@ internal sealed class AiSettingsViewModel : ObservableObject
 
         settings.ProviderId = NormalizeProviderId(settings.ProviderId);
         settings.ContextLength ??= AiProviderSettings.DefaultContextLength;
-        settings.Temperature ??= AiProviderSettings.DefaultTemperature;
-        settings.TopP ??= AiProviderSettings.DefaultTopP;
-        settings.TopK ??= AiProviderSettings.DefaultTopK;
-        settings.MinP ??= AiProviderSettings.DefaultMinP;
-        settings.PresencePenalty ??= AiProviderSettings.DefaultPresencePenalty;
-        settings.RepetitionPenalty ??= AiProviderSettings.DefaultRepetitionPenalty;
         return settings;
     }
 
@@ -128,6 +122,12 @@ internal sealed class AiProviderEntryViewModel : ObservableObject
     private string _minP;
     private string _presencePenalty;
     private string _repetitionPenalty;
+    private bool _isTemperatureEnabled;
+    private bool _isTopPEnabled;
+    private bool _isTopKEnabled;
+    private bool _isMinPEnabled;
+    private bool _isPresencePenaltyEnabled;
+    private bool _isRepetitionPenaltyEnabled;
 
     public AiProviderEntryViewModel(AiProviderSettings settings)
     {
@@ -139,13 +139,19 @@ internal sealed class AiProviderEntryViewModel : ObservableObject
         _endpoint = settings.Endpoint;
         _apiKey = settings.ApiKey;
         _selectedModel = settings.SelectedModel;
-        _contextLength = FormatNullableInt(settings.ContextLength);
-        _temperature = FormatNullableDouble(settings.Temperature);
-        _topP = FormatNullableDouble(settings.TopP);
-        _topK = FormatNullableInt(settings.TopK);
-        _minP = FormatNullableDouble(settings.MinP);
-        _presencePenalty = FormatNullableDouble(settings.PresencePenalty);
-        _repetitionPenalty = FormatNullableDouble(settings.RepetitionPenalty);
+        _contextLength = FormatNullableInt(settings.ContextLength, AiProviderSettings.DefaultContextLength);
+        _temperature = FormatNullableDouble(settings.Temperature, AiProviderSettings.DefaultTemperature);
+        _topP = FormatNullableDouble(settings.TopP, AiProviderSettings.DefaultTopP);
+        _topK = FormatNullableInt(settings.TopK, AiProviderSettings.DefaultTopK);
+        _minP = FormatNullableDouble(settings.MinP, AiProviderSettings.DefaultMinP);
+        _presencePenalty = FormatNullableDouble(settings.PresencePenalty, AiProviderSettings.DefaultPresencePenalty);
+        _repetitionPenalty = FormatNullableDouble(settings.RepetitionPenalty, AiProviderSettings.DefaultRepetitionPenalty);
+        _isTemperatureEnabled = settings.Temperature.HasValue;
+        _isTopPEnabled = settings.TopP.HasValue;
+        _isTopKEnabled = settings.TopK.HasValue;
+        _isMinPEnabled = settings.MinP.HasValue;
+        _isPresencePenaltyEnabled = settings.PresencePenalty.HasValue;
+        _isRepetitionPenaltyEnabled = settings.RepetitionPenalty.HasValue;
     }
 
     public string ProviderId
@@ -190,10 +196,22 @@ internal sealed class AiProviderEntryViewModel : ObservableObject
         set => SetProperty(ref _temperature, value);
     }
 
+    public bool IsTemperatureEnabled
+    {
+        get => _isTemperatureEnabled;
+        set => SetProperty(ref _isTemperatureEnabled, value);
+    }
+
     public string TopP
     {
         get => _topP;
         set => SetProperty(ref _topP, value);
+    }
+
+    public bool IsTopPEnabled
+    {
+        get => _isTopPEnabled;
+        set => SetProperty(ref _isTopPEnabled, value);
     }
 
     public string TopK
@@ -202,10 +220,22 @@ internal sealed class AiProviderEntryViewModel : ObservableObject
         set => SetProperty(ref _topK, value);
     }
 
+    public bool IsTopKEnabled
+    {
+        get => _isTopKEnabled;
+        set => SetProperty(ref _isTopKEnabled, value);
+    }
+
     public string MinP
     {
         get => _minP;
         set => SetProperty(ref _minP, value);
+    }
+
+    public bool IsMinPEnabled
+    {
+        get => _isMinPEnabled;
+        set => SetProperty(ref _isMinPEnabled, value);
     }
 
     public string PresencePenalty
@@ -214,10 +244,22 @@ internal sealed class AiProviderEntryViewModel : ObservableObject
         set => SetProperty(ref _presencePenalty, value);
     }
 
+    public bool IsPresencePenaltyEnabled
+    {
+        get => _isPresencePenaltyEnabled;
+        set => SetProperty(ref _isPresencePenaltyEnabled, value);
+    }
+
     public string RepetitionPenalty
     {
         get => _repetitionPenalty;
         set => SetProperty(ref _repetitionPenalty, value);
+    }
+
+    public bool IsRepetitionPenaltyEnabled
+    {
+        get => _isRepetitionPenaltyEnabled;
+        set => SetProperty(ref _isRepetitionPenaltyEnabled, value);
     }
 
     /// <summary>
@@ -233,26 +275,24 @@ internal sealed class AiProviderEntryViewModel : ObservableObject
         ApiKey = ApiKey,
         SelectedModel = SelectedModel,
         ContextLength = ParseNullableInt(ContextLength),
-        Temperature = ParseNullableDouble(Temperature),
-        TopP = ParseNullableDouble(TopP),
-        TopK = ParseNullableInt(TopK),
-        MinP = ParseNullableDouble(MinP),
-        PresencePenalty = ParseNullableDouble(PresencePenalty),
-        RepetitionPenalty = ParseNullableDouble(RepetitionPenalty)
+        Temperature = IsTemperatureEnabled ? ParseNullableDouble(Temperature) : null,
+        TopP = IsTopPEnabled ? ParseNullableDouble(TopP) : null,
+        TopK = IsTopKEnabled ? ParseNullableInt(TopK) : null,
+        MinP = IsMinPEnabled ? ParseNullableDouble(MinP) : null,
+        PresencePenalty = IsPresencePenaltyEnabled ? ParseNullableDouble(PresencePenalty) : null,
+        RepetitionPenalty = IsRepetitionPenaltyEnabled ? ParseNullableDouble(RepetitionPenalty) : null
     };
 
-    private static string FormatNullableDouble(double? value)
+    private static string FormatNullableDouble(double? value, double defaultValue)
     {
-        return value.HasValue
-            ? value.Value.ToString(CultureInfo.InvariantCulture)
-            : string.Empty;
+        double formattedValue = value ?? defaultValue;
+        return formattedValue.ToString(CultureInfo.InvariantCulture);
     }
 
-    private static string FormatNullableInt(int? value)
+    private static string FormatNullableInt(int? value, int defaultValue)
     {
-        return value.HasValue
-            ? value.Value.ToString(CultureInfo.InvariantCulture)
-            : string.Empty;
+        int formattedValue = value ?? defaultValue;
+        return formattedValue.ToString(CultureInfo.InvariantCulture);
     }
 
     private static double? ParseNullableDouble(string? value)

@@ -51,30 +51,30 @@ internal sealed class AiProviderSettings
     /// <summary>
     /// Optional sampling temperature for OpenAI-compatible providers.
     /// </summary>
-    public double? Temperature { get; set; } = DefaultTemperature;
+    public double? Temperature { get; set; }
 
     /// <summary>
     /// Optional nucleus sampling value for OpenAI-compatible providers.
     /// </summary>
-    public double? TopP { get; set; } = DefaultTopP;
+    public double? TopP { get; set; }
 
     /// <summary>
     /// Optional top-k sampling value for compatible providers.
     /// </summary>
-    public int? TopK { get; set; } = DefaultTopK;
+    public int? TopK { get; set; }
 
     /// <summary>
     /// Optional minimum probability threshold for compatible providers.
     /// </summary>
-    public double? MinP { get; set; } = DefaultMinP;
+    public double? MinP { get; set; }
 
     /// <summary>
     /// Optional presence penalty for OpenAI-compatible providers.
     /// </summary>
-    public double? PresencePenalty { get; set; } = DefaultPresencePenalty;
+    public double? PresencePenalty { get; set; }
 
     /// <summary>
     /// Optional repetition penalty for compatible providers.
     /// </summary>
-    public double? RepetitionPenalty { get; set; } = DefaultRepetitionPenalty;
+    public double? RepetitionPenalty { get; set; }
 }

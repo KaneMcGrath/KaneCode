@@ -53,4 +53,39 @@ public class AiSettingsViewModelTests
 
         Assert.Null(settings.ContextLength);
     }
+
+    [Fact]
+    public void WhenInferenceParameterIsMissingThenEntryShowsDefaultValueButKeepsItDisabled()
+    {
+        AiProviderSettings settings = new()
+        {
+            ProviderId = "openai",
+            Label = "Test Provider",
+            Temperature = null
+        };
+
+        AiProviderEntryViewModel entry = new(settings);
+
+        Assert.Equal("0.6", entry.Temperature);
+        Assert.False(entry.IsTemperatureEnabled);
+    }
+
+    [Fact]
+    public void WhenInferenceParameterIsDisabledThenToSettingsOmitsIt()
+    {
+        AiProviderEntryViewModel entry = new(new AiProviderSettings
+        {
+            ProviderId = "openai",
+            Label = "Test Provider",
+            Temperature = 0.9
+        })
+        {
+            IsTemperatureEnabled = false,
+            Temperature = "0.9"
+        };
+
+        AiProviderSettings settings = entry.ToSettings();
+
+        Assert.Null(settings.Temperature);
+    }
 }
