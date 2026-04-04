@@ -50,7 +50,7 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
     private SearchPanel? _searchPanel;
     private CompletionWindow? _completionWindow;
     private OverloadInsightWindow? _insightWindow;
-    private CancellationTokenSource? _analysisCts;
+    private readonly BackgroundAnalysisScheduler _analysisScheduler;
     private CancellationTokenSource? _navigationCts;
     private CancellationTokenSource? _findReferencesCts;
     private CancellationTokenSource? _quickInfoCts;
@@ -67,7 +67,6 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
     private CancellationTokenSource? _projectFileRefreshCts;
     private bool _isLoadingProject;
     private bool _isUpdatingSelectedBranch;
-    private readonly TimeSpan _analysisDelay = TimeSpan.FromMilliseconds(500);
     private CancellationTokenSource? _loadingStatusClearCts;
     private string? _loadedProjectOrSolutionPath;
     private List<string> _loadedSolutionProjectPaths = [];
@@ -80,6 +79,9 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
         _signatureHelpService = new RoslynSignatureHelpService(_roslynService);
         _codeActionService = new RoslynCodeActionService(_roslynService);
         _refactoringService = new RoslynRefactoringService(_roslynService);
+        _analysisScheduler = new BackgroundAnalysisScheduler(_roslynService);
+        _analysisScheduler.ClassificationCompleted += OnClassificationCompleted;
+        _analysisScheduler.DiagnosticsCompleted += OnDiagnosticsCompleted;
 
         NewFileCommand = new RelayCommand(_ => NewFile());
         OpenFileCommand = new RelayCommand(_ => OpenFile());
@@ -1107,7 +1109,8 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
         LoadingStatus = $"Loading project: {Path.GetFileName(projectPath)}...";
 
         // Cancel any in-flight analysis before clearing the workspace
-        _analysisCts?.Cancel();
+        _analysisScheduler.CancelAll();
+        _analysisScheduler.ClearCache();
 
         try
         {
@@ -1171,7 +1174,8 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
         LoadingStatus = $"Loading solution: {Path.GetFileName(solutionPath)}...";
 
         // Cancel any in-flight analysis before clearing the workspace
-        _analysisCts?.Cancel();
+        _analysisScheduler.CancelAll();
+        _analysisScheduler.ClearCache();
 
         try
         {
@@ -2237,7 +2241,9 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
     }
 
     /// <summary>
-    /// Triggers background Roslyn analysis (classification + diagnostics) with a debounce delay.
+    /// Triggers background Roslyn analysis (classification + diagnostics) via the scheduler.
+    /// Classification, active-document diagnostics, and solution-wide diagnostics run as
+    /// independent background tasks with separate debounce delays and cancellation.
     /// </summary>
     private void ScheduleRoslynAnalysis()
     {
@@ -2246,148 +2252,77 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
             return;
         }
 
-        _analysisCts?.Cancel();
-        _analysisCts = new CancellationTokenSource();
-        var ct = _analysisCts.Token;
-        var filePath = ActiveTab.FilePath;
-        var text = _editor?.Text ?? string.Empty;
+        string filePath = ActiveTab.FilePath;
+        string text = _editor?.Text ?? string.Empty;
 
-        _ = RunRoslynAnalysisAsync(filePath, text, ct);
+        List<string> openCSharpPaths = [];
+        foreach (OpenFileTab tab in OpenTabs)
+        {
+            if (RoslynWorkspaceService.IsCSharpFile(tab.FilePath))
+            {
+                openCSharpPaths.Add(tab.FilePath);
+            }
+        }
+
+        if (_classificationColorizer is not null)
+        {
+            _classificationColorizer.FilePath = filePath;
+        }
+
+        _analysisScheduler.ScheduleFullAnalysis(filePath, text, openCSharpPaths);
     }
 
-    private async Task RunRoslynAnalysisAsync(string filePath, string text, CancellationToken cancellationToken)
+    /// <summary>
+    /// Handles classification results from the background scheduler.
+    /// Updates the colorizer spans and redraws the editor on the UI thread.
+    /// </summary>
+    private void OnClassificationCompleted(ClassificationResult result)
     {
-        try
+        Application.Current.Dispatcher.InvokeAsync(() =>
         {
-            await Task.Delay(_analysisDelay, cancellationToken).ConfigureAwait(false);
-
-            await _roslynService.UpdateDocumentTextAsync(filePath, text, cancellationToken).ConfigureAwait(false);
-
-            // Semantic classification
-            if (_classificationColorizer is not null)
+            if (_classificationColorizer is not null
+                && string.Equals(_classificationColorizer.FilePath, result.FilePath, StringComparison.OrdinalIgnoreCase))
             {
-                _classificationColorizer.FilePath = filePath;
-                await _classificationColorizer.UpdateClassificationsAsync(cancellationToken).ConfigureAwait(false);
-            }
-
-            // Diagnostics for all open C# documents, not just dependents of the active file
-            var allDiagnosticItems = new List<DiagnosticItem>();
-            var activeFileEntries = new List<DiagnosticEntry>();
-
-            var filesToAnalyze = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-
-            // Include all open tabs so the error list reflects the whole working set
-            foreach (var tab in OpenTabs)
-            {
-                if (RoslynWorkspaceService.IsCSharpFile(tab.FilePath))
-                {
-                    filesToAnalyze.Add(tab.FilePath);
-                }
-            }
-
-            // Also include tracked workspace documents that transitively depend on the edited file
-            // so that cross-project errors are surfaced even for files not currently open as tabs
-            foreach (var dep in _roslynService.GetDependentOpenDocumentFilePaths(filePath))
-            {
-                if (RoslynWorkspaceService.IsCSharpFile(dep))
-                {
-                    filesToAnalyze.Add(dep);
-                }
-            }
-
-            foreach (var path in filesToAnalyze)
-            {
-                var (entries, items) = await BuildDiagnosticsForFileAsync(path, cancellationToken).ConfigureAwait(false);
-                allDiagnosticItems.AddRange(items);
-
-                if (string.Equals(path, filePath, StringComparison.OrdinalIgnoreCase))
-                {
-                    activeFileEntries = entries;
-                }
-            }
-
-            // Update UI on dispatcher
-            await Application.Current.Dispatcher.InvokeAsync(() =>
-            {
-                _diagnosticRenderer?.UpdateDiagnostics(activeFileEntries);
+                _classificationColorizer.SetClassifiedSpans(result.ClassifiedSpans);
                 _editor?.TextArea.TextView.Redraw();
-
-                // Update error list panel
-                DiagnosticItems.Clear();
-                foreach (var item in allDiagnosticItems.OrderBy(i => i.Severity).ThenBy(i => i.File).ThenBy(i => i.Line).ThenBy(i => i.Column))
-                {
-                    DiagnosticItems.Add(item);
-                }
-
-                // Update status with diagnostic summary
-                var errorCount = allDiagnosticItems.Count(e => e.Severity == DiagnosticSeverity.Error);
-                var warningCount = allDiagnosticItems.Count(e => e.Severity == DiagnosticSeverity.Warning);
-                if (errorCount > 0 || warningCount > 0)
-                {
-                    _diagnosticStatusText = $"{errorCount} error(s), {warningCount} warning(s)";
-                }
-                else
-                {
-                    _diagnosticStatusText = null;
-                }
-
-                OnPropertyChanged(nameof(StatusText));
-            });
-        }
-        catch (OperationCanceledException)
-        {
-            // Analysis was superseded by a newer request
-        }
+            }
+        });
     }
 
-    private async Task<(List<DiagnosticEntry> Entries, List<DiagnosticItem> Items)> BuildDiagnosticsForFileAsync(
-        string filePath,
-        CancellationToken cancellationToken)
+    /// <summary>
+    /// Handles diagnostics results from the background scheduler.
+    /// Updates squiggles, error list, and status bar on the UI thread.
+    /// </summary>
+    private void OnDiagnosticsCompleted(DiagnosticsResult result)
     {
-        var diagnostics = await _roslynService.GetDiagnosticsAsync(filePath, cancellationToken).ConfigureAwait(false);
-        var entries = new List<DiagnosticEntry>();
-        var diagDetails = new List<(DiagnosticEntry Entry, string Category)>();
-        foreach (var diag in diagnostics)
+        Application.Current.Dispatcher.InvokeAsync(() =>
         {
-            if (diag.Severity == DiagnosticSeverity.Hidden)
+            _diagnosticRenderer?.UpdateDiagnostics(result.ActiveFileEntries);
+            _editor?.TextArea.TextView.Redraw();
+
+            DiagnosticItems.Clear();
+            foreach (DiagnosticItem item in result.AllItems
+                .OrderBy(i => i.Severity)
+                .ThenBy(i => i.File)
+                .ThenBy(i => i.Line)
+                .ThenBy(i => i.Column))
             {
-                continue;
+                DiagnosticItems.Add(item);
             }
 
-            var span = diag.Location.SourceSpan;
-            var entry = new DiagnosticEntry(span.Start, span.End, diag.Severity, diag.GetMessage(), diag.Id);
-            entries.Add(entry);
-            diagDetails.Add((entry, diag.Descriptor.Category));
-        }
-
-        var document = _roslynService.GetDocument(filePath);
-        var sourceText = document is not null
-            ? await document.GetTextAsync(cancellationToken).ConfigureAwait(false)
-            : null;
-
-        string projectName = document?.Project.Name ?? "";
-
-        var items = new List<DiagnosticItem>();
-        var fileName = Path.GetFileName(filePath);
-        foreach (var (entry, category) in diagDetails)
-        {
-            var line = 0;
-            var column = 0;
-            if (sourceText is not null && entry.Start >= 0 && entry.Start <= sourceText.Length)
+            int errorCount = result.AllItems.Count(e => e.Severity == DiagnosticSeverity.Error);
+            int warningCount = result.AllItems.Count(e => e.Severity == DiagnosticSeverity.Warning);
+            if (errorCount > 0 || warningCount > 0)
             {
-                var linePosition = sourceText.Lines.GetLinePosition(entry.Start);
-                line = linePosition.Line + 1;
-                column = linePosition.Character + 1;
+                _diagnosticStatusText = $"{errorCount} error(s), {warningCount} warning(s)";
+            }
+            else
+            {
+                _diagnosticStatusText = null;
             }
 
-            items.Add(new DiagnosticItem(
-                entry.Severity, entry.Id, entry.Message,
-                fileName, line, column,
-                entry.Start, entry.End, filePath,
-                category, projectName));
-        }
-
-        return (entries, items);
+            OnPropertyChanged(nameof(StatusText));
+        });
     }
 
     private string? _diagnosticStatusText;
@@ -4083,8 +4018,9 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
         CancelPreviousLoad();
         _loadingStatusClearCts?.Cancel();
         _loadingStatusClearCts?.Dispose();
-        _analysisCts?.Cancel();
-        _analysisCts?.Dispose();
+        _analysisScheduler.ClassificationCompleted -= OnClassificationCompleted;
+        _analysisScheduler.DiagnosticsCompleted -= OnDiagnosticsCompleted;
+        _analysisScheduler.Dispose();
         _navigationCts?.Cancel();
         _navigationCts?.Dispose();
         _findReferencesCts?.Cancel();

@@ -127,11 +127,11 @@
 
 #### 4.1 Background Analysis Scheduler
 
-- [ ] Separate classification, diagnostics, and navigation indexing into independent background tasks
-- [ ] Cache per-document analysis snapshots to avoid full recomputation on every edit
-- [ ] Implement incremental / partial-file classification updates for large files
-- [ ] Distinguish active-document latency-sensitive work from background solution-wide analysis
-- [ ] Throttle expensive full-solution operations to avoid UI stalls
+- [x] Separate classification, diagnostics, and navigation indexing into independent background tasks
+- [x] Cache per-document analysis snapshots to avoid full recomputation on every edit
+- [x] Implement incremental / partial-file classification updates for large files
+- [x] Distinguish active-document latency-sensitive work from background solution-wide analysis
+- [x] Throttle expensive full-solution operations to avoid UI stalls
 
 #### 4.2 Refactoring Discovery & Action Composition
 

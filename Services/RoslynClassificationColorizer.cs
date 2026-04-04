@@ -35,6 +35,15 @@ internal sealed class RoslynClassificationColorizer : DocumentColorizingTransfor
     }
 
     /// <summary>
+    /// Directly sets the classified spans from an external source (e.g. <see cref="BackgroundAnalysisScheduler"/>).
+    /// Call on the UI thread, then invalidate visual lines.
+    /// </summary>
+    public void SetClassifiedSpans(IReadOnlyList<ClassifiedSpan> spans)
+    {
+        _classifiedSpans = spans;
+    }
+
+    /// <summary>
     /// Updates the cached classified spans. Call this after the document text changes,
     /// on a background thread, then invalidate the visual lines.
     /// </summary>
