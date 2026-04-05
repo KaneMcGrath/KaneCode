@@ -105,4 +105,20 @@ public class AiChatPanelTests
 
         Assert.Equal([0, 1], result);
     }
+
+    [Fact]
+    public void WhenBuildingSelectableModelListThenPreferredModelIsPrependedOnce()
+    {
+        IReadOnlyList<string> result = AiChatPanel.BuildSelectableModelList(["gpt-4.1", "gpt-4o"], "gpt-4o");
+
+        Assert.Equal(["gpt-4o", "gpt-4.1"], result);
+    }
+
+    [Fact]
+    public void WhenSelectingInitialModelThenPreferredMatchIsReturnedIgnoringCase()
+    {
+        string? result = AiChatPanel.SelectInitialModel(["gpt-4o", "gpt-4.1"], "GPT-4.1");
+
+        Assert.Equal("gpt-4.1", result);
+    }
 }

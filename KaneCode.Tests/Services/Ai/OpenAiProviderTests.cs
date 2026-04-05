@@ -54,4 +54,29 @@ public class OpenAiProviderTests
 
         Assert.False(result);
     }
+
+    [Fact]
+    public void WhenParsingModelsResponseThenSelectedModelIsIncludedBeforeDiscoveredModels()
+    {
+        string responseJson = """
+            {
+              "data": [
+                { "id": "gpt-4.1" },
+                { "id": "gpt-4o-mini" }
+              ]
+            }
+            """;
+
+        IReadOnlyList<string> models = OpenAiProvider.ParseAvailableModelsResponse(responseJson, "gpt-4o");
+
+        Assert.Equal(["gpt-4o", "gpt-4.1", "gpt-4o-mini"], models);
+    }
+
+    [Fact]
+    public void WhenBuildingModelsUrlFromChatCompletionsEndpointThenModelsEndpointIsReturned()
+    {
+        string url = OpenAiProvider.BuildModelsUrl("https://example.test/v1/chat/completions");
+
+        Assert.Equal("https://example.test/v1/models", url);
+    }
 }

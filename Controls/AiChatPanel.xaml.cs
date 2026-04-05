@@ -25,8 +25,10 @@ public partial class AiChatPanel : UserControl
     private IAiProvider? _provider;
     private AiProviderRegistry? _providerRegistry;
     private string? _model;
+    private CancellationTokenSource? _modelDiscoveryCts;
     private CancellationTokenSource? _streamCts;
     private bool _isStreaming;
+    private bool _isUpdatingModelListSelection;
     private AiUsageStats? _lastUsageStats;
     private Func<IReadOnlyList<ProjectItem>>? _projectItemsProvider;
     private Func<string?>? _projectConversationKeyProvider;
@@ -92,6 +94,49 @@ public partial class AiChatPanel : UserControl
         _provider = provider;
         _model = model;
         _projectContextInjected = false;
+    }
+
+    internal static IReadOnlyList<string> BuildSelectableModelList(IReadOnlyList<string> discoveredModels, string? preferredModel)
+    {
+        ArgumentNullException.ThrowIfNull(discoveredModels);
+
+        List<string> selectableModels = [];
+        HashSet<string> seenModels = new(StringComparer.OrdinalIgnoreCase);
+
+        if (!string.IsNullOrWhiteSpace(preferredModel) && seenModels.Add(preferredModel))
+        {
+            selectableModels.Add(preferredModel);
+        }
+
+        foreach (string discoveredModel in discoveredModels)
+        {
+            if (string.IsNullOrWhiteSpace(discoveredModel) || !seenModels.Add(discoveredModel))
+            {
+                continue;
+            }
+
+            selectableModels.Add(discoveredModel);
+        }
+
+        return selectableModels.Count > 0 ? selectableModels : ["default"];
+    }
+
+    internal static string? SelectInitialModel(IReadOnlyList<string> availableModels, string? preferredModel)
+    {
+        ArgumentNullException.ThrowIfNull(availableModels);
+
+        if (!string.IsNullOrWhiteSpace(preferredModel))
+        {
+            foreach (string availableModel in availableModels)
+            {
+                if (string.Equals(availableModel, preferredModel, StringComparison.OrdinalIgnoreCase))
+                {
+                    return availableModel;
+                }
+            }
+        }
+
+        return availableModels.Count > 0 ? availableModels[0] : null;
     }
 
     /// <summary>
@@ -732,7 +777,7 @@ public partial class AiChatPanel : UserControl
         RefreshContextWindowDisplay();
     }
 
-    private void ProviderSelector_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    private async void ProviderSelector_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         if (ProviderSelector.SelectedItem is not IAiProvider selected)
         {
@@ -743,12 +788,23 @@ public partial class AiChatPanel : UserControl
 
         AiProviderSettings? matchingSettings = _providerRegistry?.GetSettings(selected);
         Configure(selected, matchingSettings?.SelectedModel);
+        await RefreshModelListAsync(selected, matchingSettings?.SelectedModel);
+    }
+
+    private void ModelSelector_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_isUpdatingModelListSelection || ModelSelector.SelectedItem is not string selectedModel)
+        {
+            return;
+        }
+
+        _model = selectedModel;
     }
 
     /// <summary>
     /// Refreshes the provider selector dropdown from the current registry state.
     /// </summary>
-    private void RefreshProviderSelector()
+    private async void RefreshProviderSelector()
     {
         if (_providerRegistry is null)
         {
@@ -761,18 +817,24 @@ public partial class AiChatPanel : UserControl
         IAiProvider? active = _providerRegistry.ActiveProvider;
         if (active is not null)
         {
+            AiProviderSettings? activeSettings = _providerRegistry.GetSettings(active);
             ProviderSelector.SelectedItem = active;
-            Configure(active);
+            Configure(active, activeSettings?.SelectedModel);
+            await RefreshModelListAsync(active, activeSettings?.SelectedModel);
         }
         else if (_providerRegistry.Providers.Count > 0)
         {
+            IAiProvider firstProvider = _providerRegistry.Providers[0];
+            AiProviderSettings? firstProviderSettings = _providerRegistry.GetSettings(firstProvider);
             ProviderSelector.SelectedIndex = 0;
-            Configure(_providerRegistry.Providers[0]);
+            Configure(firstProvider, firstProviderSettings?.SelectedModel);
+            await RefreshModelListAsync(firstProvider, firstProviderSettings?.SelectedModel);
         }
         else
         {
             ProviderSelector.SelectedItem = null;
             Configure(null);
+            await RefreshModelListAsync(null, null);
         }
 
         ProviderSelector.SelectionChanged += ProviderSelector_SelectionChanged;
@@ -787,6 +849,72 @@ public partial class AiChatPanel : UserControl
         }
 
         RefreshProviderSelector();
+    }
+
+    private async Task RefreshModelListAsync(IAiProvider? provider, string? preferredModel)
+    {
+        CancelModelDiscovery();
+
+        if (provider is null)
+        {
+            ApplyModelList([], null);
+            return;
+        }
+
+        IReadOnlyList<string> fallbackModels = BuildSelectableModelList(provider.AvailableModels, preferredModel ?? _model);
+        ApplyModelList(fallbackModels, preferredModel ?? _model);
+
+        CancellationTokenSource modelDiscoveryCts = new();
+        _modelDiscoveryCts = modelDiscoveryCts;
+
+        IReadOnlyList<string> discoveredModels;
+        try
+        {
+            discoveredModels = await provider.GetAvailableModelsAsync(modelDiscoveryCts.Token);
+        }
+        catch (OperationCanceledException) when (modelDiscoveryCts.IsCancellationRequested)
+        {
+            return;
+        }
+
+        if (!ReferenceEquals(_modelDiscoveryCts, modelDiscoveryCts) || !ReferenceEquals(_provider, provider))
+        {
+            return;
+        }
+
+        IReadOnlyList<string> selectableModels = BuildSelectableModelList(discoveredModels, preferredModel ?? _model);
+        ApplyModelList(selectableModels, preferredModel ?? _model);
+    }
+
+    private void ApplyModelList(IReadOnlyList<string> models, string? preferredModel)
+    {
+        ArgumentNullException.ThrowIfNull(models);
+
+        _isUpdatingModelListSelection = true;
+        try
+        {
+            ModelSelector.ItemsSource = models;
+            ModelSelector.IsEnabled = models.Count > 0;
+            string? selectedModel = SelectInitialModel(models, preferredModel);
+            ModelSelector.SelectedItem = selectedModel;
+            _model = selectedModel;
+        }
+        finally
+        {
+            _isUpdatingModelListSelection = false;
+        }
+    }
+
+    private void CancelModelDiscovery()
+    {
+        if (_modelDiscoveryCts is null)
+        {
+            return;
+        }
+
+        _modelDiscoveryCts.Cancel();
+        _modelDiscoveryCts.Dispose();
+        _modelDiscoveryCts = null;
     }
 
     private void ModeSelector_SelectionChanged(object sender, SelectionChangedEventArgs e)

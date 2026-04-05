@@ -166,40 +166,75 @@
                                Foreground="{DynamicResource AiChatSecondaryForeground}"
                                Margin="0,1,0,0" />
                 </StackPanel>
-                <ComboBox x:Name="ProviderSelector"
-                          Grid.Column="1"
-                          VerticalAlignment="Center"
-                          HorizontalAlignment="Right"
-                          FontSize="11"
-                          MinWidth="100"
-                          DisplayMemberPath="DisplayName"
-                          SelectionChanged="ProviderSelector_SelectionChanged"
-                          Foreground="{DynamicResource AiChatForeground}"
-                          Background="{DynamicResource AiChatInputBackground}"
-                          BorderBrush="{DynamicResource AiChatBorder}"
-                          BorderThickness="1"
-                          ToolTip="Select AI provider">
-                    <ComboBox.Resources>
-                        <SolidColorBrush x:Key="{x:Static SystemColors.WindowBrushKey}"
-                                         Color="{Binding Color, Source={DynamicResource AiChatInputBackground}}" />
-                        <SolidColorBrush x:Key="{x:Static SystemColors.ControlBrushKey}"
-                                         Color="{Binding Color, Source={DynamicResource AiChatInputBackground}}" />
-                        <Style TargetType="ComboBoxItem">
-                            <Setter Property="Background" Value="{DynamicResource AiChatInputBackground}" />
-                            <Setter Property="Foreground" Value="{DynamicResource AiChatForeground}" />
-                            <Style.Triggers>
-                                <Trigger Property="IsHighlighted" Value="True">
-                                    <Setter Property="Background" Value="{DynamicResource ButtonMouseOverBackground}" />
-                                    <Setter Property="Foreground" Value="{DynamicResource AiChatSendButtonForeground}" />
-                                </Trigger>
-                                <Trigger Property="IsSelected" Value="True">
-                                    <Setter Property="Background" Value="{DynamicResource ButtonPressedBackground}" />
-                                    <Setter Property="Foreground" Value="{DynamicResource AiChatSendButtonForeground}" />
-                                </Trigger>
-                            </Style.Triggers>
-                        </Style>
-                    </ComboBox.Resources>
-                </ComboBox>
+                <StackPanel Grid.Column="1"
+                            Orientation="Horizontal"
+                            HorizontalAlignment="Right"
+                            VerticalAlignment="Center">
+                    <ComboBox x:Name="ProviderSelector"
+                               VerticalAlignment="Top"
+                               FontSize="11"
+                               MinWidth="100"
+                               DisplayMemberPath="DisplayName"
+                               SelectionChanged="ProviderSelector_SelectionChanged"
+                               Foreground="{DynamicResource AiChatForeground}"
+                               Background="{DynamicResource AiChatInputBackground}"
+                               BorderBrush="{DynamicResource AiChatBorder}"
+                               BorderThickness="1"
+                               Margin="0,0,6,0"
+                               ToolTip="Select AI provider">
+                        <ComboBox.Resources>
+                            <SolidColorBrush x:Key="{x:Static SystemColors.WindowBrushKey}"
+                                             Color="{Binding Color, Source={DynamicResource AiChatInputBackground}}" />
+                            <SolidColorBrush x:Key="{x:Static SystemColors.ControlBrushKey}"
+                                             Color="{Binding Color, Source={DynamicResource AiChatInputBackground}}" />
+                            <Style TargetType="ComboBoxItem">
+                                <Setter Property="Background" Value="{DynamicResource AiChatInputBackground}" />
+                                <Setter Property="Foreground" Value="{DynamicResource AiChatForeground}" />
+                                <Style.Triggers>
+                                    <Trigger Property="IsHighlighted" Value="True">
+                                        <Setter Property="Background" Value="{DynamicResource ButtonMouseOverBackground}" />
+                                        <Setter Property="Foreground" Value="{DynamicResource AiChatSendButtonForeground}" />
+                                    </Trigger>
+                                    <Trigger Property="IsSelected" Value="True">
+                                        <Setter Property="Background" Value="{DynamicResource ButtonPressedBackground}" />
+                                        <Setter Property="Foreground" Value="{DynamicResource AiChatSendButtonForeground}" />
+                                    </Trigger>
+                                </Style.Triggers>
+                            </Style>
+                        </ComboBox.Resources>
+                    </ComboBox>
+                    <ComboBox x:Name="ModelSelector"
+                              VerticalAlignment="Top"
+                              FontSize="11"
+                              MinWidth="180"
+                              SelectionChanged="ModelSelector_SelectionChanged"
+                              Foreground="{DynamicResource AiChatForeground}"
+                              Background="{DynamicResource AiChatInputBackground}"
+                              BorderBrush="{DynamicResource AiChatBorder}"
+                              BorderThickness="1"
+                              ToolTip="Select a model for the active provider">
+                        <ComboBox.Resources>
+                            <SolidColorBrush x:Key="{x:Static SystemColors.WindowBrushKey}"
+                                             Color="{Binding Color, Source={DynamicResource AiChatInputBackground}}" />
+                            <SolidColorBrush x:Key="{x:Static SystemColors.ControlBrushKey}"
+                                             Color="{Binding Color, Source={DynamicResource AiChatInputBackground}}" />
+                            <Style TargetType="ComboBoxItem">
+                                <Setter Property="Background" Value="{DynamicResource AiChatInputBackground}" />
+                                <Setter Property="Foreground" Value="{DynamicResource AiChatForeground}" />
+                                <Style.Triggers>
+                                    <Trigger Property="IsHighlighted" Value="True">
+                                        <Setter Property="Background" Value="{DynamicResource ButtonMouseOverBackground}" />
+                                        <Setter Property="Foreground" Value="{DynamicResource AiChatSendButtonForeground}" />
+                                    </Trigger>
+                                    <Trigger Property="IsSelected" Value="True">
+                                        <Setter Property="Background" Value="{DynamicResource ButtonPressedBackground}" />
+                                        <Setter Property="Foreground" Value="{DynamicResource AiChatSendButtonForeground}" />
+                                    </Trigger>
+                                </Style.Triggers>
+                            </Style>
+                        </ComboBox.Resources>
+                    </ComboBox>
+                </StackPanel>
             </Grid>
         </Border>
 

@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.IO;
 using System.Net.Http;
 using System.Net.Http.Headers;
@@ -15,11 +16,13 @@ internal sealed class OpenAiProvider : IAiProvider, IDisposable
 {
     private readonly HttpClient _httpClient = new() { Timeout = TimeSpan.FromMinutes(5) };
     private readonly AiProviderSettings _settings;
+    private IReadOnlyList<string> _availableModels;
 
     public OpenAiProvider(AiProviderSettings settings)
     {
         ArgumentNullException.ThrowIfNull(settings);
         _settings = settings;
+        _availableModels = GetFallbackModels(settings.SelectedModel);
     }
 
     public string DisplayName => string.IsNullOrWhiteSpace(_settings.Label)
@@ -30,10 +33,58 @@ internal sealed class OpenAiProvider : IAiProvider, IDisposable
 
     public bool IsConfigured => !string.IsNullOrWhiteSpace(_settings.Endpoint);
 
-    public IReadOnlyList<string> AvailableModels =>
-        string.IsNullOrWhiteSpace(_settings.SelectedModel)
-            ? ["default"]
-            : [_settings.SelectedModel];
+    public IReadOnlyList<string> AvailableModels => _availableModels;
+
+    public async Task<IReadOnlyList<string>> GetAvailableModelsAsync(CancellationToken cancellationToken = default)
+    {
+        if (!IsConfigured)
+        {
+            return _availableModels;
+        }
+
+        try
+        {
+            string url = BuildModelsUrl(_settings.Endpoint);
+            using HttpRequestMessage request = new(HttpMethod.Get, url);
+            request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+
+            if (!string.IsNullOrWhiteSpace(_settings.ApiKey))
+            {
+                request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _settings.ApiKey);
+            }
+
+            using HttpResponseMessage response = await _httpClient.SendAsync(
+                request,
+                HttpCompletionOption.ResponseHeadersRead,
+                cancellationToken).ConfigureAwait(false);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                return _availableModels;
+            }
+
+            string responseBody = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+            _availableModels = ParseAvailableModelsResponse(responseBody, _settings.SelectedModel);
+        }
+        catch (HttpRequestException)
+        {
+            Debug.WriteLine("AI model discovery request failed.");
+        }
+        catch (InvalidOperationException)
+        {
+            Debug.WriteLine("AI model discovery could not build a valid models endpoint.");
+        }
+        catch (JsonException)
+        {
+            Debug.WriteLine("AI model discovery returned an unexpected JSON payload.");
+        }
+        catch (TaskCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            Debug.WriteLine("AI model discovery timed out.");
+        }
+
+        return _availableModels;
+    }
 
     /// <inheritdoc />
     public async IAsyncEnumerable<AiStreamToken> StreamCompletionAsync(
@@ -225,6 +276,36 @@ internal sealed class OpenAiProvider : IAiProvider, IDisposable
         return uri.Host.EndsWith("groq.com", StringComparison.OrdinalIgnoreCase);
     }
 
+    internal static string BuildModelsUrl(string endpoint)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(endpoint);
+
+        if (!Uri.TryCreate(endpoint.Trim(), UriKind.Absolute, out Uri? uri))
+        {
+            throw new InvalidOperationException("The configured AI endpoint must be an absolute URL.");
+        }
+
+        string path = uri.AbsolutePath.TrimEnd('/');
+        string targetPath = path switch
+        {
+            "" or "/" => "/v1/models",
+            _ when path.EndsWith("/v1/models", StringComparison.OrdinalIgnoreCase) => path,
+            _ when path.EndsWith("/v1/chat/completions", StringComparison.OrdinalIgnoreCase) =>
+                string.Concat(path.AsSpan(0, path.Length - "/chat/completions".Length), "/models"),
+            _ when path.EndsWith("/chat/completions", StringComparison.OrdinalIgnoreCase) =>
+                string.Concat(path.AsSpan(0, path.Length - "/chat/completions".Length), "/models"),
+            _ when path.EndsWith("/v1", StringComparison.OrdinalIgnoreCase) => $"{path}/models",
+            _ => $"{path}/v1/models"
+        };
+
+        UriBuilder builder = new(uri)
+        {
+            Path = targetPath
+        };
+
+        return builder.Uri.ToString();
+    }
+
     private static string BuildChatCompletionsUrl(string endpoint)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(endpoint);
@@ -250,6 +331,69 @@ internal sealed class OpenAiProvider : IAiProvider, IDisposable
         };
 
         return builder.Uri.ToString();
+    }
+
+    internal static IReadOnlyList<string> ParseAvailableModelsResponse(string json, string? selectedModel = null)
+    {
+        ArgumentNullException.ThrowIfNull(json);
+
+        using JsonDocument document = JsonDocument.Parse(json);
+        List<string> models = [];
+        HashSet<string> seenModels = new(StringComparer.OrdinalIgnoreCase);
+
+        if (document.RootElement.TryGetProperty("data", out JsonElement dataElement) &&
+            dataElement.ValueKind == JsonValueKind.Array)
+        {
+            foreach (JsonElement modelElement in dataElement.EnumerateArray())
+            {
+                if (!modelElement.TryGetProperty("id", out JsonElement idElement))
+                {
+                    continue;
+                }
+
+                string? modelId = idElement.GetString();
+                if (string.IsNullOrWhiteSpace(modelId) || !seenModels.Add(modelId))
+                {
+                    continue;
+                }
+
+                models.Add(modelId);
+            }
+        }
+
+        return MergeAvailableModels(models, selectedModel);
+    }
+
+    private static IReadOnlyList<string> MergeAvailableModels(IReadOnlyList<string> discoveredModels, string? selectedModel)
+    {
+        ArgumentNullException.ThrowIfNull(discoveredModels);
+
+        List<string> mergedModels = [];
+        HashSet<string> seenModels = new(StringComparer.OrdinalIgnoreCase);
+
+        if (!string.IsNullOrWhiteSpace(selectedModel) && seenModels.Add(selectedModel))
+        {
+            mergedModels.Add(selectedModel);
+        }
+
+        foreach (string discoveredModel in discoveredModels)
+        {
+            if (string.IsNullOrWhiteSpace(discoveredModel) || !seenModels.Add(discoveredModel))
+            {
+                continue;
+            }
+
+            mergedModels.Add(discoveredModel);
+        }
+
+        return mergedModels.Count > 0 ? mergedModels : ["default"];
+    }
+
+    private static IReadOnlyList<string> GetFallbackModels(string? selectedModel)
+    {
+        return string.IsNullOrWhiteSpace(selectedModel)
+            ? ["default"]
+            : [selectedModel];
     }
 
     private static bool TryExtractEventData(string line, out string data)

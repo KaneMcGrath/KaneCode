@@ -52,4 +52,9 @@ internal interface IAiProvider
     /// Returns the list of model identifiers available for this provider.
     /// </summary>
     IReadOnlyList<string> AvailableModels { get; }
+
+    /// <summary>
+    /// Discovers the list of model identifiers available for this provider.
+    /// </summary>
+    Task<IReadOnlyList<string>> GetAvailableModelsAsync(CancellationToken cancellationToken = default);
 }
