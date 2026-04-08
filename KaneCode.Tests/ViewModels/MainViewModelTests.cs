@@ -4,6 +4,64 @@ namespace KaneCode.Tests.ViewModels;
 
 public class MainViewModelTests
 {
+    [Fact]
+    public void WhenProjectIsNotRunningThenRunCommandTextShowsRun()
+    {
+        string result = MainViewModel.GetRunCommandText(isProjectRunInProgress: false);
+
+        Assert.Equal("_Run Project", result);
+    }
+
+    [Fact]
+    public void WhenProjectIsRunningThenRunCommandTextShowsStop()
+    {
+        string result = MainViewModel.GetRunCommandText(isProjectRunInProgress: true);
+
+        Assert.Equal("_Stop Project", result);
+    }
+
+    [Fact]
+    public void WhenProjectIsNotRunningThenQuickButtonTextShowsPlaySymbol()
+    {
+        string result = MainViewModel.GetRunQuickButtonText(isProjectRunInProgress: false);
+
+        Assert.Equal("\u25B6", result);
+    }
+
+    [Fact]
+    public void WhenProjectIsRunningThenQuickButtonTextShowsStopSymbol()
+    {
+        string result = MainViewModel.GetRunQuickButtonText(isProjectRunInProgress: true);
+
+        Assert.Equal("\u25A0", result);
+    }
+
+    [Fact]
+    public void WhenProjectIsRunningThenStatusTextShowsRunningProject()
+    {
+        string result = MainViewModel.GetStatusText(
+            loadingStatus: null,
+            isProjectRunInProgress: true,
+            runningProjectPath: @"C:\repo\App.csproj",
+            activeTabFilePath: @"C:\repo\Program.cs",
+            diagnosticStatusText: "1 error(s), 0 warning(s)");
+
+        Assert.Equal("Running: C:\\repo\\App.csproj", result);
+    }
+
+    [Fact]
+    public void WhenProjectIsNotRunningThenStatusTextShowsEditingAndDiagnostics()
+    {
+        string result = MainViewModel.GetStatusText(
+            loadingStatus: null,
+            isProjectRunInProgress: false,
+            runningProjectPath: null,
+            activeTabFilePath: @"C:\repo\Program.cs",
+            diagnosticStatusText: "1 error(s), 0 warning(s)");
+
+        Assert.Equal("Editing: C:\\repo\\Program.cs  |  1 error(s), 0 warning(s)", result);
+    }
+
     [Theory]
     [InlineData(@"C:\repo\App.csproj")]
     [InlineData(@"C:\repo\App.slnx")]

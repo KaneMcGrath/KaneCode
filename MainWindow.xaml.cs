@@ -1547,18 +1547,6 @@ public partial class MainWindow : Window
         }
     }
 
-    // ── Quick Build and Run Buttons ────────────────────────────────────
-
-    private void BuildQuick_Click(object? sender, RoutedEventArgs e)
-    {
-        _viewModel.BuildCommand.Execute(null);
-    }
-
-    private void RunQuick_Click(object? sender, RoutedEventArgs e)
-    {
-        _viewModel.RunCommand.Execute(null);
-    }
-
     private void OnThemeSelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         if (ThemeSelector.SelectedItem is not ThemeOption selected)

@@ -23,6 +23,13 @@ namespace KaneCode.ViewModels;
 /// </summary>
 internal sealed class MainViewModel : ObservableObject, IDisposable
 {
+    private enum BuildOperation
+    {
+        None,
+        Build,
+        Run
+    }
+
     private TextEditor? _editor;
     private bool _isActivating;
 
@@ -70,6 +77,10 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
     private CancellationTokenSource? _loadingStatusClearCts;
     private string? _loadedProjectOrSolutionPath;
     private List<string> _loadedSolutionProjectPaths = [];
+    private BuildOperation _activeBuildOperation;
+    private bool _isOperationCancellationRequested;
+    private bool _isProjectRunInProgress;
+    private string? _runningProjectPath;
 
     public MainViewModel()
     {
@@ -106,7 +117,7 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
         ExitCommand = new RelayCommand(_ => ExitApplication());
         OpenOptionsCommand = new RelayCommand(_ => OpenOptions());
         BuildCommand = new RelayCommand(_ => _ = BuildProjectAsync(), _ => CanBuild());
-        RunCommand = new RelayCommand(_ => _ = RunProjectAsync(), _ => CanBuild());
+        RunCommand = new RelayCommand(_ => ExecuteRunCommand(), _ => CanRunProject());
         CancelBuildCommand = new RelayCommand(_ => CancelBuild(), _ => _buildService.IsRunning);
         CodeActionsCommand = new RelayCommand(async _ => await ShowCodeActionsAsync(), _ => CanGoToDefinition());
         GenerateMissingMembersCommand = new RelayCommand(async _ => await GenerateMissingMembersAsync(), _ => CanGoToDefinition());
@@ -356,25 +367,17 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
     {
         get
         {
-            if (!string.IsNullOrEmpty(_loadingStatus))
-            {
-                return _loadingStatus;
-            }
-
-            if (ActiveTab is null)
-            {
-                return "Ready";
-            }
-
-            var status = $"Editing: {ActiveTab.FilePath}";
-            if (!string.IsNullOrEmpty(_diagnosticStatusText))
-            {
-                status += $"  |  {_diagnosticStatusText}";
-            }
-
-            return status;
+            return GetStatusText(_loadingStatus, _isProjectRunInProgress, _runningProjectPath, ActiveTab?.FilePath, _diagnosticStatusText);
         }
     }
+
+    public bool IsProjectRunInProgress => _isProjectRunInProgress;
+
+    public string RunCommandText => GetRunCommandText(_isProjectRunInProgress);
+
+    public string RunQuickButtonText => GetRunQuickButtonText(_isProjectRunInProgress);
+
+    public string RunCommandToolTip => GetRunCommandToolTip(_isProjectRunInProgress);
 
     public void AttachEditor(TextEditor editor)
     {
@@ -3928,6 +3931,19 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
 
     private bool CanBuild() => !string.IsNullOrEmpty(_loadedProjectOrSolutionPath) && !_buildService.IsRunning;
 
+    private bool CanRunProject() => !string.IsNullOrEmpty(_loadedProjectOrSolutionPath) && (!_buildService.IsRunning || _isProjectRunInProgress);
+
+    private void ExecuteRunCommand()
+    {
+        if (_isProjectRunInProgress)
+        {
+            CancelBuild();
+            return;
+        }
+
+        _ = RunProjectAsync();
+    }
+
     /// <summary>
     /// Builds the currently loaded project or solution.
     /// </summary>
@@ -3938,6 +3954,7 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
             return;
         }
 
+        BeginBuildOperation(BuildOperation.Build, null);
         BuildOutputLines.Clear();
         BuildSummary = "Building...";
         BuildOutputLines.Add($"> dotnet build \"{_loadedProjectOrSolutionPath}\"");
@@ -3967,6 +3984,7 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
             return;
         }
 
+        BeginBuildOperation(BuildOperation.Run, runnableProjectPath);
         BuildSummary = "Running...";
         BuildOutputLines.Add($"> dotnet run --project \"{runnableProjectPath}\"");
         BuildOutputLines.Add(string.Empty);
@@ -4012,6 +4030,7 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
     /// </summary>
     private void CancelBuild()
     {
+        _isOperationCancellationRequested = _buildService.IsRunning;
         _buildService.Cancel();
     }
 
@@ -4024,10 +4043,122 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
     {
         Application.Current.Dispatcher.BeginInvoke(() =>
         {
+            BuildOperation completedOperation = _activeBuildOperation;
             BuildOutputLines.Add(string.Empty);
-            BuildOutputLines.Add($"Process exited with code {exitCode}.");
-            BuildSummary = exitCode == 0 ? "Build succeeded" : $"Build failed (exit code {exitCode})";
+            BuildOutputLines.Add(GetProcessExitLine(exitCode, _isOperationCancellationRequested));
+            BuildSummary = GetBuildSummary(completedOperation, exitCode, _isOperationCancellationRequested);
+            EndBuildOperation(completedOperation);
         });
+    }
+
+    internal static string GetRunCommandText(bool isProjectRunInProgress) => isProjectRunInProgress ? "_Stop Project" : "_Run Project";
+
+    internal static string GetRunQuickButtonText(bool isProjectRunInProgress) => isProjectRunInProgress ? "\u25A0" : "\u25B6";
+
+    internal static string GetRunCommandToolTip(bool isProjectRunInProgress) => isProjectRunInProgress ? "Stop Project" : "Run Project";
+
+    internal static string GetStatusText(
+        string? loadingStatus,
+        bool isProjectRunInProgress,
+        string? runningProjectPath,
+        string? activeTabFilePath,
+        string? diagnosticStatusText)
+    {
+        if (!string.IsNullOrEmpty(loadingStatus))
+        {
+            return loadingStatus;
+        }
+
+        if (isProjectRunInProgress)
+        {
+            return string.IsNullOrWhiteSpace(runningProjectPath)
+                ? "Running project..."
+                : $"Running: {runningProjectPath}";
+        }
+
+        if (string.IsNullOrWhiteSpace(activeTabFilePath))
+        {
+            return "Ready";
+        }
+
+        string status = $"Editing: {activeTabFilePath}";
+        if (!string.IsNullOrEmpty(diagnosticStatusText))
+        {
+            status += $"  |  {diagnosticStatusText}";
+        }
+
+        return status;
+    }
+
+    private void BeginBuildOperation(BuildOperation operation, string? runningProjectPath)
+    {
+        _activeBuildOperation = operation;
+        _isOperationCancellationRequested = false;
+        SetRunState(operation == BuildOperation.Run, runningProjectPath);
+        CommandManager.InvalidateRequerySuggested();
+    }
+
+    private void EndBuildOperation(BuildOperation completedOperation)
+    {
+        if (completedOperation == BuildOperation.Run)
+        {
+            SetRunState(false, null);
+        }
+
+        _activeBuildOperation = BuildOperation.None;
+        _isOperationCancellationRequested = false;
+        CommandManager.InvalidateRequerySuggested();
+    }
+
+    private void SetRunState(bool isRunning, string? runningProjectPath)
+    {
+        bool stateChanged = _isProjectRunInProgress != isRunning
+            || !string.Equals(_runningProjectPath, runningProjectPath, StringComparison.Ordinal);
+
+        _isProjectRunInProgress = isRunning;
+        _runningProjectPath = runningProjectPath;
+
+        if (!stateChanged)
+        {
+            return;
+        }
+
+        OnPropertyChanged(nameof(IsProjectRunInProgress));
+        OnPropertyChanged(nameof(RunCommandText));
+        OnPropertyChanged(nameof(RunQuickButtonText));
+        OnPropertyChanged(nameof(RunCommandToolTip));
+        OnPropertyChanged(nameof(StatusText));
+    }
+
+    private static string GetBuildSummary(BuildOperation operation, int exitCode, bool isCancellationRequested)
+    {
+        if (operation == BuildOperation.Run)
+        {
+            if (exitCode == 0)
+            {
+                return "Run completed";
+            }
+
+            return isCancellationRequested && exitCode == -1
+                ? "Run stopped"
+                : $"Run failed (exit code {exitCode})";
+        }
+
+        if (exitCode == 0)
+        {
+            return "Build succeeded";
+        }
+
+        return isCancellationRequested && exitCode == -1
+            ? "Build cancelled"
+            : $"Build failed (exit code {exitCode})";
+    }
+
+    private static string GetProcessExitLine(int exitCode, bool isCancellationRequested)
+    {
+        return isCancellationRequested && exitCode == -1
+            ? "Process was stopped."
+            : $"Process exited with code {exitCode}.";
     }
 
     public void Dispose()

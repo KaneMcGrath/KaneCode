@@ -109,7 +109,7 @@ ResizeMode="CanResizeWithGrip">
             </MenuItem>
             <MenuItem Header="_Build">
                 <MenuItem Header="_Build Project" Command="{Binding BuildCommand}" />
-                <MenuItem Header="_Run Project" Command="{Binding RunCommand}" />
+                <MenuItem Header="{Binding RunCommandText}" Command="{Binding RunCommand}" />
                 <Separator />
                 <MenuItem Header="_Cancel" Command="{Binding CancelBuildCommand}" />
             </MenuItem>
@@ -146,14 +146,14 @@ ResizeMode="CanResizeWithGrip">
                                 Background="Transparent"
                                 Foreground="{DynamicResource MenuForeground}"
                                 BorderThickness="0"
-                                Click="BuildQuick_Click"
+                                Command="{Binding DataContext.BuildCommand, RelativeSource={RelativeSource AncestorType=Window}}"
                                 ToolTip="Build Project" />
-                        <Button Content="▶️" Padding="6,2"
+                        <Button Content="{Binding DataContext.RunQuickButtonText, RelativeSource={RelativeSource AncestorType=Window}}" Padding="6,2"
                                 Background="Transparent"
                                 Foreground="{DynamicResource MenuForeground}"
                                 BorderThickness="0"
-                                Click="RunQuick_Click"
-                                ToolTip="Run Project"
+                                Command="{Binding DataContext.RunCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                ToolTip="{Binding DataContext.RunCommandToolTip, RelativeSource={RelativeSource AncestorType=Window}}"
                                 Margin="4,0,0,0" />
                     </StackPanel>
                 </MenuItem.Header>
