@@ -851,6 +851,8 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
                 {
                     await LoadProjectFileAsync(path, closeOpenTabs: false);
                 }
+
+            ScheduleRoslynAnalysis();
             }, System.Windows.Threading.DispatcherPriority.Background, cancellationToken);
         }
         catch (OperationCanceledException)
@@ -876,6 +878,20 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
             || fileName.Equals("Directory.Build.props", StringComparison.OrdinalIgnoreCase)
             || fileName.Equals("Directory.Build.targets", StringComparison.OrdinalIgnoreCase)
             || fileName.Equals("Directory.Packages.props", StringComparison.OrdinalIgnoreCase);
+    }
+
+    internal static bool ShouldReloadWorkspaceForExternalCSharpFileChange(
+        string filePath,
+        bool hasLoadedProjects,
+        bool isTrackedDocument,
+        string? loadedProjectOrSolutionPath)
+    {
+        ArgumentNullException.ThrowIfNull(filePath);
+
+        return RoslynWorkspaceService.IsCSharpFile(filePath)
+            && hasLoadedProjects
+            && !isTrackedDocument
+            && !string.IsNullOrWhiteSpace(loadedProjectOrSolutionPath);
     }
 
     private static bool IsSolutionFile(string filePath)
@@ -1293,7 +1309,19 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
                 }
             }
 
-            // Update the Roslyn workspace so diagnostics reflect the new content
+            bool shouldReloadWorkspace = ShouldReloadWorkspaceForExternalCSharpFileChange(
+                filePath,
+                _roslynService.HasLoadedProjects,
+                _roslynService.IsDocumentTracked(filePath),
+                _loadedProjectOrSolutionPath);
+
+            if (shouldReloadWorkspace)
+            {
+                QueueProjectFileReload();
+                return;
+            }
+
+            // Update the Roslyn workspace so diagnostics reflect the new content.
             if (RoslynWorkspaceService.IsCSharpFile(filePath))
             {
                 _ = _roslynService.OpenOrUpdateDocumentAsync(filePath, content);

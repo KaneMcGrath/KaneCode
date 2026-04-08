@@ -33,4 +33,36 @@ public class MainViewModelTests
 
         Assert.Equal("     2: second\r\n>    3: third\r\n     4: fourth", preview);
     }
+
+    [Fact]
+    public void WhenExternalUntrackedCSharpFileChangesInLoadedWorkspaceThenReloadIsRequired()
+    {
+        bool result = MainViewModel.ShouldReloadWorkspaceForExternalCSharpFileChange(
+            @"C:\repo\Services\NewService.cs",
+            hasLoadedProjects: true,
+            isTrackedDocument: false,
+            loadedProjectOrSolutionPath: @"C:\repo\App.csproj");
+
+        Assert.True(result);
+    }
+
+    [Theory]
+    [InlineData(@"C:\repo\Services\ExistingService.cs", true, true, @"C:\repo\App.csproj")]
+    [InlineData(@"C:\repo\notes.txt", true, false, @"C:\repo\App.csproj")]
+    [InlineData(@"C:\repo\Services\NewService.cs", false, false, @"C:\repo\App.csproj")]
+    [InlineData(@"C:\repo\Services\NewService.cs", true, false, null)]
+    public void WhenFileChangeDoesNotRequireProjectReloadThenHelperReturnsFalse(
+        string filePath,
+        bool hasLoadedProjects,
+        bool isTrackedDocument,
+        string? loadedProjectOrSolutionPath)
+    {
+        bool result = MainViewModel.ShouldReloadWorkspaceForExternalCSharpFileChange(
+            filePath,
+            hasLoadedProjects,
+            isTrackedDocument,
+            loadedProjectOrSolutionPath);
+
+        Assert.False(result);
+    }
 }

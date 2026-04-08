@@ -328,6 +328,15 @@ internal sealed class RoslynWorkspaceService : IDisposable
     }
 
     /// <summary>
+    /// Returns true if the workspace is already tracking the specified document path.
+    /// </summary>
+    public bool IsDocumentTracked(string filePath)
+    {
+        ArgumentNullException.ThrowIfNull(filePath);
+        return _documentIds.ContainsKey(filePath);
+    }
+
+    /// <summary>
     /// Returns true if the workspace has any loaded MSBuild projects (beyond the default adhoc project).
     /// </summary>
     public bool HasLoadedProjects => !_projectIds.IsEmpty;
