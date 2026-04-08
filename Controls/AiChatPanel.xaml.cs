@@ -1306,7 +1306,14 @@ public partial class AiChatPanel : UserControl
                     });
                 }
 
-                if (rawTextMode && string.IsNullOrWhiteSpace(responseBuilder.ToString()))
+                List<RecoveredMalformedToolCall> recoveredMalformedToolCalls = _activeMode?.ToolsEnabled == true && streamedToolCalls.Count == 0
+                    ? MalformedToolCallRecovery.Recover(reasoningBuilder.ToString(), responseBuilder.ToString()).ToList()
+                    : [];
+
+                if (rawTextMode &&
+                    string.IsNullOrWhiteSpace(responseBuilder.ToString()) &&
+                    streamedToolCalls.Count == 0 &&
+                    recoveredMalformedToolCalls.Count == 0)
                 {
                     await Dispatcher.InvokeAsync(() => MessagePanel.Children.Remove(assistantContainer));
                 }
@@ -1455,6 +1462,75 @@ public partial class AiChatPanel : UserControl
                     SavePersistedConversation();
 
                     // Continue the loop — the next iteration will re-send to the model
+                    continue;
+                }
+
+                if (_activeMode?.ToolsEnabled == true && recoveredMalformedToolCalls.Count > 0)
+                {
+                    List<AiToolCallRequest> toolCallRequests = recoveredMalformedToolCalls
+                        .Select(tc => new AiToolCallRequest($"malformed_tool_call_{iteration}_{tc.Index}", tc.FunctionName, tc.ArgumentsJson))
+                        .ToList();
+
+                    _conversationHistory.Add(new AiChatMessage(AiChatRole.Assistant, responseBuilder.ToString())
+                    {
+                        ThinkingContent = reasoningBuilder.ToString(),
+                        ToolCalls = toolCallRequests
+                    });
+
+                    foreach (RecoveredMalformedToolCall recoveredToolCall in recoveredMalformedToolCalls)
+                    {
+                        string toolCallId = $"malformed_tool_call_{iteration}_{recoveredToolCall.Index}";
+                        StreamSectionVisual? toolSection = null;
+                        TextBlock? toolResultBlock = null;
+
+                        await Dispatcher.InvokeAsync(() =>
+                        {
+                            if (rawTextMode)
+                            {
+                                TextBlock rawBlock = AppendRawTranscriptEntry(
+                                    $"Tool Call ({recoveredToolCall.FunctionName})",
+                                    FormatToolArgs(recoveredToolCall.ArgumentsJson),
+                                    FindBrush(ThemeResourceKeys.AiChatToolCallForeground),
+                                    assistantContainer);
+                                rawToolCallBlocks[recoveredToolCall.Index] = rawBlock;
+                                return;
+                            }
+
+                            (StreamSectionVisual section, TextBlock resultBlock) block = CreateToolCallBlock(
+                                recoveredToolCall.FunctionName,
+                                recoveredToolCall.ArgumentsJson,
+                                assistantContainer,
+                                assistantBlock);
+                            toolCallBlocks[recoveredToolCall.Index] = block;
+                            toolSection = block.section;
+                            toolResultBlock = block.resultBlock;
+                        });
+
+                        ToolCallResult result = ToolCallResult.Fail(recoveredToolCall.Error);
+                        await LogToolFailureAsync(recoveredToolCall.FunctionName, toolCallId, recoveredToolCall.ArgumentsJson, result);
+
+                        _conversationHistory.Add(new AiChatMessage(AiChatRole.Tool, $"Error: {recoveredToolCall.Error}")
+                        {
+                            ToolCallId = toolCallId
+                        });
+
+                        await Dispatcher.InvokeAsync(() =>
+                        {
+                            if (rawTextMode)
+                            {
+                                AppendRawTranscriptEntry(
+                                    $"Tool Result ({recoveredToolCall.FunctionName})",
+                                    recoveredToolCall.Error,
+                                    FindBrush(ThemeResourceKeys.AiChatToolCallErrorForeground),
+                                    assistantContainer);
+                                return;
+                            }
+
+                            FinalizeToolCallBlock(toolSection!, toolResultBlock!, recoveredToolCall.FunctionName, result);
+                        });
+                    }
+
+                    SavePersistedConversation();
                     continue;
                 }
 
