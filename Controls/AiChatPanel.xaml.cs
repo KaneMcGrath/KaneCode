@@ -77,6 +77,18 @@ public partial class AiChatPanel : UserControl
         public bool IsExpanded { get; set; }
     }
 
+    private sealed class ToolCallSectionVisual(
+        StreamSectionVisual section,
+        TextBlock argumentsBlock,
+        TextBlock resultBlock)
+    {
+        public StreamSectionVisual Section { get; } = section;
+
+        public TextBlock ArgumentsBlock { get; } = argumentsBlock;
+
+        public TextBlock ResultBlock { get; } = resultBlock;
+    }
+
     public AiChatPanel()
     {
         InitializeComponent();
@@ -1035,8 +1047,11 @@ public partial class AiChatPanel : UserControl
                 TextBlock? thinkingTextBlock = null;
                 TextBlock? rawThinkingBlock = null;
                 Dictionary<int, AiStreamToolCall> streamedToolCalls = new();
-                Dictionary<int, (StreamSectionVisual section, TextBlock resultBlock)> toolCallBlocks = new();
+                Dictionary<int, ToolCallSectionVisual> toolCallBlocks = new();
                 Dictionary<int, TextBlock> rawToolCallBlocks = new();
+                Dictionary<int, ToolCallSectionVisual> malformedToolCallBlocks = new();
+                Dictionary<int, TextBlock> rawMalformedToolCallBlocks = new();
+                bool sawRealToolCallToken = false;
 
                 // UI element creation must happen on the dispatcher thread.
                 // After the first iteration, we may be on a thread-pool thread
@@ -1080,6 +1095,17 @@ public partial class AiChatPanel : UserControl
                     if (token.Type == AiStreamTokenType.ToolCall && token.ToolCall is not null)
                     {
                         AiStreamToolCall toolCall = token.ToolCall!;
+                        if (!sawRealToolCallToken)
+                        {
+                            sawRealToolCallToken = true;
+
+                            if (!streamingDisabled)
+                            {
+                                await Dispatcher.InvokeAsync(() =>
+                                    ClearMalformedToolCallPreviewBlocks(malformedToolCallBlocks, rawMalformedToolCallBlocks));
+                            }
+                        }
+
                         streamedToolCalls[toolCall.Index] = toolCall;
 
                         if (streamingDisabled)
@@ -1119,7 +1145,7 @@ public partial class AiChatPanel : UserControl
                                 return;
                             }
 
-                            if (!toolCallBlocks.TryGetValue(toolCall.Index, out (StreamSectionVisual section, TextBlock resultBlock) block))
+                            if (!toolCallBlocks.TryGetValue(toolCall.Index, out ToolCallSectionVisual? block))
                             {
                                 block = CreateToolCallBlock(
                                     toolCall.FunctionName,
@@ -1130,7 +1156,7 @@ public partial class AiChatPanel : UserControl
                             }
                             else
                             {
-                                UpdateToolCallBlock(block.section, toolCall.FunctionName, toolCall.ArgumentsJson);
+                                UpdateToolCallBlock(block, toolCall.FunctionName, toolCall.ArgumentsJson);
                             }
 
                             if (shouldStickToBottom)
@@ -1171,6 +1197,18 @@ public partial class AiChatPanel : UserControl
                                     rawThinkingBlock.Text = FormatRawTranscriptEntry("Thinking", reasoningBuilder.ToString());
                                 }
 
+                                if (!sawRealToolCallToken && _activeMode?.ToolsEnabled == true)
+                                {
+                                    UpdateMalformedToolCallPreviewBlocks(
+                                        reasoningBuilder.ToString(),
+                                        responseBuilder.ToString(),
+                                        malformedToolCallBlocks,
+                                        rawMalformedToolCallBlocks,
+                                        rawTextMode,
+                                        assistantContainer,
+                                        assistantBlock);
+                                }
+
                                 UpdateStatsBar(reasoningTokenCount + contentTokenCount, streamStopwatch);
 
                                 if (shouldStickToBottom)
@@ -1192,6 +1230,19 @@ public partial class AiChatPanel : UserControl
                             thinkingTextBlock.Visibility = string.IsNullOrWhiteSpace(thinkingTextBlock.Text)
                                 ? Visibility.Collapsed
                                 : Visibility.Visible;
+
+                            if (!sawRealToolCallToken && _activeMode?.ToolsEnabled == true)
+                            {
+                                UpdateMalformedToolCallPreviewBlocks(
+                                    reasoningBuilder.ToString(),
+                                    responseBuilder.ToString(),
+                                    malformedToolCallBlocks,
+                                    rawMalformedToolCallBlocks,
+                                    rawTextMode,
+                                    assistantContainer,
+                                    assistantBlock);
+                            }
+
                             SetInlineSectionHeader(thinkingSection, $"Thinking ({reasoningTokenCount:N0} tokens)...");
                             UpdatePinnedSectionHeaders();
 
@@ -1215,13 +1266,25 @@ public partial class AiChatPanel : UserControl
 
                         await Dispatcher.InvokeAsync(() =>
                         {
-                            var shouldStickToBottom = IsMessageScrollerNearBottom();
+                            bool shouldStickToBottom = IsMessageScrollerNearBottom();
 
                             // Finalize the thinking header once content starts
                             if (thinkingSection is not null &&
                                 thinkingSection.HeaderText.Text.EndsWith("...", StringComparison.Ordinal))
                             {
                                 SetInlineSectionHeader(thinkingSection, $"Thought for {reasoningTokenCount:N0} tokens");
+                            }
+
+                            if (!sawRealToolCallToken && _activeMode?.ToolsEnabled == true)
+                            {
+                                UpdateMalformedToolCallPreviewBlocks(
+                                    reasoningBuilder.ToString(),
+                                    responseBuilder.ToString(),
+                                    malformedToolCallBlocks,
+                                    rawMalformedToolCallBlocks,
+                                    rawTextMode,
+                                    assistantContainer,
+                                    assistantBlock);
                             }
 
                             RenderAssistantContent(assistantBlock, responseBuilder.ToString());
@@ -1356,7 +1419,7 @@ public partial class AiChatPanel : UserControl
                     });
 
                     // Execute each tool call and append results
-                    foreach (var toolCall in pendingToolCalls)
+                    foreach (AiStreamToolCall toolCall in pendingToolCalls)
                     {
                         ct.ThrowIfCancellationRequested();
 
@@ -1364,8 +1427,7 @@ public partial class AiChatPanel : UserControl
                             ? $"tool_call_{toolCall.Index}"
                             : toolCall.Id;
 
-                        StreamSectionVisual? toolSection = null;
-                        TextBlock? toolResultBlock = null;
+                        ToolCallSectionVisual? toolCallBlock = null;
                         await Dispatcher.InvokeAsync(() =>
                         {
                             if (rawTextMode)
@@ -1383,7 +1445,7 @@ public partial class AiChatPanel : UserControl
                                 return;
                             }
 
-                            if (!toolCallBlocks.TryGetValue(toolCall.Index, out (StreamSectionVisual section, TextBlock resultBlock) block))
+                            if (!toolCallBlocks.TryGetValue(toolCall.Index, out ToolCallSectionVisual? block))
                             {
                                 block = CreateToolCallBlock(
                                     toolCall.FunctionName,
@@ -1394,11 +1456,10 @@ public partial class AiChatPanel : UserControl
                             }
                             else
                             {
-                                UpdateToolCallBlock(block.section, toolCall.FunctionName, toolCall.ArgumentsJson);
+                                UpdateToolCallBlock(block, toolCall.FunctionName, toolCall.ArgumentsJson);
                             }
 
-                            toolSection = block.section;
-                            toolResultBlock = block.resultBlock;
+                            toolCallBlock = block;
                         });
 
                         IAgentTool? tool = _activeMode?.IsToolAllowed(toolCall.FunctionName) == true
@@ -1455,7 +1516,7 @@ public partial class AiChatPanel : UserControl
                                 return;
                             }
 
-                            FinalizeToolCallBlock(toolSection!, toolResultBlock!, toolCall.FunctionName, result);
+                            FinalizeToolCallBlock(toolCallBlock!, toolCall.FunctionName, result);
                         });
                     }
 
@@ -1480,30 +1541,49 @@ public partial class AiChatPanel : UserControl
                     foreach (RecoveredMalformedToolCall recoveredToolCall in recoveredMalformedToolCalls)
                     {
                         string toolCallId = $"malformed_tool_call_{iteration}_{recoveredToolCall.Index}";
-                        StreamSectionVisual? toolSection = null;
-                        TextBlock? toolResultBlock = null;
+                        ToolCallSectionVisual? toolCallBlock = null;
 
                         await Dispatcher.InvokeAsync(() =>
                         {
                             if (rawTextMode)
                             {
-                                TextBlock rawBlock = AppendRawTranscriptEntry(
-                                    $"Tool Call ({recoveredToolCall.FunctionName})",
-                                    FormatToolArgs(recoveredToolCall.ArgumentsJson),
-                                    FindBrush(ThemeResourceKeys.AiChatToolCallForeground),
-                                    assistantContainer);
-                                rawToolCallBlocks[recoveredToolCall.Index] = rawBlock;
+                                if (!rawMalformedToolCallBlocks.TryGetValue(recoveredToolCall.Index, out TextBlock? rawBlock))
+                                {
+                                    rawBlock = AppendRawTranscriptEntry(
+                                        $"Tool Call ({recoveredToolCall.FunctionName})",
+                                        FormatToolArgs(recoveredToolCall.ArgumentsJson),
+                                        FindBrush(ThemeResourceKeys.AiChatToolCallForeground),
+                                        assistantContainer);
+                                    rawMalformedToolCallBlocks[recoveredToolCall.Index] = rawBlock;
+                                }
+                                else
+                                {
+                                    rawBlock.Text = FormatRawTranscriptEntry(
+                                        $"Tool Call ({recoveredToolCall.FunctionName})",
+                                        FormatToolArgs(recoveredToolCall.ArgumentsJson));
+                                }
+
                                 return;
                             }
 
-                            (StreamSectionVisual section, TextBlock resultBlock) block = CreateToolCallBlock(
-                                recoveredToolCall.FunctionName,
-                                recoveredToolCall.ArgumentsJson,
-                                assistantContainer,
-                                assistantBlock);
-                            toolCallBlocks[recoveredToolCall.Index] = block;
-                            toolSection = block.section;
-                            toolResultBlock = block.resultBlock;
+                            ToolCallSectionVisual? existingBlock;
+                            ToolCallSectionVisual block;
+                            if (!malformedToolCallBlocks.TryGetValue(recoveredToolCall.Index, out existingBlock))
+                            {
+                                block = CreateToolCallBlock(
+                                    recoveredToolCall.FunctionName,
+                                    recoveredToolCall.ArgumentsJson,
+                                    assistantContainer,
+                                    assistantBlock);
+                                malformedToolCallBlocks[recoveredToolCall.Index] = block;
+                            }
+                            else
+                            {
+                                block = existingBlock;
+                                UpdateToolCallBlock(block, recoveredToolCall.FunctionName, recoveredToolCall.ArgumentsJson);
+                            }
+
+                            toolCallBlock = block;
                         });
 
                         ToolCallResult result = ToolCallResult.Fail(recoveredToolCall.Error);
@@ -1526,7 +1606,7 @@ public partial class AiChatPanel : UserControl
                                 return;
                             }
 
-                            FinalizeToolCallBlock(toolSection!, toolResultBlock!, recoveredToolCall.FunctionName, result);
+                            FinalizeToolCallBlock(toolCallBlock!, recoveredToolCall.FunctionName, result);
                         });
                     }
 
@@ -2201,9 +2281,9 @@ public partial class AiChatPanel : UserControl
     }
 
     /// <summary>
-    /// Creates a collapsible tool-call block with a single-line header and streamed result content.
+    /// Creates a collapsible tool-call block with a tool-title header, streamed call content, and result content.
     /// </summary>
-    private (StreamSectionVisual section, TextBlock resultBlock) CreateToolCallBlock(
+    private ToolCallSectionVisual CreateToolCallBlock(
         string toolName,
         string argumentsJson,
         Panel hostPanel,
@@ -2213,13 +2293,21 @@ public partial class AiChatPanel : UserControl
         Brush toolForeground = FindBrush(ThemeResourceKeys.AiChatToolCallForeground);
         Brush toolBorder = FindBrush(ThemeResourceKeys.AiChatToolCallBorder);
         StreamSectionVisual section = CreateInlineSection(
-            FormatToolCallHeader(toolName, argumentsJson, "Running"),
+            FormatToolCallHeader(toolName),
             toolBackground,
             toolBackground,
             toolForeground,
             toolBorder,
             hostPanel,
             insertBefore);
+
+        TextBlock argumentsBlock = new()
+        {
+            TextWrapping = TextWrapping.Wrap,
+            Foreground = toolForeground,
+            FontSize = 11,
+            FontFamily = new FontFamily("Cascadia Code, Consolas, Courier New")
+        };
 
         TextBlock resultBlock = new()
         {
@@ -2230,6 +2318,8 @@ public partial class AiChatPanel : UserControl
             FontFamily = new FontFamily("Cascadia Code, Consolas, Courier New")
         };
 
+        UpdateToolCallArgumentsContent(argumentsBlock, resultBlock, argumentsJson);
+        section.ContentPanel.Children.Add(argumentsBlock);
         section.ContentPanel.Children.Add(resultBlock);
         SetInlineSectionExpanded(section, isExpanded: ShouldAutoExpandToolSections());
 
@@ -2239,33 +2329,36 @@ public partial class AiChatPanel : UserControl
             MessageScroller.ScrollToEnd();
         }
 
-        return (section, resultBlock);
+        return new ToolCallSectionVisual(section, argumentsBlock, resultBlock);
     }
 
     /// <summary>
     /// Updates a tool-call block while the call arguments are still streaming.
     /// </summary>
-    private void UpdateToolCallBlock(StreamSectionVisual section, string toolName, string argumentsJson)
+    private void UpdateToolCallBlock(ToolCallSectionVisual block, string toolName, string argumentsJson)
     {
-        SetInlineSectionHeader(section, FormatToolCallHeader(toolName, argumentsJson, "Running"));
+        ArgumentNullException.ThrowIfNull(block);
+        SetInlineSectionHeader(block.Section, FormatToolCallHeader(toolName));
+        UpdateToolCallArgumentsContent(block.ArgumentsBlock, block.ResultBlock, argumentsJson);
     }
 
     /// <summary>
     /// Updates a tool-call block with the final result (success or error).
     /// </summary>
-    private void FinalizeToolCallBlock(StreamSectionVisual section, TextBlock resultBlock, string toolName, ToolCallResult result)
+    private void FinalizeToolCallBlock(ToolCallSectionVisual block, string toolName, ToolCallResult result)
     {
+        ArgumentNullException.ThrowIfNull(block);
+        SetInlineSectionHeader(block.Section, FormatToolCallHeader(toolName));
+
         if (result.Success)
         {
-            SetToolCallSectionStatus(section, "Completed");
-            resultBlock.Text = result.Output;
-            resultBlock.Foreground = FindBrush(ThemeResourceKeys.AiChatToolCallSuccessForeground);
+            block.ResultBlock.Text = result.Output;
+            block.ResultBlock.Foreground = FindBrush(ThemeResourceKeys.AiChatToolCallSuccessForeground);
         }
         else
         {
-            SetToolCallSectionStatus(section, "Failed");
-            resultBlock.Text = result.Error ?? "Unknown error";
-            resultBlock.Foreground = FindBrush(ThemeResourceKeys.AiChatToolCallErrorForeground);
+            block.ResultBlock.Text = result.Error ?? "Unknown error";
+            block.ResultBlock.Foreground = FindBrush(ThemeResourceKeys.AiChatToolCallErrorForeground);
         }
 
         bool shouldStickToBottom = IsMessageScrollerNearBottom();
@@ -2275,6 +2368,98 @@ public partial class AiChatPanel : UserControl
         {
             MessageScroller.ScrollToEnd();
         }
+    }
+
+    private void UpdateMalformedToolCallPreviewBlocks(
+        string reasoningContent,
+        string responseContent,
+        Dictionary<int, ToolCallSectionVisual> malformedToolCallBlocks,
+        Dictionary<int, TextBlock> rawMalformedToolCallBlocks,
+        bool rawTextMode,
+        Panel hostPanel,
+        UIElement insertBefore)
+    {
+        ArgumentNullException.ThrowIfNull(malformedToolCallBlocks);
+        ArgumentNullException.ThrowIfNull(rawMalformedToolCallBlocks);
+        ArgumentNullException.ThrowIfNull(hostPanel);
+        ArgumentNullException.ThrowIfNull(insertBefore);
+
+        IReadOnlyList<StreamingMalformedToolCall> detectedToolCalls = MalformedToolCallRecovery.DetectStreaming(reasoningContent, responseContent);
+        foreach (StreamingMalformedToolCall detectedToolCall in detectedToolCalls)
+        {
+            if (rawTextMode)
+            {
+                string label = $"Tool Call ({detectedToolCall.FunctionName})";
+                if (!rawMalformedToolCallBlocks.TryGetValue(detectedToolCall.Index, out TextBlock? rawBlock))
+                {
+                    rawBlock = AppendRawTranscriptEntry(
+                        label,
+                        detectedToolCall.RawText,
+                        FindBrush(ThemeResourceKeys.AiChatToolCallForeground),
+                        hostPanel);
+                    rawMalformedToolCallBlocks[detectedToolCall.Index] = rawBlock;
+                }
+                else
+                {
+                    rawBlock.Text = FormatRawTranscriptEntry(label, detectedToolCall.RawText);
+                }
+
+                continue;
+            }
+
+            if (!malformedToolCallBlocks.TryGetValue(detectedToolCall.Index, out ToolCallSectionVisual? block))
+            {
+                block = CreateToolCallBlock(detectedToolCall.FunctionName, string.Empty, hostPanel, insertBefore);
+                malformedToolCallBlocks[detectedToolCall.Index] = block;
+            }
+
+            UpdateMalformedToolCallBlock(block, detectedToolCall.FunctionName, detectedToolCall.RawText);
+        }
+    }
+
+    private void ClearMalformedToolCallPreviewBlocks(
+        Dictionary<int, ToolCallSectionVisual> malformedToolCallBlocks,
+        Dictionary<int, TextBlock> rawMalformedToolCallBlocks)
+    {
+        ArgumentNullException.ThrowIfNull(malformedToolCallBlocks);
+        ArgumentNullException.ThrowIfNull(rawMalformedToolCallBlocks);
+
+        foreach (ToolCallSectionVisual block in malformedToolCallBlocks.Values)
+        {
+            RemoveInlineSection(block.Section);
+        }
+
+        malformedToolCallBlocks.Clear();
+
+        foreach (TextBlock rawBlock in rawMalformedToolCallBlocks.Values)
+        {
+            if (rawBlock.Parent is Panel parentPanel)
+            {
+                parentPanel.Children.Remove(rawBlock);
+            }
+        }
+
+        rawMalformedToolCallBlocks.Clear();
+        UpdatePinnedSectionHeaders();
+    }
+
+    private void RemoveInlineSection(StreamSectionVisual section)
+    {
+        ArgumentNullException.ThrowIfNull(section);
+
+        if (section.Root.Parent is Panel parentPanel)
+        {
+            parentPanel.Children.Remove(section.Root);
+        }
+
+        _streamSections.Remove(section);
+    }
+
+    private void UpdateMalformedToolCallBlock(ToolCallSectionVisual block, string toolName, string rawText)
+    {
+        ArgumentNullException.ThrowIfNull(block);
+        SetInlineSectionHeader(block.Section, FormatToolCallHeader(toolName));
+        UpdateToolCallBodyContent(block.ArgumentsBlock, block.ResultBlock, rawText);
     }
 
     /// <summary>
@@ -2289,11 +2474,11 @@ public partial class AiChatPanel : UserControl
 
         try
         {
-            using var doc = JsonDocument.Parse(argumentsJson);
-            var entries = new List<string>();
-            foreach (var prop in doc.RootElement.EnumerateObject())
+            using JsonDocument doc = JsonDocument.Parse(argumentsJson);
+            List<string> entries = [];
+            foreach (JsonProperty prop in doc.RootElement.EnumerateObject())
             {
-                var value = prop.Value.ValueKind == JsonValueKind.String
+                string? value = prop.Value.ValueKind == JsonValueKind.String
                     ? prop.Value.GetString()
                     : prop.Value.GetRawText();
 
@@ -2308,20 +2493,18 @@ public partial class AiChatPanel : UserControl
         }
     }
 
-    internal static string FormatToolCallHeader(string toolName, string argumentsJson, string status)
+    internal static string FormatToolCallBody(string argumentsJson)
+    {
+        return string.IsNullOrWhiteSpace(argumentsJson)
+            ? string.Empty
+            : FormatToolArgs(argumentsJson);
+    }
+
+    internal static string FormatToolCallHeader(string toolName)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(toolName);
-        ArgumentException.ThrowIfNullOrWhiteSpace(status);
 
-        string normalizedArgs = FormatToolArgs(argumentsJson)
-            .Replace("\r", string.Empty, StringComparison.Ordinal)
-            .Replace("\n", " • ", StringComparison.Ordinal);
-
-        string body = normalizedArgs == "(no arguments)"
-            ? $"{toolName}"
-            : $"{toolName} — {normalizedArgs}";
-
-        return Truncate($"{status} | {body}", 180);
+        return Truncate(toolName, 180);
     }
 
     internal static IReadOnlyList<int> GetPinnedSectionIndexes(
@@ -2343,18 +2526,21 @@ public partial class AiChatPanel : UserControl
         return pinnedIndexes;
     }
 
-    private void SetToolCallSectionStatus(StreamSectionVisual section, string status)
+    private static void UpdateToolCallArgumentsContent(TextBlock argumentsBlock, TextBlock resultBlock, string argumentsJson)
     {
-        ArgumentNullException.ThrowIfNull(section);
-        ArgumentException.ThrowIfNullOrWhiteSpace(status);
+        UpdateToolCallBodyContent(argumentsBlock, resultBlock, FormatToolCallBody(argumentsJson));
+    }
 
-        string currentHeader = section.HeaderText.Text;
-        int separatorIndex = currentHeader.IndexOf('|');
-        string body = separatorIndex >= 0
-            ? currentHeader[(separatorIndex + 1)..].TrimStart()
-            : currentHeader;
+    private static void UpdateToolCallBodyContent(TextBlock argumentsBlock, TextBlock resultBlock, string content)
+    {
+        ArgumentNullException.ThrowIfNull(argumentsBlock);
+        ArgumentNullException.ThrowIfNull(resultBlock);
+        ArgumentNullException.ThrowIfNull(content);
 
-        SetInlineSectionHeader(section, $"{status} | {body}");
+        bool hasContent = !string.IsNullOrWhiteSpace(content);
+        argumentsBlock.Text = content;
+        argumentsBlock.Visibility = hasContent ? Visibility.Visible : Visibility.Collapsed;
+        resultBlock.Margin = hasContent ? new Thickness(0, 6, 0, 0) : new Thickness(0);
     }
 
     private void AiChatPanel_Loaded(object sender, RoutedEventArgs e)

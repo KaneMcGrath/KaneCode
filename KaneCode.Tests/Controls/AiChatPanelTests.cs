@@ -79,11 +79,19 @@ public class AiChatPanelTests
     }
 
     [Fact]
-    public void WhenFormattingToolCallHeaderThenStatusAndArgumentsAreFlattenedIntoSingleLine()
+    public void WhenFormattingToolCallHeaderThenOnlyToolNameIsShown()
     {
-        string result = AiChatPanel.FormatToolCallHeader("search_files", "{\"query\":\"hotkey\",\"limit\":5}", "Running");
+        string result = AiChatPanel.FormatToolCallHeader("search_files");
 
-        Assert.Equal("Running | search_files — query: hotkey • limit: 5", result);
+        Assert.Equal("search_files", result);
+    }
+
+    [Fact]
+    public void WhenFormattingToolCallBodyThenArgumentsRemainMultiLine()
+    {
+        string result = AiChatPanel.FormatToolCallBody("{\"query\":\"hotkey\",\"limit\":5}");
+
+        Assert.Equal("query: hotkey\nlimit: 5", result);
     }
 
     [Fact]

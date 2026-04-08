@@ -10,9 +10,13 @@ namespace KaneCode.Services.Ai;
 /// </summary>
 internal static class MalformedToolCallRecovery
 {
-    private static readonly Regex ToolCallBlockRegex = new(
-        "<tool_call>\\s*(?<body>.*?)\\s*</tool_call>",
-        RegexOptions.IgnoreCase | RegexOptions.Singleline | RegexOptions.Compiled);
+    private const string ToolCallStartTag = "<tool_call>";
+
+    private const string ToolCallEndTag = "</tool_call>";
+
+    private static readonly Regex FunctionStartRegex = new(
+        "<function=(?<name>[A-Za-z_][A-Za-z0-9_]*)>",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
     private static readonly Regex FunctionBlockRegex = new(
         "<function=(?<name>[A-Za-z_][A-Za-z0-9_]*)>\\s*(?<body>.*?)\\s*</function>",
@@ -21,6 +25,14 @@ internal static class MalformedToolCallRecovery
     private static readonly Regex ParameterBlockRegex = new(
         "<parameter=(?<name>[A-Za-z_][A-Za-z0-9_]*)>\\s*(?<value>.*?)\\s*</parameter>",
         RegexOptions.IgnoreCase | RegexOptions.Singleline | RegexOptions.Compiled);
+
+    public static IReadOnlyList<StreamingMalformedToolCall> DetectStreaming(string? reasoningContent, string? responseContent)
+    {
+        List<StreamingMalformedToolCall> detectedToolCalls = [];
+        AddStreamingToolCalls(detectedToolCalls, reasoningContent);
+        AddStreamingToolCalls(detectedToolCalls, responseContent);
+        return detectedToolCalls;
+    }
 
     public static IReadOnlyList<RecoveredMalformedToolCall> Recover(string? reasoningContent, string? responseContent)
     {
@@ -37,18 +49,28 @@ internal static class MalformedToolCallRecovery
             return;
         }
 
-        MatchCollection matches = ToolCallBlockRegex.Matches(text);
-        foreach (Match match in matches)
+        foreach (ToolCallMarkupSegment segment in EnumerateToolCallMarkup(text))
         {
-            if (!match.Success)
+            string rawText = segment.RawText;
+            string? functionName = TryGetFunctionName(segment.Body);
+            string argumentsJson = "{}";
+            string error;
+            bool parseSucceeded;
+
+            if (segment.IsComplete)
             {
-                continue;
+                parseSucceeded = TryParseToolCall(segment.Body, out string? parsedFunctionName, out argumentsJson, out error);
+                if (!string.IsNullOrWhiteSpace(parsedFunctionName))
+                {
+                    functionName = parsedFunctionName;
+                }
+            }
+            else
+            {
+                parseSucceeded = false;
+                error = "The tool-call markup did not contain a closing </tool_call> tag.";
             }
 
-            string rawText = match.Value.Trim();
-            string body = match.Groups["body"].Value;
-
-            bool parseSucceeded = TryParseToolCall(body, out string? functionName, out string argumentsJson, out string error);
             string resolvedFunctionName = string.IsNullOrWhiteSpace(functionName)
                 ? "invalid_tool_call"
                 : functionName;
@@ -64,6 +86,67 @@ internal static class MalformedToolCallRecovery
                 recoveryError,
                 rawText));
         }
+    }
+
+    private static void AddStreamingToolCalls(List<StreamingMalformedToolCall> detectedToolCalls, string? text)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return;
+        }
+
+        foreach (ToolCallMarkupSegment segment in EnumerateToolCallMarkup(text))
+        {
+            string functionName = TryGetFunctionName(segment.Body) ?? "tool_call";
+            detectedToolCalls.Add(new StreamingMalformedToolCall(
+                detectedToolCalls.Count,
+                functionName,
+                segment.RawText,
+                segment.IsComplete));
+        }
+    }
+
+    private static IEnumerable<ToolCallMarkupSegment> EnumerateToolCallMarkup(string text)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(text);
+
+        int searchStart = 0;
+        while (searchStart < text.Length)
+        {
+            int toolCallStart = text.IndexOf(ToolCallStartTag, searchStart, StringComparison.OrdinalIgnoreCase);
+            if (toolCallStart < 0)
+            {
+                yield break;
+            }
+
+            int nextToolCallStart = text.IndexOf(ToolCallStartTag, toolCallStart + ToolCallStartTag.Length, StringComparison.OrdinalIgnoreCase);
+            int toolCallEnd = text.IndexOf(ToolCallEndTag, toolCallStart + ToolCallStartTag.Length, StringComparison.OrdinalIgnoreCase);
+            bool isComplete = toolCallEnd >= 0 && (nextToolCallStart < 0 || toolCallEnd < nextToolCallStart);
+
+            int rawTextEnd = isComplete
+                ? toolCallEnd + ToolCallEndTag.Length
+                : nextToolCallStart >= 0
+                    ? nextToolCallStart
+                    : text.Length;
+
+            int bodyStart = toolCallStart + ToolCallStartTag.Length;
+            int bodyEnd = isComplete ? toolCallEnd : rawTextEnd;
+            string rawText = text[toolCallStart..rawTextEnd].Trim();
+            string body = text[bodyStart..bodyEnd];
+
+            yield return new ToolCallMarkupSegment(rawText, body, isComplete);
+            searchStart = rawTextEnd;
+        }
+    }
+
+    private static string? TryGetFunctionName(string body)
+    {
+        ArgumentNullException.ThrowIfNull(body);
+
+        Match functionMatch = FunctionStartRegex.Match(body);
+        return functionMatch.Success
+            ? functionMatch.Groups["name"].Value
+            : null;
     }
 
     private static bool TryParseToolCall(string body, out string? functionName, out string argumentsJson, out string error)
@@ -136,6 +219,17 @@ internal static class MalformedToolCallRecovery
         return Encoding.UTF8.GetString(stream.ToArray());
     }
 }
+
+internal sealed record StreamingMalformedToolCall(
+    int Index,
+    string FunctionName,
+    string RawText,
+    bool IsComplete);
+
+internal sealed record ToolCallMarkupSegment(
+    string RawText,
+    string Body,
+    bool IsComplete);
 
 /// <summary>
 /// Represents a malformed tool call recovered from assistant text.
