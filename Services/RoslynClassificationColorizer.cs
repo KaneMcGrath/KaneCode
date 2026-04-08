@@ -35,6 +35,15 @@ internal sealed class RoslynClassificationColorizer : DocumentColorizingTransfor
     }
 
     /// <summary>
+    /// Clears cached classifications and updates the active file path.
+    /// </summary>
+    public void Reset(string? filePath = null)
+    {
+        _filePath = filePath;
+        _classifiedSpans = [];
+    }
+
+    /// <summary>
     /// Directly sets the classified spans from an external source (e.g. <see cref="BackgroundAnalysisScheduler"/>).
     /// Call on the UI thread, then invalidate visual lines.
     /// </summary>

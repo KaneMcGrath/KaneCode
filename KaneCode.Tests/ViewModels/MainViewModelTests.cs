@@ -123,4 +123,5 @@ public class MainViewModelTests
 
         Assert.False(result);
     }
+
 }

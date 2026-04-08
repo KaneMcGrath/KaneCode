@@ -1536,8 +1536,12 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
         {
             ActiveTab = tab;
 
+            bool isCSharpFile = RoslynWorkspaceService.IsCSharpFile(tab.FilePath);
+
             // Swap the underlying document — this preserves each tab's undo/redo history
             _editor.Document = tab.Document;
+
+            _classificationColorizer?.Reset(isCSharpFile ? tab.FilePath : null);
 
             var hlName = syntaxHighlighting ?? EditorService.GetSyntaxHighlighting(tab.FilePath);
             _editor.SyntaxHighlighting = hlName is not null
@@ -1547,7 +1551,7 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
             _editor.TextArea.TextView.Redraw();
 
             // Register with Roslyn for C# files
-            if (RoslynWorkspaceService.IsCSharpFile(tab.FilePath))
+            if (isCSharpFile)
             {
                 // If the file is already tracked (from a loaded project), just update its text.
                 // Otherwise, add it to the default adhoc project.
@@ -1561,11 +1565,6 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
                     _ = _roslynService.OpenOrUpdateDocumentAsync(tab.FilePath, _editor.Text);
                 }
 
-                if (_classificationColorizer is not null)
-                {
-                    _classificationColorizer.FilePath = tab.FilePath;
-                }
-
                 ScheduleRoslynAnalysis();
             }
             else
@@ -1574,10 +1573,6 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
                 _diagnosticRenderer?.UpdateDiagnostics([]);
                 _lightBulbMargin?.Hide();
                 _lightBulbLastLine = 0;
-                if (_classificationColorizer is not null)
-                {
-                    _classificationColorizer.FilePath = null;
-                }
             }
 
             UpdateGitGutterMarkers();
