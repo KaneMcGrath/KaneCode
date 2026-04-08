@@ -1869,7 +1869,7 @@ public partial class AiChatPanel : UserControl
 
         Border marker = new()
         {
-            Margin = new Thickness(4, 12, 4, 8),
+            Margin = new Thickness(8, 12, 8, 8),
             Padding = new Thickness(0, 6, 0, 0),
             BorderBrush = Brushes.IndianRed,
             BorderThickness = new Thickness(0, 2, 0, 0),
@@ -1903,7 +1903,7 @@ public partial class AiChatPanel : UserControl
             Background = FindBrush("AiChatUserBubble"),
             CornerRadius = new CornerRadius(6),
             Padding = new Thickness(10, 6, 10, 6),
-            Margin = new Thickness(40, 4, 4, 4),
+            Margin = new Thickness(40, 4, 8, 4),
             HorizontalAlignment = HorizontalAlignment.Right
         };
 
@@ -1932,7 +1932,7 @@ public partial class AiChatPanel : UserControl
     {
         StackPanel container = new()
         {
-            Margin = new Thickness(4, 4, 4, 6),
+            Margin = new Thickness(0, 4, 0, 6),
             HorizontalAlignment = HorizontalAlignment.Stretch
         };
 
@@ -1945,6 +1945,7 @@ public partial class AiChatPanel : UserControl
             FontSize = 14,
             FontFamily = new FontFamily("Segoe UI"),
             IsDocumentEnabled = true,
+            Margin = new Thickness(8, 0, 8, 0),
             Padding = new Thickness(0),
             HorizontalAlignment = HorizontalAlignment.Stretch
         };
@@ -2090,20 +2091,24 @@ public partial class AiChatPanel : UserControl
         {
             Background = contentBackground,
             Padding = new Thickness(8, 6, 8, 6),
+            HorizontalAlignment = HorizontalAlignment.Stretch,
             Visibility = Visibility.Collapsed,
             Child = contentPanel
         };
 
-        StackPanel sectionLayout = new();
+        StackPanel sectionLayout = new()
+        {
+            HorizontalAlignment = HorizontalAlignment.Stretch
+        };
         sectionLayout.Children.Add(headerBar);
         sectionLayout.Children.Add(contentBorder);
 
         Border root = new()
         {
             Background = contentBackground,
-            CornerRadius = new CornerRadius(4),
+            HorizontalAlignment = HorizontalAlignment.Stretch,
             BorderBrush = borderBrush,
-            BorderThickness = new Thickness(1),
+            BorderThickness = new Thickness(0, 1, 0, 1),
             Margin = new Thickness(0, 4, 0, 0),
             Child = sectionLayout
         };
@@ -2166,6 +2171,7 @@ public partial class AiChatPanel : UserControl
         return new Border
         {
             Background = background,
+            HorizontalAlignment = HorizontalAlignment.Stretch,
             BorderBrush = borderBrush,
             BorderThickness = new Thickness(0),
             Padding = new Thickness(8, 5, 8, 5),
@@ -2236,7 +2242,7 @@ public partial class AiChatPanel : UserControl
             FontStyle = FontStyles.Italic,
             Foreground = FindBrush("AiChatSecondaryForeground"),
             FontSize = 12,
-            Margin = new Thickness(4, 4, 4, 4)
+            Margin = new Thickness(8, 4, 8, 4)
         };
 
         MessagePanel.Children.Add(tb);
@@ -2256,7 +2262,7 @@ public partial class AiChatPanel : UserControl
             Foreground = foreground,
             FontSize = 12,
             FontFamily = new FontFamily("Cascadia Code, Consolas, Courier New"),
-            Margin = new Thickness(4, 4, 4, 4)
+            Margin = new Thickness(8, 4, 8, 4)
         };
 
         if (insertBefore is not null)
@@ -2619,9 +2625,9 @@ public partial class AiChatPanel : UserControl
             out glyphBlock,
             out titleBlock);
 
-        pinnedHeader.Margin = new Thickness(0, 0, 0, 4);
-        pinnedHeader.CornerRadius = new CornerRadius(4);
-        pinnedHeader.BorderThickness = new Thickness(1);
+        pinnedHeader.Margin = new Thickness(0);
+        pinnedHeader.HorizontalAlignment = HorizontalAlignment.Stretch;
+        pinnedHeader.BorderThickness = new Thickness(0, 1, 0, 1);
         glyphBlock.Text = section.HeaderGlyph.Text;
         pinnedHeader.MouseLeftButtonUp += (_, _) => ToggleInlineSection(section);
         return pinnedHeader;
