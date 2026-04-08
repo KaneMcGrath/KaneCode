@@ -34,7 +34,7 @@ internal sealed class SearchFilesTool : IAgentTool
                 },
                 "directory": {
                     "type": "string",
-                    "description": "Directory to search in. Can be absolute or relative to the project root. Defaults to the project root if omitted."
+                    "description": "Directory to search in. Can be absolute or relative to the loaded project root, but must stay inside the loaded project. Defaults to the project root if omitted."
                 },
                 "isRegex": {
                     "type": "boolean",
@@ -70,13 +70,13 @@ internal sealed class SearchFilesTool : IAgentTool
             return Task.FromResult(ToolCallResult.Fail("Missing required parameter: query"));
         }
 
-        var query = queryElement.GetString()!;
+        string query = queryElement.GetString()!;
 
-        var directoryArg = arguments.TryGetProperty("directory", out var dirElement)
+        string? directoryArg = arguments.TryGetProperty("directory", out var dirElement)
             ? dirElement.GetString()
             : null;
 
-        var useRegex = arguments.TryGetProperty("isRegex", out var regexElement) &&
+        bool useRegex = arguments.TryGetProperty("isRegex", out var regexElement) &&
                        regexElement.ValueKind == JsonValueKind.True;
 
         Regex? regex = null;
@@ -92,17 +92,28 @@ internal sealed class SearchFilesTool : IAgentTool
             }
         }
 
-        var resolvedRoot = ResolveRoot(directoryArg);
+        string resolvedRoot;
+
+        try
+        {
+            resolvedRoot = string.IsNullOrWhiteSpace(directoryArg)
+                ? AgentToolPathResolver.GetProjectRootDirectory(_projectRootProvider)
+                : AgentToolPathResolver.ResolvePath(_projectRootProvider, directoryArg);
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or ArgumentException or NotSupportedException or PathTooLongException)
+        {
+            return Task.FromResult(ToolCallResult.Fail(ex.Message));
+        }
 
         if (string.IsNullOrWhiteSpace(resolvedRoot) || !Directory.Exists(resolvedRoot))
         {
-            var label = string.IsNullOrWhiteSpace(directoryArg) ? "project root" : $"directory: {directoryArg}";
+            string label = string.IsNullOrWhiteSpace(directoryArg) ? "project root" : $"directory: {directoryArg}";
             return Task.FromResult(ToolCallResult.Fail($"Directory not found: {label}"));
         }
 
         try
         {
-            var matches = new List<string>();
+            List<string> matches = [];
             SearchDirectory(resolvedRoot, resolvedRoot, query, regex, matches, cancellationToken);
 
             if (matches.Count == 0)
@@ -110,7 +121,7 @@ internal sealed class SearchFilesTool : IAgentTool
                 return Task.FromResult(ToolCallResult.Ok("No matches found."));
             }
 
-            var sb = new StringBuilder();
+            StringBuilder sb = new StringBuilder();
             foreach (var match in matches)
             {
                 sb.AppendLine(match);
@@ -162,7 +173,7 @@ internal sealed class SearchFilesTool : IAgentTool
                 if (results.Count >= MaxMatches)
                     return;
 
-                var dirName = Path.GetFileName(dir);
+                string dirName = Path.GetFileName(dir);
                 if (SkippedDirectories.Contains(dirName))
                     continue;
 
@@ -179,12 +190,12 @@ internal sealed class SearchFilesTool : IAgentTool
     {
         try
         {
-            var info = new FileInfo(filePath);
+            FileInfo info = new FileInfo(filePath);
             if (info.Length > MaxFileSizeBytes)
                 return;
 
-            var relativePath = Path.GetRelativePath(baseDir, filePath);
-            var lineNumber = 0;
+            string relativePath = Path.GetRelativePath(baseDir, filePath);
+            int lineNumber = 0;
 
             foreach (var line in File.ReadLines(filePath))
             {
@@ -200,7 +211,7 @@ internal sealed class SearchFilesTool : IAgentTool
                 if (!matched)
                     continue;
 
-                var snippet = line.Trim();
+                string snippet = line.Trim();
                 if (snippet.Length > MaxSnippetLength)
                     snippet = string.Concat(snippet.AsSpan(0, MaxSnippetLength), "…");
 
@@ -221,31 +232,4 @@ internal sealed class SearchFilesTool : IAgentTool
         }
     }
 
-    private string? ResolveRoot(string? directory)
-    {
-        var projectRoot = _projectRootProvider();
-
-        // Resolve the project root: if it points to a file (.sln/.csproj), use its directory
-        if (!string.IsNullOrWhiteSpace(projectRoot) && File.Exists(projectRoot))
-        {
-            projectRoot = Path.GetDirectoryName(projectRoot);
-        }
-
-        if (string.IsNullOrWhiteSpace(directory))
-        {
-            return projectRoot;
-        }
-
-        if (Path.IsPathRooted(directory))
-        {
-            return directory;
-        }
-
-        if (string.IsNullOrWhiteSpace(projectRoot))
-        {
-            return directory;
-        }
-
-        return Path.GetFullPath(Path.Combine(projectRoot, directory));
-    }
 }

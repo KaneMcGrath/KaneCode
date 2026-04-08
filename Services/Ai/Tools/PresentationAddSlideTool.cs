@@ -16,7 +16,7 @@ internal sealed class PresentationAddSlideTool : IAgentTool
             "properties": {
                 "file": {
                     "type": "string",
-                    "description": "The path to the file to show. Can be absolute or relative to the project root."
+                    "description": "The path to the file to show. Can be absolute or relative to the loaded project root, but must stay inside the loaded project."
                 },
                 "searchString": {
                     "type": "string",
@@ -86,7 +86,16 @@ internal sealed class PresentationAddSlideTool : IAgentTool
         string searchString = searchElement.GetString()!.Trim();
         string text = textElement.GetString()!.Trim();
 
-        string? resolvedPath = ResolveFilePath(filePath);
+        string resolvedPath;
+
+        try
+        {
+            resolvedPath = AgentToolPathResolver.ResolveFilePathOrFileName(_projectRootProvider, filePath, SkippedDirectories);
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or ArgumentException or NotSupportedException or PathTooLongException)
+        {
+            return Task.FromResult(ToolCallResult.Fail(ex.Message));
+        }
 
         if (string.IsNullOrWhiteSpace(resolvedPath) || !File.Exists(resolvedPath))
         {
@@ -131,78 +140,4 @@ internal sealed class PresentationAddSlideTool : IAgentTool
         return 0;
     }
 
-    private string? ResolveFilePath(string fileInput)
-    {
-        if (Path.IsPathRooted(fileInput))
-        {
-            return fileInput;
-        }
-
-        string? root = _projectRootProvider();
-        if (string.IsNullOrWhiteSpace(root))
-        {
-            return fileInput;
-        }
-
-        if (File.Exists(root))
-        {
-            root = Path.GetDirectoryName(root);
-        }
-
-        if (string.IsNullOrWhiteSpace(root))
-        {
-            return fileInput;
-        }
-
-        string combinedPath = Path.Combine(root, fileInput);
-        if (File.Exists(combinedPath))
-        {
-            return combinedPath;
-        }
-
-        if (fileInput.Contains(Path.DirectorySeparatorChar) || fileInput.Contains(Path.AltDirectorySeparatorChar))
-        {
-            return combinedPath;
-        }
-
-        try
-        {
-            foreach (string path in Directory.EnumerateFiles(root, "*", SearchOption.AllDirectories))
-            {
-                if (IsInSkippedDirectory(path))
-                {
-                    continue;
-                }
-
-                if (string.Equals(Path.GetFileName(path), fileInput, StringComparison.OrdinalIgnoreCase))
-                {
-                    return path;
-                }
-            }
-        }
-        catch (IOException)
-        {
-            return combinedPath;
-        }
-        catch (UnauthorizedAccessException)
-        {
-            return combinedPath;
-        }
-
-        return combinedPath;
-    }
-
-    private static bool IsInSkippedDirectory(string path)
-    {
-        string[] parts = path.Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
-        foreach (string part in parts)
-        {
-            if (SkippedDirectories.Contains(part))
-            {
-                return true;
-            }
-        }
-
-        return false;
-    }
 }

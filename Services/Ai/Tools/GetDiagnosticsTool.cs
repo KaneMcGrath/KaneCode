@@ -17,7 +17,7 @@ internal sealed class GetDiagnosticsTool : IAgentTool
             "properties": {
                 "filePath": {
                     "type": "string",
-                    "description": "The path to the file to get diagnostics for. Can be absolute or relative to the project root."
+                    "description": "The path to the file to get diagnostics for. Can be absolute or relative to the loaded project root, but must stay inside the loaded project."
                 }
             },
             "required": ["filePath"]
@@ -52,8 +52,17 @@ internal sealed class GetDiagnosticsTool : IAgentTool
             return ToolCallResult.Fail("Missing required parameter: filePath");
         }
 
-        var filePath = filePathElement.GetString()!.Trim();
-        var resolvedPath = ResolvePath(filePath);
+        string filePath = filePathElement.GetString()!.Trim();
+        string resolvedPath;
+
+        try
+        {
+            resolvedPath = AgentToolPathResolver.ResolvePath(_projectRootProvider, filePath);
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or ArgumentException or NotSupportedException or PathTooLongException)
+        {
+            return ToolCallResult.Fail(ex.Message);
+        }
 
         // Sync the Roslyn workspace with the latest on-disk content so diagnostics
         // are never stale after agent file edits.
@@ -61,7 +70,7 @@ internal sealed class GetDiagnosticsTool : IAgentTool
         {
             try
             {
-                var diskContent = File.ReadAllText(resolvedPath);
+                string diskContent = File.ReadAllText(resolvedPath);
                 await _roslynService.OpenOrUpdateDocumentAsync(resolvedPath, diskContent, cancellationToken)
                     .ConfigureAwait(false);
             }
@@ -134,27 +143,4 @@ internal sealed class GetDiagnosticsTool : IAgentTool
             : ToolCallResult.Ok(sb.ToString().TrimEnd());
     }
 
-    private string ResolvePath(string filePath)
-    {
-        if (Path.IsPathRooted(filePath))
-        {
-            return filePath;
-        }
-
-        var root = _projectRootProvider();
-        if (string.IsNullOrWhiteSpace(root))
-        {
-            return filePath;
-        }
-
-        // Root may point to a .sln or .csproj file — use its directory
-        if (File.Exists(root))
-        {
-            root = Path.GetDirectoryName(root);
-        }
-
-        return string.IsNullOrWhiteSpace(root)
-            ? filePath
-            : Path.GetFullPath(Path.Combine(root, filePath));
-    }
 }

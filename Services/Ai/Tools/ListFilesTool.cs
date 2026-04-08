@@ -27,7 +27,7 @@ internal sealed class ListFilesTool : IAgentTool
             "properties": {
                 "directory": {
                     "type": "string",
-                    "description": "The directory to list. Can be absolute or relative to the project root. Defaults to the project root if omitted."
+                    "description": "The directory to list. Can be absolute or relative to the loaded project root, but must stay inside the loaded project. Defaults to the project root if omitted."
                 }
             },
             "required": []
@@ -52,22 +52,33 @@ internal sealed class ListFilesTool : IAgentTool
 
     public Task<ToolCallResult> ExecuteAsync(JsonElement arguments, CancellationToken cancellationToken = default)
     {
-        var directoryArg = arguments.ValueKind == JsonValueKind.Object &&
+        string? directoryArg = arguments.ValueKind == JsonValueKind.Object &&
                            arguments.TryGetProperty("directory", out var dirElement)
             ? dirElement.GetString()
             : null;
 
-        var resolvedRoot = ResolveRoot(directoryArg);
+        string resolvedRoot;
+
+        try
+        {
+            resolvedRoot = string.IsNullOrWhiteSpace(directoryArg)
+                ? AgentToolPathResolver.GetProjectRootDirectory(_projectRootProvider)
+                : AgentToolPathResolver.ResolvePath(_projectRootProvider, directoryArg);
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or ArgumentException or NotSupportedException or PathTooLongException)
+        {
+            return Task.FromResult(ToolCallResult.Fail(ex.Message));
+        }
 
         if (string.IsNullOrWhiteSpace(resolvedRoot) || !Directory.Exists(resolvedRoot))
         {
-            var label = string.IsNullOrWhiteSpace(directoryArg) ? "project root" : $"directory: {directoryArg}";
+            string label = string.IsNullOrWhiteSpace(directoryArg) ? "project root" : $"directory: {directoryArg}";
             return Task.FromResult(ToolCallResult.Fail($"Directory not found: {label}"));
         }
 
         try
         {
-            var files = new List<string>();
+            List<string> files = [];
             CollectFiles(resolvedRoot, resolvedRoot, files, cancellationToken);
 
             if (files.Count == 0)
@@ -75,7 +86,7 @@ internal sealed class ListFilesTool : IAgentTool
                 return Task.FromResult(ToolCallResult.Ok("(no files found)"));
             }
 
-            var sb = new StringBuilder();
+            StringBuilder sb = new StringBuilder();
             foreach (var f in files)
             {
                 sb.AppendLine(f);
@@ -120,7 +131,7 @@ internal sealed class ListFilesTool : IAgentTool
                 if (results.Count >= MaxFileCount)
                     return;
 
-                var dirName = Path.GetFileName(dir);
+                string dirName = Path.GetFileName(dir);
                 if (SkippedDirectories.Contains(dirName))
                     continue;
 
@@ -133,31 +144,4 @@ internal sealed class ListFilesTool : IAgentTool
         }
     }
 
-    private string? ResolveRoot(string? directory)
-    {
-        var projectRoot = _projectRootProvider();
-
-        // Resolve the project root: if it points to a file (.sln/.csproj), use its directory
-        if (!string.IsNullOrWhiteSpace(projectRoot) && File.Exists(projectRoot))
-        {
-            projectRoot = Path.GetDirectoryName(projectRoot);
-        }
-
-        if (string.IsNullOrWhiteSpace(directory))
-        {
-            return projectRoot;
-        }
-
-        if (Path.IsPathRooted(directory))
-        {
-            return directory;
-        }
-
-        if (string.IsNullOrWhiteSpace(projectRoot))
-        {
-            return directory;
-        }
-
-        return Path.GetFullPath(Path.Combine(projectRoot, directory));
-    }
 }

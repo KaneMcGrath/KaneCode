@@ -15,7 +15,7 @@ internal sealed class FindLineTool : IAgentTool
             "properties": {
                 "file": {
                     "type": "string",
-                    "description": "File path or file name to search in. Can be absolute, relative to project root, or just a file name."
+                    "description": "File path or file name to search in. Can be absolute, relative to the loaded project root, or just a file name, but must stay inside the loaded project."
                 },
                 "searchString": {
                     "type": "string",
@@ -63,7 +63,16 @@ internal sealed class FindLineTool : IAgentTool
         string fileInput = fileElement.GetString()!.Trim();
         string searchString = searchElement.GetString()!.Trim();
 
-        string? resolvedPath = ResolveFilePath(fileInput);
+        string resolvedPath;
+        try
+        {
+            resolvedPath = AgentToolPathResolver.ResolveFilePathOrFileName(_projectRootProvider, fileInput, SkippedDirectories);
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or ArgumentException or NotSupportedException or PathTooLongException)
+        {
+            return Task.FromResult(ToolCallResult.Fail(ex.Message));
+        }
+
         if (string.IsNullOrWhiteSpace(resolvedPath) || !File.Exists(resolvedPath))
         {
             return Task.FromResult(ToolCallResult.Fail($"File not found: {fileInput}"));
@@ -98,65 +107,4 @@ internal sealed class FindLineTool : IAgentTool
             $"Search string not found in file: {searchString}"));
     }
 
-    private string? ResolveFilePath(string fileInput)
-    {
-        if (Path.IsPathRooted(fileInput))
-        {
-            return fileInput;
-        }
-
-        string? root = _projectRootProvider();
-        if (string.IsNullOrWhiteSpace(root))
-        {
-            return fileInput;
-        }
-
-        if (File.Exists(root))
-        {
-            root = Path.GetDirectoryName(root);
-        }
-
-        if (string.IsNullOrWhiteSpace(root))
-        {
-            return fileInput;
-        }
-
-        string combinedPath = Path.Combine(root, fileInput);
-        if (File.Exists(combinedPath))
-        {
-            return combinedPath;
-        }
-
-        if (fileInput.Contains(Path.DirectorySeparatorChar) || fileInput.Contains(Path.AltDirectorySeparatorChar))
-        {
-            return combinedPath;
-        }
-
-        try
-        {
-            IEnumerable<string> matches = Directory.EnumerateFiles(root, "*", SearchOption.AllDirectories)
-                .Where(path => !IsInSkippedDirectory(path))
-                .Where(path => string.Equals(Path.GetFileName(path), fileInput, StringComparison.OrdinalIgnoreCase));
-
-            return matches.FirstOrDefault();
-        }
-        catch
-        {
-            return combinedPath;
-        }
-    }
-
-    private static bool IsInSkippedDirectory(string path)
-    {
-        string[] parts = path.Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
-        foreach (string part in parts)
-        {
-            if (SkippedDirectories.Contains(part))
-            {
-                return true;
-            }
-        }
-
-        return false;
-    }
 }

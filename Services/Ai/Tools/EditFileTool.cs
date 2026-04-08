@@ -15,7 +15,7 @@ internal sealed class EditFileTool : IAgentTool
             "properties": {
                 "filePath": {
                     "type": "string",
-                    "description": "The path to the file to edit. Can be absolute or relative to the project root."
+                    "description": "The path to the file to edit. Can be absolute or relative to the loaded project root, but must stay inside the loaded project."
                 },
                 "oldText": {
                     "type": "string",
@@ -85,9 +85,9 @@ internal sealed class EditFileTool : IAgentTool
             return Task.FromResult(ToolCallResult.Fail("Missing required parameter: newText"));
         }
 
-        var filePath = filePathElement.GetString()!.Trim();
-        var oldText = oldTextElement.GetString() ?? string.Empty;
-        var newText = newTextElement.GetString() ?? string.Empty;
+        string filePath = filePathElement.GetString()!.Trim();
+        string oldText = oldTextElement.GetString() ?? string.Empty;
+        string newText = newTextElement.GetString() ?? string.Empty;
 
         // Normalize line endings for both oldText and newText
         oldText = NormalizeLineEndings(oldText);
@@ -98,7 +98,16 @@ internal sealed class EditFileTool : IAgentTool
             return Task.FromResult(ToolCallResult.Fail("oldText must not be empty"));
         }
 
-        var resolvedPath = ResolvePath(filePath);
+        string resolvedPath;
+
+        try
+        {
+            resolvedPath = AgentToolPathResolver.ResolvePath(_projectRootProvider, filePath);
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or ArgumentException or NotSupportedException or PathTooLongException)
+        {
+            return Task.FromResult(ToolCallResult.Fail(ex.Message));
+        }
 
         if (!File.Exists(resolvedPath))
         {
@@ -120,9 +129,9 @@ internal sealed class EditFileTool : IAgentTool
         }
 
         // Normalize the file content to LF for consistent matching
-        var normalizedContent = NormalizeLineEndings(originalContent);
+        string normalizedContent = NormalizeLineEndings(originalContent);
 
-        var matchCount = CountOccurrences(normalizedContent, oldText);
+        int matchCount = CountOccurrences(normalizedContent, oldText);
 
         if (matchCount == 0)
         {
@@ -137,10 +146,10 @@ internal sealed class EditFileTool : IAgentTool
         }
 
         // Perform the replacement on normalized content
-        var updatedNormalizedContent = normalizedContent.Replace(oldText, newText, StringComparison.Ordinal);
+        string updatedNormalizedContent = normalizedContent.Replace(oldText, newText, StringComparison.Ordinal);
 
         // Convert back to platform-specific line endings before writing
-        var finalContent = ConvertToPlatformLineEndings(updatedNormalizedContent);
+        string finalContent = ConvertToPlatformLineEndings(updatedNormalizedContent);
 
         try
         {
@@ -157,7 +166,7 @@ internal sealed class EditFileTool : IAgentTool
         }
 
         // Calculate line number in the normalized content
-        var lineNumber = GetLineNumber(normalizedContent, normalizedContent.IndexOf(oldText, StringComparison.Ordinal));
+        int lineNumber = GetLineNumber(normalizedContent, normalizedContent.IndexOf(oldText, StringComparison.Ordinal));
         return Task.FromResult(ToolCallResult.Ok(
             $"Edit applied at line {lineNumber} in '{resolvedPath}'."));
     }
@@ -189,27 +198,4 @@ internal sealed class EditFileTool : IAgentTool
         return line;
     }
 
-    private string ResolvePath(string filePath)
-    {
-        if (Path.IsPathRooted(filePath))
-        {
-            return filePath;
-        }
-
-        var root = _projectRootProvider();
-        if (string.IsNullOrWhiteSpace(root))
-        {
-            return filePath;
-        }
-
-        // Root may point to a .sln or .csproj file — use its directory
-        if (File.Exists(root))
-        {
-            root = Path.GetDirectoryName(root);
-        }
-
-        return string.IsNullOrWhiteSpace(root)
-            ? filePath
-            : Path.GetFullPath(Path.Combine(root, filePath));
-    }
 }

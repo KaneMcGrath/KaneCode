@@ -123,8 +123,34 @@ public class ReadFileToolTests : IDisposable
 
         ToolCallResult result = await tool.ExecuteAsync(args);
 
-        // Should fail with file not found (not crash)
         Assert.False(result.Success);
+        Assert.Contains("No project or solution is currently loaded", result.Error, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task WhenAbsolutePathIsOutsideProjectThenReturnsFailure()
+    {
+        string outsideDirectory = Path.Combine(Path.GetTempPath(), $"KaneCodeOutside_{Guid.NewGuid():N}");
+        Directory.CreateDirectory(outsideDirectory);
+
+        try
+        {
+            string outsideFilePath = Path.Combine(outsideDirectory, "outside.txt");
+            await File.WriteAllTextAsync(outsideFilePath, "outside");
+
+            ReadFileTool tool = new ReadFileTool(() => _tempDir);
+            JsonElement args = BuildArgs(outsideFilePath);
+
+            ToolCallResult result = await tool.ExecuteAsync(args);
+
+            Assert.False(result.Success);
+            Assert.Contains("inside the loaded project", result.Error, StringComparison.OrdinalIgnoreCase);
+        }
+        finally
+        {
+            try { Directory.Delete(outsideDirectory, recursive: true); }
+            catch { }
+        }
     }
 
     private static JsonElement BuildArgs(string filePath)

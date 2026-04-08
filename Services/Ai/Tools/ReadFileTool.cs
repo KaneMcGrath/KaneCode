@@ -5,7 +5,7 @@ namespace KaneCode.Services.Ai.Tools;
 
 /// <summary>
 /// Agent tool that reads a file's contents by path.
-/// Supports both absolute paths and paths relative to the project root.
+/// Supports both absolute paths and paths relative to the loaded project root.
 /// Enforces a max file size to protect the context budget.
 /// </summary>
 internal sealed class ReadFileTool : IAgentTool
@@ -18,7 +18,7 @@ internal sealed class ReadFileTool : IAgentTool
             "properties": {
                 "filePath": {
                     "type": "string",
-                    "description": "The path to the file to read. Can be absolute or relative to the project root."
+                    "description": "The path to the file to read. Can be absolute or relative to the loaded project root, but must stay inside the loaded project."
                 }
             },
             "required": ["filePath"]
@@ -47,8 +47,17 @@ internal sealed class ReadFileTool : IAgentTool
             return Task.FromResult(ToolCallResult.Fail("Missing required parameter: filePath"));
         }
 
-        var filePath = filePathElement.GetString()!.Trim();
-        var resolvedPath = ResolvePath(filePath);
+        string filePath = filePathElement.GetString()!.Trim();
+        string resolvedPath;
+
+        try
+        {
+            resolvedPath = AgentToolPathResolver.ResolvePath(_projectRootProvider, filePath);
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or ArgumentException or NotSupportedException or PathTooLongException)
+        {
+            return Task.FromResult(ToolCallResult.Fail(ex.Message));
+        }
 
         if (!File.Exists(resolvedPath))
         {
@@ -64,7 +73,7 @@ internal sealed class ReadFileTool : IAgentTool
 
         try
         {
-            var content = File.ReadAllText(resolvedPath);
+            string content = File.ReadAllText(resolvedPath);
             return Task.FromResult(ToolCallResult.Ok(content));
         }
         catch (IOException ex)
@@ -77,27 +86,4 @@ internal sealed class ReadFileTool : IAgentTool
         }
     }
 
-    private string ResolvePath(string filePath)
-    {
-        if (Path.IsPathRooted(filePath))
-        {
-            return filePath;
-        }
-
-        var root = _projectRootProvider();
-        if (string.IsNullOrWhiteSpace(root))
-        {
-            return filePath;
-        }
-
-        // Root may point to a .sln or .csproj file — use its directory
-        if (File.Exists(root))
-        {
-            root = Path.GetDirectoryName(root);
-        }
-
-        return string.IsNullOrWhiteSpace(root)
-            ? filePath
-            : Path.GetFullPath(Path.Combine(root, filePath));
-    }
 }
