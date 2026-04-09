@@ -1155,13 +1155,38 @@ public partial class MainWindow : Window
         Grid.SetColumn(browseButton, 2);
         rootPanel.Children.Add(browseButton);
 
+        AddLabel(rootPanel, "Project path:", 4);
+        TextBlock projectPathTextBlock = new TextBlock
+        {
+            Margin = new Thickness(0, 0, 0, 8),
+            VerticalAlignment = VerticalAlignment.Center,
+            TextWrapping = TextWrapping.Wrap
+        };
+        Grid.SetRow(projectPathTextBlock, 4);
+        Grid.SetColumn(projectPathTextBlock, 1);
+        Grid.SetColumnSpan(projectPathTextBlock, 2);
+        rootPanel.Children.Add(projectPathTextBlock);
+
+        void RefreshProjectPathPreview()
+        {
+            string location = destinationTextBox.Text.Trim();
+            string name = nameTextBox.Text.Trim();
+            projectPathTextBlock.Text = string.IsNullOrWhiteSpace(location) || string.IsNullOrWhiteSpace(name)
+                ? string.Empty
+                : Path.Combine(location, name);
+        }
+
+        nameTextBox.TextChanged += (_, _) => RefreshProjectPathPreview();
+        destinationTextBox.TextChanged += (_, _) => RefreshProjectPathPreview();
+        RefreshProjectPathPreview();
+
         var createSolutionCheckBox = new CheckBox
         {
             Content = "Create solution (.sln)",
             IsChecked = true,
             Margin = new Thickness(0, 0, 0, 12)
         };
-        Grid.SetRow(createSolutionCheckBox, 4);
+        Grid.SetRow(createSolutionCheckBox, 5);
         Grid.SetColumn(createSolutionCheckBox, 1);
         Grid.SetColumnSpan(createSolutionCheckBox, 2);
         rootPanel.Children.Add(createSolutionCheckBox);
