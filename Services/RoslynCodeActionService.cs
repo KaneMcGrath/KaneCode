@@ -6,6 +6,7 @@ using Microsoft.CodeAnalysis.CodeRefactorings;
 using Microsoft.CodeAnalysis.Host.Mef;
 using Microsoft.CodeAnalysis.Text;
 using System.Collections.Immutable;
+using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Reflection;
 
@@ -17,17 +18,33 @@ namespace KaneCode.Services;
 /// </summary>
 internal sealed class RoslynCodeActionService
 {
+    private const int MaxProviderFailureLogEntries = 200;
+
     private readonly RoslynWorkspaceService _roslynService;
     private readonly Lazy<IReadOnlyList<CodeFixProvider>> _codeFixProviders;
     private readonly Lazy<IReadOnlyList<CodeRefactoringProvider>> _codeRefactoringProviders;
+    private readonly ConcurrentDictionary<string, ProviderInvocationCounters> _providerInvocationCounters = new(StringComparer.Ordinal);
+    private readonly ConcurrentQueue<CodeActionProviderFailureLogEntry> _providerFailureLogEntries = new();
 
     public RoslynCodeActionService(RoslynWorkspaceService roslynService)
+        : this(roslynService, codeFixProviders: null, codeRefactoringProviders: null)
+    {
+    }
+
+    internal RoslynCodeActionService(
+        RoslynWorkspaceService roslynService,
+        IReadOnlyList<CodeFixProvider>? codeFixProviders,
+        IReadOnlyList<CodeRefactoringProvider>? codeRefactoringProviders)
     {
         ArgumentNullException.ThrowIfNull(roslynService);
         _roslynService = roslynService;
 
-        _codeFixProviders = new Lazy<IReadOnlyList<CodeFixProvider>>(DiscoverCodeFixProviders);
-        _codeRefactoringProviders = new Lazy<IReadOnlyList<CodeRefactoringProvider>>(DiscoverCodeRefactoringProviders);
+        _codeFixProviders = codeFixProviders is null
+            ? new Lazy<IReadOnlyList<CodeFixProvider>>(DiscoverCodeFixProviders)
+            : new Lazy<IReadOnlyList<CodeFixProvider>>(() => codeFixProviders);
+        _codeRefactoringProviders = codeRefactoringProviders is null
+            ? new Lazy<IReadOnlyList<CodeRefactoringProvider>>(DiscoverCodeRefactoringProviders)
+            : new Lazy<IReadOnlyList<CodeRefactoringProvider>>(() => codeRefactoringProviders);
     }
 
     /// <summary>
@@ -36,6 +53,16 @@ internal sealed class RoslynCodeActionService
     public async Task<IReadOnlyList<CodeActionItem>> GetCodeActionsAsync(
         string filePath,
         int position,
+        CancellationToken cancellationToken = default)
+    {
+        return await GetCodeActionsAsync(filePath, position, refactoringSelectionSpan: null, cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    internal async Task<IReadOnlyList<CodeActionItem>> GetCodeActionsAsync(
+        string filePath,
+        int position,
+        TextSpan? refactoringSelectionSpan,
         CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(filePath);
@@ -57,7 +84,45 @@ internal sealed class RoslynCodeActionService
         await CollectCodeFixesAsync(document, position, results, cancellationToken).ConfigureAwait(false);
 
         // Collect refactorings at the position
-        await CollectRefactoringsAsync(document, position, results, cancellationToken).ConfigureAwait(false);
+        await CollectRefactoringsAsync(
+                document,
+                position,
+                refactoringSelectionSpan,
+                results,
+                providerFilter: null,
+                cancellationToken)
+            .ConfigureAwait(false);
+
+        return results;
+    }
+
+    internal async Task<IReadOnlyList<CodeActionItem>> GetExtractMethodActionsAsync(
+        string filePath,
+        TextSpan selectionSpan,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(filePath);
+
+        if (!RoslynWorkspaceService.IsCSharpFile(filePath) || selectionSpan.Length == 0)
+        {
+            return [];
+        }
+
+        Document? document = _roslynService.GetDocument(filePath);
+        if (document is null)
+        {
+            return [];
+        }
+
+        List<CodeActionItem> results = [];
+        await CollectRefactoringsAsync(
+                document,
+                selectionSpan.Start,
+                selectionSpan,
+                results,
+                IsExtractMethodRefactoringProvider,
+                cancellationToken)
+            .ConfigureAwait(false);
 
         return results;
     }
@@ -229,14 +294,15 @@ internal sealed class RoslynCodeActionService
                         cancellationToken);
 
                     await provider.RegisterCodeFixesAsync(context).ConfigureAwait(false);
+                    RecordProviderSuccess(provider);
                 }
                 catch (OperationCanceledException)
                 {
                     throw;
                 }
-                catch
+                catch (Exception ex)
                 {
-                    // Some providers may fail; skip them.
+                    RecordProviderFailure(provider, "RegisterCodeFixes", $"DiagnosticId={diagnostic.Id}", ex);
                 }
             }
         }
@@ -293,14 +359,15 @@ internal sealed class RoslynCodeActionService
                         cancellationToken);
 
                     await provider.RegisterCodeFixesAsync(context).ConfigureAwait(false);
+                    RecordProviderSuccess(provider);
                 }
                 catch (OperationCanceledException)
                 {
                     throw;
                 }
-                catch
+                catch (Exception ex)
                 {
-                    // Some providers may fail for certain diagnostics; skip them silently.
+                    RecordProviderFailure(provider, "RegisterCodeFixes", $"DiagnosticId={diagnostic.Id}", ex);
                 }
             }
         }
@@ -309,39 +376,59 @@ internal sealed class RoslynCodeActionService
     private async Task CollectRefactoringsAsync(
         Document document,
         int position,
+        TextSpan? refactoringSelectionSpan,
         List<CodeActionItem> results,
+        Func<CodeRefactoringProvider, bool>? providerFilter,
         CancellationToken cancellationToken)
     {
-        var sourceText = await document.GetTextAsync(cancellationToken).ConfigureAwait(false);
-        var clampedPosition = Math.Min(position, sourceText.Length);
-        var span = TextSpan.FromBounds(clampedPosition, clampedPosition);
+        SourceText sourceText = await document.GetTextAsync(cancellationToken).ConfigureAwait(false);
+        TextSpan span = CreateRefactoringSpan(sourceText, position, refactoringSelectionSpan);
 
-        var providers = _codeRefactoringProviders.Value;
-        var seenTitles = new HashSet<string>(results.Select(r => r.Title), StringComparer.Ordinal);
+        IReadOnlyList<CodeRefactoringProvider> providers = _codeRefactoringProviders.Value;
+        HashSet<string> seenTitles = new(results.Select(r => r.Title), StringComparer.Ordinal);
 
-        foreach (var provider in providers)
+        foreach (CodeRefactoringProvider provider in providers)
         {
             cancellationToken.ThrowIfCancellationRequested();
 
+            if (providerFilter is not null && !providerFilter(provider))
+            {
+                continue;
+            }
+
             try
             {
-                var context = new CodeRefactoringContext(
+                CodeRefactoringContext context = new(
                     document,
                     span,
                     action => AddLeafActions(action, results, seenTitles),
                     cancellationToken);
 
                 await provider.ComputeRefactoringsAsync(context).ConfigureAwait(false);
+                RecordProviderSuccess(provider);
             }
             catch (OperationCanceledException)
             {
                 throw;
             }
-            catch
+            catch (Exception ex)
             {
-                // Some providers may fail; skip them silently.
+                RecordProviderFailure(provider, "ComputeRefactorings", $"Span={span.Start}..{span.End}", ex);
             }
         }
+    }
+
+    internal IReadOnlyList<CodeActionProviderTelemetrySnapshot> GetProviderTelemetrySnapshot()
+    {
+        return _providerInvocationCounters
+            .Select(static pair => pair.Value.ToSnapshot(pair.Key))
+            .OrderBy(static snapshot => snapshot.ProviderName, StringComparer.Ordinal)
+            .ToList();
+    }
+
+    internal IReadOnlyList<CodeActionProviderFailureLogEntry> GetProviderFailureLogSnapshot()
+    {
+        return _providerFailureLogEntries.ToArray();
     }
 
     /// <summary>
@@ -389,14 +476,71 @@ internal sealed class RoslynCodeActionService
             || title.Contains("Implement abstract class", StringComparison.OrdinalIgnoreCase);
     }
 
+    private static TextSpan CreateRefactoringSpan(SourceText sourceText, int position, TextSpan? refactoringSelectionSpan)
+    {
+        int textLength = sourceText.Length;
+        if (refactoringSelectionSpan is TextSpan selectionSpan)
+        {
+            int start = Math.Clamp(selectionSpan.Start, 0, textLength);
+            int end = Math.Clamp(selectionSpan.End, 0, textLength);
+            return TextSpan.FromBounds(Math.Min(start, end), Math.Max(start, end));
+        }
+
+        int clampedPosition = Math.Clamp(position, 0, textLength);
+        return TextSpan.FromBounds(clampedPosition, clampedPosition);
+    }
+
+    private static bool IsExtractMethodRefactoringProvider(CodeRefactoringProvider provider)
+    {
+        string providerName = GetProviderName(provider);
+        return providerName.Contains("ExtractMethod", StringComparison.Ordinal)
+            || providerName.Contains("ExtractLocalFunction", StringComparison.Ordinal);
+    }
+
+    private static string GetProviderName(object provider)
+    {
+        return provider.GetType().FullName ?? provider.GetType().Name;
+    }
+
+    private void RecordProviderSuccess(object provider)
+    {
+        string providerName = GetProviderName(provider);
+        ProviderInvocationCounters counters = _providerInvocationCounters.GetOrAdd(providerName, static _ => new ProviderInvocationCounters());
+        counters.RecordSuccess();
+    }
+
+    private void RecordProviderFailure(object provider, string operation, string context, Exception exception)
+    {
+        string providerName = GetProviderName(provider);
+        ProviderInvocationCounters counters = _providerInvocationCounters.GetOrAdd(providerName, static _ => new ProviderInvocationCounters());
+        counters.RecordFailure();
+
+        CodeActionProviderFailureLogEntry entry = new(
+            DateTimeOffset.UtcNow,
+            providerName,
+            operation,
+            context,
+            exception.GetType().FullName ?? exception.GetType().Name,
+            exception.Message);
+
+        _providerFailureLogEntries.Enqueue(entry);
+        while (_providerFailureLogEntries.Count > MaxProviderFailureLogEntries
+            && _providerFailureLogEntries.TryDequeue(out _))
+        {
+        }
+
+        Debug.WriteLine(
+            $"[RoslynCodeActionService][Diagnostic] Provider='{providerName}' Operation='{operation}' Context='{context}' Exception='{entry.ExceptionType}' Message='{entry.Message}'");
+    }
+
     private static IReadOnlyList<CodeFixProvider> DiscoverCodeFixProviders()
     {
-        var providers = new List<CodeFixProvider>();
-        foreach (var assembly in MefHostServices.DefaultAssemblies)
+        List<CodeFixProvider> providers = [];
+        foreach (Assembly assembly in MefHostServices.DefaultAssemblies)
         {
             try
             {
-                foreach (var type in assembly.GetTypes())
+                foreach (Type type in assembly.GetTypes())
                 {
                     if (type.IsAbstract || !typeof(CodeFixProvider).IsAssignableFrom(type))
                     {
@@ -415,9 +559,9 @@ internal sealed class RoslynCodeActionService
                     }
                 }
             }
-            catch
+            catch (Exception ex)
             {
-                // Some assemblies may not load all types; skip them.
+                Debug.WriteLine($"[RoslynCodeActionService][Diagnostic] Failed to discover code-fix providers from '{assembly.FullName}': {ex.Message}");
             }
         }
 
@@ -427,12 +571,12 @@ internal sealed class RoslynCodeActionService
 
     private static IReadOnlyList<CodeRefactoringProvider> DiscoverCodeRefactoringProviders()
     {
-        var providers = new List<CodeRefactoringProvider>();
-        foreach (var assembly in MefHostServices.DefaultAssemblies)
+        List<CodeRefactoringProvider> providers = [];
+        foreach (Assembly assembly in MefHostServices.DefaultAssemblies)
         {
             try
             {
-                foreach (var type in assembly.GetTypes())
+                foreach (Type type in assembly.GetTypes())
                 {
                     if (type.IsAbstract || !typeof(CodeRefactoringProvider).IsAssignableFrom(type))
                     {
@@ -451,9 +595,9 @@ internal sealed class RoslynCodeActionService
                     }
                 }
             }
-            catch
+            catch (Exception ex)
             {
-                // Some assemblies may not load all types; skip them.
+                Debug.WriteLine($"[RoslynCodeActionService][Diagnostic] Failed to discover code-refactoring providers from '{assembly.FullName}': {ex.Message}");
             }
         }
 
@@ -466,4 +610,51 @@ internal sealed class RoslynCodeActionService
     /// </summary>
     public sealed record ApplyResult(string NewText);
 
+    private sealed class ProviderInvocationCounters
+    {
+        private int _successCount;
+        private int _failureCount;
+
+        public void RecordSuccess()
+        {
+            Interlocked.Increment(ref _successCount);
+        }
+
+        public void RecordFailure()
+        {
+            Interlocked.Increment(ref _failureCount);
+        }
+
+        public CodeActionProviderTelemetrySnapshot ToSnapshot(string providerName)
+        {
+            return new CodeActionProviderTelemetrySnapshot(
+                providerName,
+                Volatile.Read(ref _successCount),
+                Volatile.Read(ref _failureCount));
+        }
     }
+}
+
+internal sealed record CodeActionProviderTelemetrySnapshot(
+    string ProviderName,
+    int SuccessCount,
+    int FailureCount)
+{
+    public int AttemptCount => SuccessCount + FailureCount;
+
+    public double SuccessRate => AttemptCount == 0
+        ? 0d
+        : (double)SuccessCount / AttemptCount;
+
+    public double FailureRate => AttemptCount == 0
+        ? 0d
+        : (double)FailureCount / AttemptCount;
+}
+
+internal sealed record CodeActionProviderFailureLogEntry(
+    DateTimeOffset Timestamp,
+    string ProviderName,
+    string Operation,
+    string Context,
+    string ExceptionType,
+    string Message);

@@ -8,6 +8,7 @@ using KaneCode.Models;
 using KaneCode.Services;
 using KaneCode.Theming;
 using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.Text;
 using Microsoft.Win32;
 using System.Collections.ObjectModel;
 using System.Diagnostics;
@@ -2029,12 +2030,18 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
         string filePath = ActiveTab.FilePath;
         string text = _editor.Text;
         int caretOffset = _editor.CaretOffset;
+        TextSpan? selectionSpan = GetCurrentSelectionSpan();
 
-        _ = CheckLightBulbAsync(filePath, text, caretOffset, currentLine, ct);
+        _ = CheckLightBulbAsync(filePath, text, caretOffset, selectionSpan, currentLine, ct);
     }
 
     private async Task CheckLightBulbAsync(
-        string filePath, string text, int caretOffset, int lineNumber, CancellationToken cancellationToken)
+        string filePath,
+        string text,
+        int caretOffset,
+        TextSpan? selectionSpan,
+        int lineNumber,
+        CancellationToken cancellationToken)
     {
         try
         {
@@ -2044,7 +2051,7 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
             await _roslynService.UpdateDocumentTextAsync(filePath, text, cancellationToken).ConfigureAwait(false);
 
             IReadOnlyList<CodeActionItem> items = await _codeActionService
-                .GetCodeActionsAsync(filePath, caretOffset, cancellationToken)
+                .GetCodeActionsAsync(filePath, caretOffset, selectionSpan, cancellationToken)
                 .ConfigureAwait(false);
 
             await Application.Current.Dispatcher.InvokeAsync(() =>
@@ -2855,11 +2862,12 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
 
         try
         {
-            var caretOffset = _editor.CaretOffset;
+            int caretOffset = _editor.CaretOffset;
+            TextSpan? selectionSpan = GetCurrentSelectionSpan();
             await _roslynService.UpdateDocumentTextAsync(ActiveTab.FilePath, _editor.Text, ct).ConfigureAwait(true);
 
-            var items = await _codeActionService
-                .GetCodeActionsAsync(ActiveTab.FilePath, caretOffset, ct)
+            IReadOnlyList<CodeActionItem> items = await _codeActionService
+                .GetCodeActionsAsync(ActiveTab.FilePath, caretOffset, selectionSpan, ct)
                 .ConfigureAwait(true);
 
             if (items.Count == 0)
@@ -3074,43 +3082,64 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
 
         try
         {
-            var selection = _editor.TextArea.Selection;
-            if (selection.IsEmpty)
+            TextSpan? selectionSpan = GetCurrentSelectionSpan();
+            if (selectionSpan is null)
             {
                 return;
             }
-
-            var startOffset = _editor.Document.GetOffset(selection.StartPosition.Location);
-            var endOffset = _editor.Document.GetOffset(selection.EndPosition.Location);
-            var midpoint = (startOffset + endOffset) / 2;
 
             await _roslynService.UpdateDocumentTextAsync(ActiveTab.FilePath, _editor.Text, ct).ConfigureAwait(true);
 
-            var items = await _codeActionService
-                .GetCodeActionsAsync(ActiveTab.FilePath, midpoint, ct)
+            IReadOnlyList<CodeActionItem> extractActions = await _codeActionService
+                .GetExtractMethodActionsAsync(ActiveTab.FilePath, selectionSpan.Value, ct)
                 .ConfigureAwait(true);
 
-            // Find the extract method action
-            var extractAction = items.FirstOrDefault(a =>
-                a.Title.Contains("Extract method", StringComparison.OrdinalIgnoreCase)
-                || a.Title.Contains("Extract local function", StringComparison.OrdinalIgnoreCase));
-
-            if (extractAction is null)
+            if (extractActions.Count == 1)
             {
-                // Fall back to showing all available actions so the user can pick
-                if (items.Count > 0)
-                {
-                    CodeActionsReady?.Invoke(items);
-                }
+                await ApplyCodeActionAsync(extractActions[0]).ConfigureAwait(true);
                 return;
             }
 
-            await ApplyCodeActionAsync(extractAction);
+            if (extractActions.Count > 1)
+            {
+                CodeActionsReady?.Invoke(extractActions);
+                return;
+            }
+
+            IReadOnlyList<CodeActionItem> items = await _codeActionService
+                .GetCodeActionsAsync(ActiveTab.FilePath, selectionSpan.Value.Start, selectionSpan, ct)
+                .ConfigureAwait(true);
+
+            if (items.Count > 0)
+            {
+                CodeActionsReady?.Invoke(items);
+            }
         }
         catch (OperationCanceledException)
         {
             // Superseded by a newer request
         }
+    }
+
+    private TextSpan? GetCurrentSelectionSpan()
+    {
+        if (_editor is null)
+        {
+            return null;
+        }
+
+        ICSharpCode.AvalonEdit.Editing.Selection selection = _editor.TextArea.Selection;
+        if (selection.IsEmpty)
+        {
+            return null;
+        }
+
+        int startOffset = _editor.Document.GetOffset(selection.StartPosition.Location);
+        int endOffset = _editor.Document.GetOffset(selection.EndPosition.Location);
+        int selectionStart = Math.Min(startOffset, endOffset);
+        int selectionEnd = Math.Max(startOffset, endOffset);
+
+        return TextSpan.FromBounds(selectionStart, selectionEnd);
     }
 
     /// <summary>

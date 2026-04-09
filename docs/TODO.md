@@ -135,10 +135,10 @@
 
 #### 4.2 Refactoring Discovery & Action Composition
 
-- [ ] Use the editor selection span (not just caret position) when requesting refactoring actions
-- [ ] Make Extract Method fully selection-aware without title-matching heuristics
-- [ ] Log provider failures at a diagnostic level instead of silently swallowing them
-- [ ] Add telemetry/counters for code-action provider success/failure rates
+- [x] Use the editor selection span (not just caret position) when requesting refactoring actions
+- [x] Make Extract Method fully selection-aware without title-matching heuristics
+- [x] Log provider failures at a diagnostic level instead of silently swallowing them
+- [x] Add telemetry/counters for code-action provider success/failure rates
 
 #### 4.3 Automated Tests for Code Analysis
 
