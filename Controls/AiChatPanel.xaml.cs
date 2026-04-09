@@ -40,7 +40,7 @@ public partial class AiChatPanel : UserControl
     private string? _pendingSelectionContext;
     private bool _projectContextInjected;
     private const int DefaultOutboundTokenBudget = AiProviderSettings.DefaultContextLength;
-    private const int MaxToolCallIterations = 40;
+    private const int MaxToolCallIterations = 150;
 
     private sealed class StreamSectionVisual(
         Border root,
