@@ -225,6 +225,7 @@ public partial class MainWindow : Window
         _agentToolRegistry.Register(new WriteFileTool(projectRoot, onFileChanged));
         _agentToolRegistry.Register(new EditFileTool(projectRoot, onFileChanged));
         _agentToolRegistry.Register(new DeleteFileTool(projectRoot));
+        _agentToolRegistry.Register(new RenamePathTool(projectRoot));
         _agentToolRegistry.Register(new CreateDirectoryTool(projectRoot));
         _agentToolRegistry.Register(new DeleteDirectoryTool(projectRoot));
         _agentToolRegistry.Register(new ListFilesTool(projectRoot));
