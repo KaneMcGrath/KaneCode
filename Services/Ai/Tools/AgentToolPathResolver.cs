@@ -38,7 +38,10 @@ internal static class AgentToolPathResolver
         throw new InvalidOperationException("The loaded project root could not be resolved.");
     }
 
-    internal static string ResolvePath(Func<string?> projectRootProvider, string inputPath)
+    internal static string ResolvePath(
+        Func<string?> projectRootProvider,
+        string inputPath,
+        IReadOnlyList<string>? allowedExternalRoots = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(inputPath);
 
@@ -47,9 +50,9 @@ internal static class AgentToolPathResolver
             ? Path.GetFullPath(inputPath)
             : Path.GetFullPath(Path.Combine(projectRoot, inputPath));
 
-        if (!IsPathWithinRoot(candidatePath, projectRoot))
+        if (!IsPathWithinRoot(candidatePath, projectRoot) && !IsPathWithinAnyRoot(candidatePath, allowedExternalRoots))
         {
-            throw new InvalidOperationException($"Path must stay inside the loaded project: {inputPath}");
+            throw new InvalidOperationException($"Path must stay inside the loaded project or an attached external context folder: {inputPath}");
         }
 
         return candidatePath;
@@ -134,6 +137,29 @@ internal static class AgentToolPathResolver
         return string.Equals(normalizedCandidate, normalizedRoot, comparison)
             || normalizedCandidate.StartsWith(normalizedRoot + Path.DirectorySeparatorChar, comparison)
             || normalizedCandidate.StartsWith(normalizedRoot + Path.AltDirectorySeparatorChar, comparison);
+    }
+
+    private static bool IsPathWithinAnyRoot(string candidatePath, IReadOnlyList<string>? rootPaths)
+    {
+        if (rootPaths is null || rootPaths.Count == 0)
+        {
+            return false;
+        }
+
+        foreach (string rootPath in rootPaths)
+        {
+            if (string.IsNullOrWhiteSpace(rootPath))
+            {
+                continue;
+            }
+
+            if (IsPathWithinRoot(candidatePath, rootPath))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static StringComparison GetPathComparison()

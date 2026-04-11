@@ -69,4 +69,29 @@ public sealed class AgentToolPathResolverTests : IDisposable
 
         Assert.Contains("inside the loaded project", exception.Message, StringComparison.OrdinalIgnoreCase);
     }
+
+    [Fact]
+    public void WhenAbsolutePathIsInsideAllowedExternalRootThenReturnsResolvedPath()
+    {
+        string externalDirectory = Path.Combine(Path.GetTempPath(), $"KaneCodeExternal_{Guid.NewGuid():N}");
+        Directory.CreateDirectory(externalDirectory);
+
+        try
+        {
+            string externalFilePath = Path.Combine(externalDirectory, "external.cs");
+            File.WriteAllText(externalFilePath, "class External { }");
+
+            string resolvedPath = AgentToolPathResolver.ResolvePath(
+                () => _projectRoot,
+                externalFilePath,
+                [externalDirectory]);
+
+            Assert.Equal(Path.GetFullPath(externalFilePath), resolvedPath, ignoreCase: OperatingSystem.IsWindows());
+        }
+        finally
+        {
+            try { Directory.Delete(externalDirectory, recursive: true); }
+            catch { }
+        }
+    }
 }

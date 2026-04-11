@@ -1,50 +1,199 @@
 <Window x:Class="KaneCode.Controls.AiReferencePickerDialog"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Add Reference" Width="400" Height="500"
+        Title="Add Context"
+        Width="680"
+        Height="560"
         WindowStartupLocation="CenterOwner"
         Background="{DynamicResource PanelBackground}">
-    <DockPanel Margin="8">
-        <!-- Search box -->
-        <TextBox x:Name="SearchBox"
-                 DockPanel.Dock="Top"
-                 Margin="0,0,0,8"
-                 Padding="6,4"
-                 FontSize="13"
-                 Foreground="{DynamicResource PanelForeground}"
-                 Background="{DynamicResource PanelSecondaryBackground}"
-                 BorderBrush="{DynamicResource AiChatBorder}"
-                 CaretBrush="{DynamicResource PanelForeground}"
-                 TextChanged="SearchBox_TextChanged" />
-
-        <!-- Buttons -->
+    <DockPanel Margin="12">
         <StackPanel DockPanel.Dock="Bottom"
                     Orientation="Horizontal"
                     HorizontalAlignment="Right"
-                    Margin="0,8,0,0">
-            <Button Content="Add" Padding="16,4"
+                    Margin="0,12,0,0">
+            <Button Content="Add"
+                    Padding="18,4"
                     Click="AddButton_Click"
                     Foreground="{DynamicResource AiChatSendButtonForeground}"
                     Background="{DynamicResource AiChatSendButtonBackground}"
-                    BorderThickness="0" Cursor="Hand" Margin="0,0,8,0" />
-            <Button Content="Cancel" Padding="16,4"
+                    BorderThickness="0"
+                    Cursor="Hand"
+                    Margin="0,0,8,0" />
+            <Button Content="Cancel"
+                    Padding="18,4"
                     Click="CancelButton_Click"
                     Foreground="{DynamicResource PanelForeground}"
                     Background="{DynamicResource PanelSecondaryBackground}"
-                    BorderThickness="0" Cursor="Hand" />
+                    BorderThickness="0"
+                    Cursor="Hand" />
         </StackPanel>
 
-        <!-- File list -->
-        <ListBox x:Name="FileList"
-                 Background="Transparent"
-                 BorderThickness="0"
-                 Foreground="{DynamicResource PanelForeground}"
-                 MouseDoubleClick="FileList_MouseDoubleClick">
-            <ListBox.ItemTemplate>
-                <DataTemplate>
-                    <TextBlock Text="{Binding}" FontSize="12" Margin="2" />
-                </DataTemplate>
-            </ListBox.ItemTemplate>
-        </ListBox>
+        <TabControl>
+            <TabItem Header="Default">
+                <Grid Margin="0,10,0,0">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+
+                    <TextBlock Text="Choose common context to attach to the next prompt."
+                               Foreground="{DynamicResource PanelForeground}"
+                               Margin="0,0,0,8" />
+
+                    <ListBox x:Name="DefaultContextList"
+                             Grid.Row="1"
+                             Background="Transparent"
+                             BorderThickness="0"
+                             Foreground="{DynamicResource PanelForeground}">
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <Border BorderBrush="{DynamicResource AiChatBorder}"
+                                        BorderThickness="1"
+                                        Background="{DynamicResource PanelSecondaryBackground}"
+                                        CornerRadius="4"
+                                        Margin="0,0,0,8"
+                                        Padding="10,8">
+                                    <StackPanel>
+                                        <CheckBox Content="{Binding Title}"
+                                                  IsChecked="{Binding IsSelected, Mode=TwoWay}"
+                                                  IsEnabled="{Binding IsAvailable}"
+                                                  Foreground="{DynamicResource PanelForeground}"
+                                                  FontWeight="SemiBold" />
+                                        <TextBlock Text="{Binding Description}"
+                                                   Margin="24,4,0,0"
+                                                   TextWrapping="Wrap"
+                                                   Foreground="{DynamicResource PanelForeground}" />
+                                    </StackPanel>
+                                </Border>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+                </Grid>
+            </TabItem>
+
+            <TabItem Header="Classes">
+                <DockPanel Margin="0,10,0,0">
+                    <TextBox x:Name="ClassSearchBox"
+                             DockPanel.Dock="Top"
+                             Margin="0,0,0,8"
+                             Padding="6,4"
+                             FontSize="13"
+                             Foreground="{DynamicResource PanelForeground}"
+                             Background="{DynamicResource PanelSecondaryBackground}"
+                             BorderBrush="{DynamicResource AiChatBorder}"
+                             CaretBrush="{DynamicResource PanelForeground}"
+                             TextChanged="ClassSearchBox_TextChanged" />
+
+                    <TextBlock DockPanel.Dock="Top"
+                               Text="Select one or more classes from the loaded C# project."
+                               Foreground="{DynamicResource PanelForeground}"
+                               Margin="0,0,0,8" />
+
+                    <ListBox x:Name="ClassList"
+                             Background="Transparent"
+                             BorderThickness="0"
+                             Foreground="{DynamicResource PanelForeground}"
+                             SelectionMode="Extended"
+                             MouseDoubleClick="ClassList_MouseDoubleClick">
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <Border BorderBrush="{DynamicResource AiChatBorder}"
+                                        BorderThickness="1"
+                                        Background="{DynamicResource PanelSecondaryBackground}"
+                                        CornerRadius="4"
+                                        Margin="0,0,0,8"
+                                        Padding="10,8">
+                                    <StackPanel>
+                                        <TextBlock Text="{Binding DisplayName}"
+                                                   FontWeight="SemiBold"
+                                                   Foreground="{DynamicResource PanelForeground}" />
+                                        <TextBlock Text="{Binding FilePath}"
+                                                   Margin="0,4,0,0"
+                                                   Foreground="{DynamicResource PanelForeground}"
+                                                   TextWrapping="Wrap" />
+                                    </StackPanel>
+                                </Border>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+                </DockPanel>
+            </TabItem>
+
+            <TabItem Header="External Context">
+                <DockPanel Margin="0,10,0,0">
+                    <WrapPanel DockPanel.Dock="Top"
+                               Margin="0,0,0,8">
+                        <Button Content="Add File"
+                                Padding="12,4"
+                                Margin="0,0,8,8"
+                                Click="AddExternalFileButton_Click"
+                                Foreground="{DynamicResource PanelForeground}"
+                                Background="{DynamicResource PanelSecondaryBackground}"
+                                BorderBrush="{DynamicResource AiChatBorder}"
+                                Cursor="Hand" />
+                        <Button Content="Add Folder"
+                                Padding="12,4"
+                                Margin="0,0,8,8"
+                                Click="AddExternalFolderButton_Click"
+                                Foreground="{DynamicResource PanelForeground}"
+                                Background="{DynamicResource PanelSecondaryBackground}"
+                                BorderBrush="{DynamicResource AiChatBorder}"
+                                Cursor="Hand" />
+                        <Button Content="Add Documentation"
+                                Padding="12,4"
+                                Margin="0,0,8,8"
+                                Click="AddDocumentationButton_Click"
+                                Foreground="{DynamicResource PanelForeground}"
+                                Background="{DynamicResource PanelSecondaryBackground}"
+                                BorderBrush="{DynamicResource AiChatBorder}"
+                                Cursor="Hand" />
+                    </WrapPanel>
+
+                    <TextBlock DockPanel.Dock="Top"
+                               Text="External folders become request-scoped context. The agent may read, list, and search those folders only for the next prompt."
+                               Foreground="{DynamicResource PanelForeground}"
+                               TextWrapping="Wrap"
+                               Margin="0,0,0,8" />
+
+                    <ListBox x:Name="ExternalContextList"
+                             Background="Transparent"
+                             BorderThickness="0"
+                             Foreground="{DynamicResource PanelForeground}">
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <Border BorderBrush="{DynamicResource AiChatBorder}"
+                                        BorderThickness="1"
+                                        Background="{DynamicResource PanelSecondaryBackground}"
+                                        CornerRadius="4"
+                                        Margin="0,0,0,8"
+                                        Padding="10,8">
+                                    <DockPanel>
+                                        <Button DockPanel.Dock="Right"
+                                                Content="Remove"
+                                                Tag="{Binding}"
+                                                Click="RemoveExternalReferenceButton_Click"
+                                                Margin="8,0,0,0"
+                                                Padding="8,2"
+                                                Foreground="{DynamicResource PanelForeground}"
+                                                Background="Transparent"
+                                                BorderBrush="{DynamicResource AiChatBorder}"
+                                                Cursor="Hand" />
+                                        <StackPanel>
+                                            <TextBlock Text="{Binding DisplayName}"
+                                                       FontWeight="SemiBold"
+                                                       Foreground="{DynamicResource PanelForeground}" />
+                                            <TextBlock Text="{Binding FullPath}"
+                                                       Margin="0,4,0,0"
+                                                       Foreground="{DynamicResource PanelForeground}"
+                                                       TextWrapping="Wrap" />
+                                        </StackPanel>
+                                    </DockPanel>
+                                </Border>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+                </DockPanel>
+            </TabItem>
+        </TabControl>
     </DockPanel>
 </Window>

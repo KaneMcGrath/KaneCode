@@ -1,3 +1,4 @@
+using KaneCode.Services.Ai;
 using System.IO;
 using System.Text;
 using System.Text.Json;
@@ -34,7 +35,7 @@ internal sealed class SearchFilesTool : IAgentTool
                 },
                 "directory": {
                     "type": "string",
-                    "description": "Directory to search in. Can be absolute or relative to the loaded project root, but must stay inside the loaded project. Defaults to the project root if omitted."
+                    "description": "Directory to search in. Can be absolute or relative to the loaded project root, or inside an attached external context folder for the current request. Defaults to the project root if omitted."
                 },
                 "isRegex": {
                     "type": "boolean",
@@ -46,11 +47,13 @@ internal sealed class SearchFilesTool : IAgentTool
         """).RootElement.Clone();
 
     private readonly Func<string?> _projectRootProvider;
+    private readonly ExternalContextDirectoryRegistry? _externalContextDirectoryRegistry;
 
-    public SearchFilesTool(Func<string?> projectRootProvider)
+    public SearchFilesTool(Func<string?> projectRootProvider, ExternalContextDirectoryRegistry? externalContextDirectoryRegistry = null)
     {
         ArgumentNullException.ThrowIfNull(projectRootProvider);
         _projectRootProvider = projectRootProvider;
+        _externalContextDirectoryRegistry = externalContextDirectoryRegistry;
     }
 
     public string Name => "search_files";
@@ -58,7 +61,7 @@ internal sealed class SearchFilesTool : IAgentTool
     public string Description =>
         "Search file contents recursively using a plain-text or regex query. " +
         $"Returns up to {MaxMatches} matches as 'file:line: snippet'. " +
-        "Common noise directories (bin, obj, .git, node_modules, etc.) are excluded.";
+        "Common noise directories (bin, obj, .git, node_modules, etc.) are excluded. Supports request-scoped external context folders.";
 
     public JsonElement ParametersSchema => Schema;
 
@@ -98,7 +101,10 @@ internal sealed class SearchFilesTool : IAgentTool
         {
             resolvedRoot = string.IsNullOrWhiteSpace(directoryArg)
                 ? AgentToolPathResolver.GetProjectRootDirectory(_projectRootProvider)
-                : AgentToolPathResolver.ResolvePath(_projectRootProvider, directoryArg);
+                : AgentToolPathResolver.ResolvePath(
+                    _projectRootProvider,
+                    directoryArg,
+                    _externalContextDirectoryRegistry?.GetAllowedDirectories());
         }
         catch (Exception ex) when (ex is InvalidOperationException or ArgumentException or NotSupportedException or PathTooLongException)
         {

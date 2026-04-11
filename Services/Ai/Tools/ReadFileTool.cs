@@ -1,3 +1,4 @@
+using KaneCode.Services.Ai;
 using System.IO;
 using System.Text.Json;
 
@@ -18,7 +19,7 @@ internal sealed class ReadFileTool : IAgentTool
             "properties": {
                 "filePath": {
                     "type": "string",
-                    "description": "The path to the file to read. Can be absolute or relative to the loaded project root, but must stay inside the loaded project."
+                    "description": "The path to the file to read. Can be absolute or relative to the loaded project root, or inside an attached external context folder for the current request."
                 }
             },
             "required": ["filePath"]
@@ -26,16 +27,18 @@ internal sealed class ReadFileTool : IAgentTool
         """).RootElement.Clone();
 
     private readonly Func<string?> _projectRootProvider;
+    private readonly ExternalContextDirectoryRegistry? _externalContextDirectoryRegistry;
 
-    public ReadFileTool(Func<string?> projectRootProvider)
+    public ReadFileTool(Func<string?> projectRootProvider, ExternalContextDirectoryRegistry? externalContextDirectoryRegistry = null)
     {
         ArgumentNullException.ThrowIfNull(projectRootProvider);
         _projectRootProvider = projectRootProvider;
+        _externalContextDirectoryRegistry = externalContextDirectoryRegistry;
     }
 
     public string Name => "read_file";
 
-    public string Description => "Read the contents of a file by path. Returns the file text or an error if the file is not found or too large (>200 KB).";
+    public string Description => "Read the contents of a file by path. Returns the file text or an error if the file is not found or too large (>200 KB). Supports files inside the loaded project and request-scoped external context folders.";
 
     public JsonElement ParametersSchema => Schema;
 
@@ -52,7 +55,17 @@ internal sealed class ReadFileTool : IAgentTool
 
         try
         {
-            resolvedPath = AgentToolPathResolver.ResolvePath(_projectRootProvider, filePath);
+            if (_externalContextDirectoryRegistry is not null)
+            {
+                resolvedPath = AgentToolPathResolver.ResolvePath(
+                    _projectRootProvider,
+                    filePath,
+                    _externalContextDirectoryRegistry.GetAllowedDirectories());
+            }
+            else
+            {
+                resolvedPath = AgentToolPathResolver.ResolvePath(_projectRootProvider, filePath);
+            }
         }
         catch (Exception ex) when (ex is InvalidOperationException or ArgumentException or NotSupportedException or PathTooLongException)
         {

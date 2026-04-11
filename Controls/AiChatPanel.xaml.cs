@@ -32,9 +32,13 @@ public partial class AiChatPanel : UserControl
     private AiUsageStats? _lastUsageStats;
     private Func<IReadOnlyList<ProjectItem>>? _projectItemsProvider;
     private Func<string?>? _projectConversationKeyProvider;
+    private Func<AiContextDocumentSnapshot?>? _currentDocumentProvider;
+    private Func<IReadOnlyList<AiContextDocumentSnapshot>>? _openDocumentsProvider;
+    private Func<AiBuildOutputSnapshot?>? _buildOutputProvider;
     private AgentToolRegistry? _toolRegistry;
     private AiChatModeRegistry? _modeRegistry;
     private AiDebugLogService? _debugLogService;
+    private ExternalContextDirectoryRegistry? _externalContextDirectoryRegistry;
     private IAiChatMode? _activeMode;
     private ListBox? _mentionPopup;
     private string? _pendingSelectionContext;
@@ -177,6 +181,24 @@ public partial class AiChatPanel : UserControl
         _projectItemsProvider = provider;
     }
 
+    internal void SetCurrentDocumentProvider(Func<AiContextDocumentSnapshot?> provider)
+    {
+        ArgumentNullException.ThrowIfNull(provider);
+        _currentDocumentProvider = provider;
+    }
+
+    internal void SetOpenDocumentsProvider(Func<IReadOnlyList<AiContextDocumentSnapshot>> provider)
+    {
+        ArgumentNullException.ThrowIfNull(provider);
+        _openDocumentsProvider = provider;
+    }
+
+    internal void SetBuildOutputProvider(Func<AiBuildOutputSnapshot?> provider)
+    {
+        ArgumentNullException.ThrowIfNull(provider);
+        _buildOutputProvider = provider;
+    }
+
     /// <summary>
     /// Sets a callback that returns a stable key representing the active project/solution
     /// for persisted conversation history.
@@ -200,6 +222,12 @@ public partial class AiChatPanel : UserControl
         ArgumentNullException.ThrowIfNull(debugLogService);
 
         _debugLogService = debugLogService;
+    }
+
+    internal void SetExternalContextDirectoryRegistry(ExternalContextDirectoryRegistry externalContextDirectoryRegistry)
+    {
+        ArgumentNullException.ThrowIfNull(externalContextDirectoryRegistry);
+        _externalContextDirectoryRegistry = externalContextDirectoryRegistry;
     }
 
     /// <summary>
@@ -404,20 +432,16 @@ public partial class AiChatPanel : UserControl
     /// </summary>
     internal void AddFileReference(string filePath)
     {
-        if (_references.Any(r => r.FullPath.Equals(filePath, StringComparison.OrdinalIgnoreCase)))
+        AddReference(AiContextReferenceFactory.CreateFileReference(filePath));
+    }
+
+    internal void AddReference(AiChatReference reference)
+    {
+        ArgumentNullException.ThrowIfNull(reference);
+
+        if (_references.Any(existingReference => AreSameReference(existingReference, reference)))
         {
             return;
-        }
-
-        var reference = new AiChatReference(AiReferenceKind.File, filePath);
-
-        try
-        {
-            reference.Content = File.ReadAllText(filePath);
-        }
-        catch (IOException)
-        {
-            reference.Content = "(unable to read file)";
         }
 
         _references.Add(reference);
@@ -434,16 +458,16 @@ public partial class AiChatPanel : UserControl
     {
         ReferenceTagsPanel.Children.Clear();
 
-        foreach (var reference in _references)
+        foreach (AiChatReference reference in _references)
         {
-            var tag = CreateReferenceTag(reference);
+            Border tag = CreateReferenceTag(reference);
             ReferenceTagsPanel.Children.Add(tag);
         }
     }
 
     private Border CreateReferenceTag(AiChatReference reference)
     {
-        var removeButton = new Button
+        Button removeButton = new()
         {
             Content = "✕",
             FontSize = 9,
@@ -457,9 +481,18 @@ public partial class AiChatPanel : UserControl
         };
         removeButton.Click += (_, _) => RemoveReference(reference);
 
-        var icon = reference.Kind == AiReferenceKind.File ? "📄 " : "🔗 ";
+        string icon = reference.Kind switch
+        {
+            AiReferenceKind.File => "📄 ",
+            AiReferenceKind.CurrentDocument => "📝 ",
+            AiReferenceKind.OpenDocuments => "🗂️ ",
+            AiReferenceKind.BuildOutput => "🏗️ ",
+            AiReferenceKind.Class => "🔷 ",
+            AiReferenceKind.ExternalFolder => "📁 ",
+            _ => "🔗 "
+        };
 
-        var tag = new Border
+        Border tag = new()
         {
             Background = FindBrush("AiChatRefTagBackground"),
             CornerRadius = new CornerRadius(3),
@@ -487,6 +520,24 @@ public partial class AiChatPanel : UserControl
         return tag;
     }
 
+    private static bool AreSameReference(AiChatReference left, AiChatReference right)
+    {
+        ArgumentNullException.ThrowIfNull(left);
+        ArgumentNullException.ThrowIfNull(right);
+
+        if (left.Kind != right.Kind)
+        {
+            return false;
+        }
+
+        if (!string.IsNullOrWhiteSpace(left.FullPath) || !string.IsNullOrWhiteSpace(right.FullPath))
+        {
+            return string.Equals(left.FullPath, right.FullPath, StringComparison.OrdinalIgnoreCase);
+        }
+
+        return string.Equals(left.DisplayName, right.DisplayName, StringComparison.OrdinalIgnoreCase);
+    }
+
     /// <summary>
     /// Builds the context injection text from all attached references.
     /// </summary>
@@ -500,7 +551,7 @@ public partial class AiChatPanel : UserControl
         }
 
         System.Text.StringBuilder sb = new();
-        sb.AppendLine("The user has attached the following files for reference:");
+        sb.AppendLine("The user has attached the following context for this request:");
         sb.AppendLine();
 
         foreach (AiChatReference reference in references)
@@ -577,23 +628,21 @@ public partial class AiChatPanel : UserControl
 
     private void AddReferenceButton_Click(object sender, RoutedEventArgs e)
     {
-        var projectItems = _projectItemsProvider?.Invoke();
-        if (projectItems is null || projectItems.Count == 0)
-        {
-            AppendSystemMessage("No project loaded. Open a project or folder first.");
-            return;
-        }
+        IReadOnlyList<ProjectItem> projectItems = _projectItemsProvider?.Invoke() ?? [];
+        AiContextDocumentSnapshot? currentDocument = _currentDocumentProvider?.Invoke();
+        IReadOnlyList<AiContextDocumentSnapshot> openDocuments = _openDocumentsProvider?.Invoke() ?? [];
+        AiBuildOutputSnapshot? buildOutput = _buildOutputProvider?.Invoke();
 
-        var dialog = new AiReferencePickerDialog(projectItems)
+        AiReferencePickerDialog dialog = new(projectItems, currentDocument, openDocuments, buildOutput)
         {
             Owner = Window.GetWindow(this)
         };
 
         if (dialog.ShowDialog() == true)
         {
-            foreach (var path in dialog.SelectedFilePaths)
+            foreach (AiChatReference reference in dialog.SelectedReferences)
             {
-                AddFileReference(path);
+                AddReference(reference);
             }
         }
     }
@@ -1046,10 +1095,17 @@ public partial class AiChatPanel : UserControl
         }
 
         List<AiChatReference> pendingReferences = [.. _references];
+        List<string> pendingExternalDirectories = pendingReferences
+            .Where(reference => reference.Kind == AiReferenceKind.ExternalFolder)
+            .Select(reference => reference.FullPath)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
         string pendingContext = BuildPendingPromptContext(pendingReferences, _pendingSelectionContext);
 
         ClearPendingReferences();
         _pendingSelectionContext = null;
+
+        _externalContextDirectoryRegistry?.SetAllowedDirectories(pendingExternalDirectories);
 
         outboundUserContent = string.IsNullOrWhiteSpace(pendingContext)
             ? text
@@ -1706,6 +1762,7 @@ public partial class AiChatPanel : UserControl
         }
         finally
         {
+            _externalContextDirectoryRegistry?.Clear();
             streamStopwatch.Stop();
             var finalTokenCount = reasoningTokenCount + contentTokenCount;
 

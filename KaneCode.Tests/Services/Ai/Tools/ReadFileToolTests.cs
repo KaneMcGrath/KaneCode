@@ -153,6 +153,35 @@ public class ReadFileToolTests : IDisposable
         }
     }
 
+    [Fact]
+    public async Task WhenAbsolutePathIsInsideAttachedExternalFolderThenReturnsContents()
+    {
+        string outsideDirectory = Path.Combine(Path.GetTempPath(), $"KaneCodeExternal_{Guid.NewGuid():N}");
+        Directory.CreateDirectory(outsideDirectory);
+
+        try
+        {
+            string outsideFilePath = Path.Combine(outsideDirectory, "external.txt");
+            await File.WriteAllTextAsync(outsideFilePath, "external context");
+
+            ExternalContextDirectoryRegistry registry = new();
+            registry.SetAllowedDirectories([outsideDirectory]);
+
+            ReadFileTool tool = new ReadFileTool(() => _tempDir, registry);
+            JsonElement args = BuildArgs(outsideFilePath);
+
+            ToolCallResult result = await tool.ExecuteAsync(args);
+
+            Assert.True(result.Success);
+            Assert.Equal("external context", result.Output);
+        }
+        finally
+        {
+            try { Directory.Delete(outsideDirectory, recursive: true); }
+            catch { }
+        }
+    }
+
     private static JsonElement BuildArgs(string filePath)
     {
         string escaped = filePath.Replace("\\", "\\\\");

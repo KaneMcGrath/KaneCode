@@ -39,6 +39,7 @@ public partial class MainWindow : Window
     private readonly AgentToolRegistry _agentToolRegistry = new();
     private readonly AiChatModeRegistry _aiChatModeRegistry = new();
     private readonly AiDebugLogService _aiDebugLogService = new();
+    private readonly ExternalContextDirectoryRegistry _externalContextDirectoryRegistry = new();
     private readonly PresentationService _presentationService = new();
     private readonly PresentationLineHighlightRenderer _presentationLineHighlightRenderer = new();
     private Popup? _quickInfoPopup;
@@ -196,11 +197,15 @@ public partial class MainWindow : Window
         AiChatPanel.SetDebugLogService(_aiDebugLogService);
         AiChatPanel.SetProviderRegistry(_aiProviderRegistry);
         AiChatPanel.SetProjectItemsProvider(() => _viewModel.ProjectItems);
+        AiChatPanel.SetCurrentDocumentProvider(GetCurrentDocumentSnapshot);
+        AiChatPanel.SetOpenDocumentsProvider(GetOpenDocumentSnapshots);
+        AiChatPanel.SetBuildOutputProvider(GetBuildOutputSnapshot);
         AiChatPanel.SetConversationProjectKeyProvider(() =>
             _viewModel.ProjectItems.FirstOrDefault(i => i.ItemType is ProjectItemType.Solution or ProjectItemType.Project)?.FullPath
             ?? _viewModel.ProjectItems.FirstOrDefault()?.FullPath);
         AiChatPanel.SetToolRegistry(_agentToolRegistry);
         AiChatPanel.SetModeRegistry(_aiChatModeRegistry);
+        AiChatPanel.SetExternalContextDirectoryRegistry(_externalContextDirectoryRegistry);
         AiDebugPanel.ToolFailures = _aiDebugLogService.ToolFailures;
     }
     /// </summary>
@@ -221,20 +226,53 @@ public partial class MainWindow : Window
 
         Action<string> onFileChanged = _viewModel.NotifyFileChangedOnDisk;
 
-        _agentToolRegistry.Register(new ReadFileTool(projectRoot));
+        _agentToolRegistry.Register(new ReadFileTool(projectRoot, _externalContextDirectoryRegistry));
         _agentToolRegistry.Register(new WriteFileTool(projectRoot, onFileChanged));
         _agentToolRegistry.Register(new EditFileTool(projectRoot, onFileChanged));
         _agentToolRegistry.Register(new DeleteFileTool(projectRoot));
         _agentToolRegistry.Register(new RenamePathTool(projectRoot));
         _agentToolRegistry.Register(new CreateDirectoryTool(projectRoot));
         _agentToolRegistry.Register(new DeleteDirectoryTool(projectRoot));
-        _agentToolRegistry.Register(new ListFilesTool(projectRoot));
-        _agentToolRegistry.Register(new SearchFilesTool(projectRoot));
+        _agentToolRegistry.Register(new ListFilesTool(projectRoot, _externalContextDirectoryRegistry));
+        _agentToolRegistry.Register(new SearchFilesTool(projectRoot, _externalContextDirectoryRegistry));
         _agentToolRegistry.Register(new RunBuildTool(_viewModel.BuildService, projectRoot));
         _agentToolRegistry.Register(new GetDiagnosticsTool(_viewModel.RoslynService, projectRoot));
         _agentToolRegistry.Register(new PresentationNewTool(_presentationService));
         _agentToolRegistry.Register(new FindLineTool(projectRoot));
         _agentToolRegistry.Register(new PresentationAddSlideTool(_presentationService, projectRoot));
+    }
+
+    private AiContextDocumentSnapshot? GetCurrentDocumentSnapshot()
+    {
+        OpenFileTab? activeTab = _viewModel.ActiveTab;
+        if (activeTab is null || string.IsNullOrWhiteSpace(activeTab.FilePath))
+        {
+            return null;
+        }
+
+        return new AiContextDocumentSnapshot(activeTab.FilePath, activeTab.DisplayName, activeTab.Document.Text);
+    }
+
+    private IReadOnlyList<AiContextDocumentSnapshot> GetOpenDocumentSnapshots()
+    {
+        List<AiContextDocumentSnapshot> snapshots = [];
+
+        foreach (OpenFileTab openTab in _viewModel.OpenTabs)
+        {
+            snapshots.Add(new AiContextDocumentSnapshot(openTab.FilePath, openTab.DisplayName, openTab.Document.Text));
+        }
+
+        return snapshots;
+    }
+
+    private AiBuildOutputSnapshot? GetBuildOutputSnapshot()
+    {
+        if (string.IsNullOrWhiteSpace(_viewModel.BuildSummary) && _viewModel.BuildOutputLines.Count == 0)
+        {
+            return null;
+        }
+
+        return new AiBuildOutputSnapshot(_viewModel.BuildSummary, _viewModel.BuildOutputLines.ToList());
     }
 
     /// <summary>

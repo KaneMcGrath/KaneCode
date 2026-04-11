@@ -1,3 +1,4 @@
+using KaneCode.Services.Ai;
 using System.IO;
 using System.Text;
 using System.Text.Json;
@@ -27,7 +28,7 @@ internal sealed class ListFilesTool : IAgentTool
             "properties": {
                 "directory": {
                     "type": "string",
-                    "description": "The directory to list. Can be absolute or relative to the loaded project root, but must stay inside the loaded project. Defaults to the project root if omitted."
+                    "description": "The directory to list. Can be absolute or relative to the loaded project root, or inside an attached external context folder for the current request. Defaults to the project root if omitted."
                 }
             },
             "required": []
@@ -35,18 +36,20 @@ internal sealed class ListFilesTool : IAgentTool
         """).RootElement.Clone();
 
     private readonly Func<string?> _projectRootProvider;
+    private readonly ExternalContextDirectoryRegistry? _externalContextDirectoryRegistry;
 
-    public ListFilesTool(Func<string?> projectRootProvider)
+    public ListFilesTool(Func<string?> projectRootProvider, ExternalContextDirectoryRegistry? externalContextDirectoryRegistry = null)
     {
         ArgumentNullException.ThrowIfNull(projectRootProvider);
         _projectRootProvider = projectRootProvider;
+        _externalContextDirectoryRegistry = externalContextDirectoryRegistry;
     }
 
     public string Name => "list_files";
 
     public string Description =>
         "List all files in a directory (recursively). Defaults to the project root if no directory is given. " +
-        $"Returns relative paths, up to {MaxFileCount} files. Common noise directories (bin, obj, .git, node_modules, etc.) are excluded.";
+        $"Returns relative paths, up to {MaxFileCount} files. Common noise directories (bin, obj, .git, node_modules, etc.) are excluded. Supports request-scoped external context folders.";
 
     public JsonElement ParametersSchema => Schema;
 
@@ -63,7 +66,10 @@ internal sealed class ListFilesTool : IAgentTool
         {
             resolvedRoot = string.IsNullOrWhiteSpace(directoryArg)
                 ? AgentToolPathResolver.GetProjectRootDirectory(_projectRootProvider)
-                : AgentToolPathResolver.ResolvePath(_projectRootProvider, directoryArg);
+                : AgentToolPathResolver.ResolvePath(
+                    _projectRootProvider,
+                    directoryArg,
+                    _externalContextDirectoryRegistry?.GetAllowedDirectories());
         }
         catch (Exception ex) when (ex is InvalidOperationException or ArgumentException or NotSupportedException or PathTooLongException)
         {
