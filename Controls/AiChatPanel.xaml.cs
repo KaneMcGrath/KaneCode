@@ -400,7 +400,7 @@ public partial class AiChatPanel : UserControl
     // ── Reference management ───────────────────────────────────────
 
     /// <summary>
-    /// Adds a file reference to the current conversation context.
+    /// Adds a file reference to the next message context.
     /// </summary>
     internal void AddFileReference(string filePath)
     {
@@ -490,24 +490,89 @@ public partial class AiChatPanel : UserControl
     /// <summary>
     /// Builds the context injection text from all attached references.
     /// </summary>
-    private string BuildReferenceContext()
+    internal static string BuildReferenceContext(IReadOnlyList<AiChatReference> references)
     {
-        if (_references.Count == 0)
+        ArgumentNullException.ThrowIfNull(references);
+
+        if (references.Count == 0)
         {
             return string.Empty;
         }
 
-        var sb = new System.Text.StringBuilder();
+        System.Text.StringBuilder sb = new();
         sb.AppendLine("The user has attached the following files for reference:");
         sb.AppendLine();
 
-        foreach (var reference in _references)
+        foreach (AiChatReference reference in references)
         {
             sb.AppendLine(reference.ToContextString());
             sb.AppendLine();
         }
 
         return sb.ToString();
+    }
+
+    internal static string BuildPendingPromptContext(IReadOnlyList<AiChatReference> references, string? selectionContext)
+    {
+        ArgumentNullException.ThrowIfNull(references);
+
+        List<string> sections = [];
+        string referenceContext = BuildReferenceContext(references).TrimEnd();
+
+        if (!string.IsNullOrWhiteSpace(referenceContext))
+        {
+            sections.Add(referenceContext);
+        }
+
+        if (!string.IsNullOrWhiteSpace(selectionContext))
+        {
+            sections.Add(selectionContext.TrimEnd());
+        }
+
+        return string.Join("\n\n", sections);
+    }
+
+    internal static List<AiChatMessage> BuildRequestConversationHistory(IReadOnlyList<AiChatMessage> persistedConversationHistory, string outboundUserContent)
+    {
+        ArgumentNullException.ThrowIfNull(persistedConversationHistory);
+        ArgumentException.ThrowIfNullOrWhiteSpace(outboundUserContent);
+
+        List<AiChatMessage> requestConversationHistory = persistedConversationHistory
+            .Select(CloneConversationMessage)
+            .ToList();
+
+        if (requestConversationHistory.Count == 0 || requestConversationHistory[^1].Role != AiChatRole.User)
+        {
+            throw new InvalidOperationException("The request conversation history must end with a user message.");
+        }
+
+        requestConversationHistory[^1] = requestConversationHistory[^1] with { Content = outboundUserContent };
+        return requestConversationHistory;
+    }
+
+    private static AiChatMessage CloneConversationMessage(AiChatMessage message)
+    {
+        ArgumentNullException.ThrowIfNull(message);
+
+        return message with
+        {
+            ToolCalls = message.ToolCalls is null ? null : [.. message.ToolCalls]
+        };
+    }
+
+    private void ClearPendingReferences()
+    {
+        _references.Clear();
+        RenderReferenceTags();
+    }
+
+    private void AddMessageToHistories(List<AiChatMessage> requestConversationHistory, AiChatMessage message)
+    {
+        ArgumentNullException.ThrowIfNull(requestConversationHistory);
+        ArgumentNullException.ThrowIfNull(message);
+
+        _conversationHistory.Add(message);
+        requestConversationHistory.Add(CloneConversationMessage(message));
     }
 
     private void AddReferenceButton_Click(object sender, RoutedEventArgs e)
@@ -761,6 +826,7 @@ public partial class AiChatPanel : UserControl
     {
         CancelStreaming();
         _conversationHistory.Clear();
+        ClearPendingReferences();
         _streamSections.Clear();
         MessagePanel.Children.Clear();
         PinnedSectionPanel.Children.Clear();
@@ -963,7 +1029,6 @@ public partial class AiChatPanel : UserControl
         InputBox.Text = string.Empty;
 
         string outboundUserContent;
-
         string displayedUserContent;
 
         // Inject project-wide system context once per conversation
@@ -980,30 +1045,22 @@ public partial class AiChatPanel : UserControl
             _projectContextInjected = true;
         }
 
-        // Add to history with context injection (references + one-shot selection context)
-        string referenceContext = BuildReferenceContext();
+        List<AiChatReference> pendingReferences = [.. _references];
+        string pendingContext = BuildPendingPromptContext(pendingReferences, _pendingSelectionContext);
 
-        System.Text.StringBuilder combinedContext = new();
-        if (!string.IsNullOrEmpty(referenceContext))
-        {
-            combinedContext.AppendLine(referenceContext);
-        }
+        ClearPendingReferences();
+        _pendingSelectionContext = null;
 
-        if (!string.IsNullOrEmpty(_pendingSelectionContext))
-        {
-            combinedContext.AppendLine(_pendingSelectionContext);
-            _pendingSelectionContext = null; // one-shot context
-        }
-
-        outboundUserContent = combinedContext.Length > 0
-            ? $"{combinedContext}\n{text}"
-            : text;
+        outboundUserContent = string.IsNullOrWhiteSpace(pendingContext)
+            ? text
+            : $"{pendingContext}\n\n{text}";
 
         displayedUserContent = GetDisplayedUserMessageContent(text, outboundUserContent, IsRawTextModeEnabled());
 
         AppendUserMessage(displayedUserContent);
 
-        _conversationHistory.Add(new AiChatMessage(AiChatRole.User, outboundUserContent));
+        _conversationHistory.Add(new AiChatMessage(AiChatRole.User, text));
+        List<AiChatMessage> requestConversationHistory = BuildRequestConversationHistory(_conversationHistory, outboundUserContent);
 
         SavePersistedConversation();
 
@@ -1060,7 +1117,7 @@ public partial class AiChatPanel : UserControl
 
                 bool toolsEnabled = _activeMode?.ToolsEnabled == true;
                 int outboundTokenBudget = GetOutboundTokenBudget();
-                AiContextWindowSnapshot contextWindow = AiContextWindowBuilder.Build(_conversationHistory, outboundTokenBudget, toolsEnabled);
+                AiContextWindowSnapshot contextWindow = AiContextWindowBuilder.Build(requestConversationHistory, outboundTokenBudget, toolsEnabled);
                 IReadOnlyList<AiChatMessage> outboundMessages = BuildOutboundMessages(contextWindow.Messages, toolsDef);
 
                 await Dispatcher.InvokeAsync(() =>
@@ -1392,10 +1449,11 @@ public partial class AiChatPanel : UserControl
 
                     if (pendingToolCalls.Count == 0)
                     {
-                        _conversationHistory.Add(new AiChatMessage(AiChatRole.Assistant, responseBuilder.ToString())
+                        AiChatMessage toolFreeAssistantMessage = new(AiChatRole.Assistant, responseBuilder.ToString())
                         {
                             ThinkingContent = reasoningBuilder.ToString()
-                        });
+                        };
+                        AddMessageToHistories(requestConversationHistory, toolFreeAssistantMessage);
                         SavePersistedConversation();
                         break;
                     }
@@ -1412,11 +1470,12 @@ public partial class AiChatPanel : UserControl
                         })
                         .ToList();
 
-                    _conversationHistory.Add(new AiChatMessage(AiChatRole.Assistant, responseBuilder.ToString())
+                    AiChatMessage toolCallingAssistantMessage = new(AiChatRole.Assistant, responseBuilder.ToString())
                     {
                         ThinkingContent = reasoningBuilder.ToString(),
                         ToolCalls = toolCallRequests
-                    });
+                    };
+                    AddMessageToHistories(requestConversationHistory, toolCallingAssistantMessage);
 
                     // Execute each tool call and append results
                     foreach (AiStreamToolCall toolCall in pendingToolCalls)
@@ -1497,10 +1556,11 @@ public partial class AiChatPanel : UserControl
                             ? result.Output
                             : $"Error: {result.Error}";
 
-                        _conversationHistory.Add(new AiChatMessage(AiChatRole.Tool, resultContent)
+                        AiChatMessage toolMessage = new(AiChatRole.Tool, resultContent)
                         {
                             ToolCallId = toolCallId
-                        });
+                        };
+                        AddMessageToHistories(requestConversationHistory, toolMessage);
 
                         await Dispatcher.InvokeAsync(() =>
                         {
@@ -1534,11 +1594,12 @@ public partial class AiChatPanel : UserControl
                         .Select(tc => new AiToolCallRequest($"malformed_tool_call_{iteration}_{tc.Index}", tc.FunctionName, tc.ArgumentsJson))
                         .ToList();
 
-                    _conversationHistory.Add(new AiChatMessage(AiChatRole.Assistant, sanitizedResponseContent)
+                    AiChatMessage malformedAssistantMessage = new(AiChatRole.Assistant, sanitizedResponseContent)
                     {
                         ThinkingContent = reasoningBuilder.ToString(),
                         ToolCalls = toolCallRequests
-                    });
+                    };
+                    AddMessageToHistories(requestConversationHistory, malformedAssistantMessage);
 
                     foreach (RecoveredMalformedToolCall recoveredToolCall in recoveredMalformedToolCalls)
                     {
@@ -1591,10 +1652,11 @@ public partial class AiChatPanel : UserControl
                         ToolCallResult result = ToolCallResult.Fail(recoveredToolCall.Error);
                         await LogToolFailureAsync(recoveredToolCall.FunctionName, toolCallId, recoveredToolCall.ArgumentsJson, result);
 
-                        _conversationHistory.Add(new AiChatMessage(AiChatRole.Tool, $"Error: {recoveredToolCall.Error}")
+                        AiChatMessage malformedToolMessage = new(AiChatRole.Tool, $"Error: {recoveredToolCall.Error}")
                         {
                             ToolCallId = toolCallId
-                        });
+                        };
+                        AddMessageToHistories(requestConversationHistory, malformedToolMessage);
 
                         await Dispatcher.InvokeAsync(() =>
                         {
@@ -1617,10 +1679,11 @@ public partial class AiChatPanel : UserControl
                 }
 
                 // No tool calls — this is the final content response
-                _conversationHistory.Add(new AiChatMessage(AiChatRole.Assistant, responseBuilder.ToString())
+                AiChatMessage finalAssistantMessage = new(AiChatRole.Assistant, responseBuilder.ToString())
                 {
                     ThinkingContent = reasoningBuilder.ToString()
-                });
+                };
+                AddMessageToHistories(requestConversationHistory, finalAssistantMessage);
                 SavePersistedConversation();
                 break;
             }
