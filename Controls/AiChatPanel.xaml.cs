@@ -1528,11 +1528,13 @@ public partial class AiChatPanel : UserControl
 
                 if (_activeMode?.ToolsEnabled == true && recoveredMalformedToolCalls.Count > 0)
                 {
+                    string sanitizedResponseContent = MalformedToolCallRecovery.StripToolCallMarkup(responseBuilder.ToString());
+
                     List<AiToolCallRequest> toolCallRequests = recoveredMalformedToolCalls
                         .Select(tc => new AiToolCallRequest($"malformed_tool_call_{iteration}_{tc.Index}", tc.FunctionName, tc.ArgumentsJson))
                         .ToList();
 
-                    _conversationHistory.Add(new AiChatMessage(AiChatRole.Assistant, responseBuilder.ToString())
+                    _conversationHistory.Add(new AiChatMessage(AiChatRole.Assistant, sanitizedResponseContent)
                     {
                         ThinkingContent = reasoningBuilder.ToString(),
                         ToolCalls = toolCallRequests

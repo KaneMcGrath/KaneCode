@@ -42,9 +42,43 @@ public class MalformedToolCallRecoveryTests
         RecoveredMalformedToolCall recoveredToolCall = Assert.Single(result);
         Assert.Equal("read_file", recoveredToolCall.FunctionName);
         Assert.Contains("assistant reasoning", recoveredToolCall.Error, StringComparison.Ordinal);
+        Assert.DoesNotContain("README.md", recoveredToolCall.Error, StringComparison.Ordinal);
 
         using JsonDocument argsDocument = JsonDocument.Parse(recoveredToolCall.ArgumentsJson);
         Assert.Equal("README.md", argsDocument.RootElement.GetProperty("filePath").GetString());
+    }
+
+    [Fact]
+    public void WhenResponseContainsMalformedToolCallMarkupThenStripToolCallMarkupRemovesItFromContext()
+    {
+        string response = """
+            I will inspect the file.
+            <tool_call>
+            <function=read_file>
+            <parameter=filePath>
+            README.md
+            </parameter>
+            </function>
+            </tool_call>
+            Then I will summarize the result.
+            """;
+
+        string result = MalformedToolCallRecovery.StripToolCallMarkup(response);
+
+        Assert.Contains("I will inspect the file.", result, StringComparison.Ordinal);
+        Assert.Contains("Then I will summarize the result.", result, StringComparison.Ordinal);
+        Assert.DoesNotContain("<tool_call>", result, StringComparison.Ordinal);
+        Assert.DoesNotContain("README.md", result, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void WhenTextDoesNotContainMalformedToolCallMarkupThenStripToolCallMarkupReturnsOriginalText()
+    {
+        string response = "No tool call markup here.";
+
+        string result = MalformedToolCallRecovery.StripToolCallMarkup(response);
+
+        Assert.Equal(response, result);
     }
 
     [Fact]

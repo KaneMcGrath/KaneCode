@@ -42,6 +42,40 @@ internal static class MalformedToolCallRecovery
         return recoveredToolCalls;
     }
 
+    public static string StripToolCallMarkup(string? text)
+    {
+        if (string.IsNullOrEmpty(text))
+        {
+            return text ?? string.Empty;
+        }
+
+        List<ToolCallMarkupSegment> segments = EnumerateToolCallMarkup(text).ToList();
+        if (segments.Count == 0)
+        {
+            return text;
+        }
+
+        StringBuilder builder = new();
+        int currentIndex = 0;
+
+        foreach (ToolCallMarkupSegment segment in segments)
+        {
+            if (segment.StartIndex > currentIndex)
+            {
+                builder.Append(text, currentIndex, segment.StartIndex - currentIndex);
+            }
+
+            currentIndex = segment.EndIndex;
+        }
+
+        if (currentIndex < text.Length)
+        {
+            builder.Append(text, currentIndex, text.Length - currentIndex);
+        }
+
+        return builder.ToString().Trim();
+    }
+
     private static void AddRecoveredToolCalls(List<RecoveredMalformedToolCall> recoveredToolCalls, string? text, string source)
     {
         if (string.IsNullOrWhiteSpace(text))
@@ -51,7 +85,6 @@ internal static class MalformedToolCallRecovery
 
         foreach (ToolCallMarkupSegment segment in EnumerateToolCallMarkup(text))
         {
-            string rawText = segment.RawText;
             string? functionName = TryGetFunctionName(segment.Body);
             string argumentsJson = "{}";
             string error;
@@ -76,15 +109,14 @@ internal static class MalformedToolCallRecovery
                 : functionName;
 
             string recoveryError = parseSucceeded
-                ? $"Malformed tool call detected in assistant {source}. The model wrote tool markup instead of invoking the tool API. Retry the same call as a real tool invocation. Raw tool text: {rawText}"
-                : $"Malformed tool call detected in assistant {source}. {error} Retry using a real tool invocation. Raw tool text: {rawText}";
+                ? $"Malformed tool call detected in assistant {source}. The model wrote tool markup instead of invoking the tool API. Retry the same call as a real tool invocation."
+                : $"Malformed tool call detected in assistant {source}. {error} Retry using a real tool invocation.";
 
             recoveredToolCalls.Add(new RecoveredMalformedToolCall(
                 recoveredToolCalls.Count,
                 resolvedFunctionName,
                 argumentsJson,
-                recoveryError,
-                rawText));
+                recoveryError));
         }
     }
 
@@ -134,7 +166,7 @@ internal static class MalformedToolCallRecovery
             string rawText = text[toolCallStart..rawTextEnd].Trim();
             string body = text[bodyStart..bodyEnd];
 
-            yield return new ToolCallMarkupSegment(rawText, body, isComplete);
+            yield return new ToolCallMarkupSegment(rawText, body, isComplete, toolCallStart, rawTextEnd);
             searchStart = rawTextEnd;
         }
     }
@@ -229,7 +261,9 @@ internal sealed record StreamingMalformedToolCall(
 internal sealed record ToolCallMarkupSegment(
     string RawText,
     string Body,
-    bool IsComplete);
+    bool IsComplete,
+    int StartIndex,
+    int EndIndex);
 
 /// <summary>
 /// Represents a malformed tool call recovered from assistant text.
@@ -238,5 +272,4 @@ internal sealed record RecoveredMalformedToolCall(
     int Index,
     string FunctionName,
     string ArgumentsJson,
-    string Error,
-    string RawText);
+    string Error);
