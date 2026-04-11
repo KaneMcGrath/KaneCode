@@ -142,7 +142,15 @@ public class AiChatPanelTests
         string result = AiChatPanel.BuildPendingPromptContext([reference], "Selection context:");
         string normalizedResult = result.Replace("\r\n", "\n", StringComparison.Ordinal);
 
-        Assert.Equal("The user has attached the following context for this request:\n\n[File: Example.cs]\n```\nclass Example { }\n```\n\nSelection context:", normalizedResult);
+        Assert.Equal("The user has attached the following context for this conversation:\n\n[File: Example.cs]\n```\nclass Example { }\n```\n\nSelection context:", normalizedResult);
+    }
+
+    [Fact]
+    public void WhenCreatingConversationTitleThenWhitespaceAndNewlinesAreCollapsed()
+    {
+        string result = AiChatPanel.CreateConversationTitle("Explain this class\r\n\r\nwith examples");
+
+        Assert.Equal("Explain this class with examples", result);
     }
 
     [Fact]

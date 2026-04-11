@@ -54,7 +54,7 @@ public sealed class AiContextReferenceFactoryTests : IDisposable
         AiChatReference reference = AiContextReferenceFactory.CreateExternalFolderReference(folderPath);
         string normalizedContext = reference.ToContextString().Replace("\r\n", "\n", StringComparison.Ordinal);
 
-        Assert.Contains("For this request only, the agent may use read_file, list_files, and search_files", normalizedContext, StringComparison.Ordinal);
+        Assert.Contains("For this conversation, the agent may use read_file, list_files, and search_files", normalizedContext, StringComparison.Ordinal);
         Assert.Contains("notes.txt", normalizedContext, StringComparison.Ordinal);
     }
 

@@ -19,8 +19,7 @@ namespace KaneCode.Controls;
 /// </summary>
 public partial class AiChatPanel : UserControl
 {
-    private readonly List<AiChatMessage> _conversationHistory = [];
-    private readonly List<AiChatReference> _references = [];
+    private readonly AiConversationState _conversationState = new();
     private readonly List<StreamSectionVisual> _streamSections = [];
     private IAiProvider? _provider;
     private AiProviderRegistry? _providerRegistry;
@@ -40,9 +39,10 @@ public partial class AiChatPanel : UserControl
     private AiDebugLogService? _debugLogService;
     private ExternalContextDirectoryRegistry? _externalContextDirectoryRegistry;
     private IAiChatMode? _activeMode;
+    private AiConversation? _activeConversation;
     private ListBox? _mentionPopup;
     private string? _pendingSelectionContext;
-    private bool _projectContextInjected;
+    private bool _isUpdatingConversationSelection;
     private const int DefaultOutboundTokenBudget = AiProviderSettings.DefaultContextLength;
     private const int MaxToolCallIterations = 150;
 
@@ -96,6 +96,8 @@ public partial class AiChatPanel : UserControl
     public AiChatPanel()
     {
         InitializeComponent();
+        EnsureActiveConversation();
+        RefreshConversationSelector();
         ResetContextWindowBar();
         Loaded += AiChatPanel_Loaded;
         MessageScroller.ScrollChanged += MessageScroller_ScrollChanged;
@@ -109,7 +111,6 @@ public partial class AiChatPanel : UserControl
     {
         _provider = provider;
         _model = model;
-        _projectContextInjected = false;
     }
 
     internal static IReadOnlyList<string> BuildSelectableModelList(IReadOnlyList<string> discoveredModels, string? preferredModel)
@@ -366,21 +367,28 @@ public partial class AiChatPanel : UserControl
 
     private void TryLoadPersistedConversation()
     {
-        var key = _projectConversationKeyProvider?.Invoke();
+        string? key = _projectConversationKeyProvider?.Invoke();
         if (string.IsNullOrWhiteSpace(key))
         {
+            EnsureActiveConversation();
+            RefreshConversationSelector();
+            RenderActiveConversation();
             return;
         }
 
         try
         {
-            var loaded = AiConversationStore.Load(key);
-            _conversationHistory.Clear();
-            _conversationHistory.AddRange(loaded);
+            AiConversationState loadedState = AiConversationStore.LoadState(key);
+            _conversationState.Conversations.Clear();
+            _conversationState.Conversations.AddRange(loadedState.Conversations);
+            _conversationState.ActiveConversationId = loadedState.ActiveConversationId;
+            AiConversation activeConversation = EnsureActiveConversation();
+            RefreshConversationSelector();
+            RenderActiveConversation();
 
-            if (loaded.Count > 0)
+            if (loadedState.Conversations.Count > 0)
             {
-                AppendSystemMessage($"Loaded {loaded.Count} prior messages for this project.");
+                AppendSystemMessage($"Loaded {loadedState.Conversations.Count} saved conversation(s) for this project.");
             }
         }
         catch (IOException ex)
@@ -399,13 +407,11 @@ public partial class AiChatPanel : UserControl
         {
             AppendSystemMessage($"Saved conversation history JSON is invalid: {ex.Message}");
         }
-
-        RefreshContextWindowDisplay();
     }
 
     private void SavePersistedConversation()
     {
-        var key = _projectConversationKeyProvider?.Invoke();
+        string? key = _projectConversationKeyProvider?.Invoke();
         if (string.IsNullOrWhiteSpace(key))
         {
             return;
@@ -413,7 +419,10 @@ public partial class AiChatPanel : UserControl
 
         try
         {
-            AiConversationStore.Save(key, _conversationHistory);
+            AiConversation activeConversation = EnsureActiveConversation();
+            TouchConversation(activeConversation);
+            _conversationState.ActiveConversationId = activeConversation.Id;
+            AiConversationStore.SaveState(key, _conversationState);
         }
         catch (IOException ex)
         {
@@ -439,26 +448,33 @@ public partial class AiChatPanel : UserControl
     {
         ArgumentNullException.ThrowIfNull(reference);
 
-        if (_references.Any(existingReference => AreSameReference(existingReference, reference)))
+        AiConversation conversation = EnsureActiveConversation();
+
+        if (conversation.References.Any(existingReference => AreSameReference(existingReference, reference)))
         {
             return;
         }
 
-        _references.Add(reference);
+        conversation.References.Add(reference);
+        TouchConversation(conversation);
         RenderReferenceTags();
+        SavePersistedConversation();
     }
 
     private void RemoveReference(AiChatReference reference)
     {
-        _references.Remove(reference);
+        AiConversation conversation = EnsureActiveConversation();
+        conversation.References.Remove(reference);
+        TouchConversation(conversation);
         RenderReferenceTags();
+        SavePersistedConversation();
     }
 
     private void RenderReferenceTags()
     {
         ReferenceTagsPanel.Children.Clear();
 
-        foreach (AiChatReference reference in _references)
+        foreach (AiChatReference reference in EnsureActiveConversation().References)
         {
             Border tag = CreateReferenceTag(reference);
             ReferenceTagsPanel.Children.Add(tag);
@@ -551,7 +567,7 @@ public partial class AiChatPanel : UserControl
         }
 
         System.Text.StringBuilder sb = new();
-        sb.AppendLine("The user has attached the following context for this request:");
+        sb.AppendLine("The user has attached the following context for this conversation:");
         sb.AppendLine();
 
         foreach (AiChatReference reference in references)
@@ -611,10 +627,136 @@ public partial class AiChatPanel : UserControl
         };
     }
 
-    private void ClearPendingReferences()
+    internal static string CreateConversationTitle(string messageText)
     {
-        _references.Clear();
+        ArgumentException.ThrowIfNullOrWhiteSpace(messageText);
+
+        string singleLineTitle = string.Join(
+            " ",
+            messageText
+                .Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
+
+        if (string.IsNullOrWhiteSpace(singleLineTitle))
+        {
+            return "New conversation";
+        }
+
+        return singleLineTitle.Length <= 48
+            ? singleLineTitle
+            : singleLineTitle[..47] + "…";
+    }
+
+    private AiConversation EnsureActiveConversation()
+    {
+        if (_activeConversation is not null)
+        {
+            return _activeConversation;
+        }
+
+        if (_conversationState.Conversations.Count == 0)
+        {
+            AiConversation conversation = CreateConversation();
+            _conversationState.Conversations.Add(conversation);
+            _conversationState.ActiveConversationId = conversation.Id;
+            _activeConversation = conversation;
+            return conversation;
+        }
+
+        AiConversation? existingConversation = _conversationState.Conversations
+            .FirstOrDefault(conversation => string.Equals(conversation.Id, _conversationState.ActiveConversationId, StringComparison.Ordinal));
+
+        _activeConversation = existingConversation ?? _conversationState.Conversations[0];
+        _conversationState.ActiveConversationId = _activeConversation.Id;
+        return _activeConversation;
+    }
+
+    private AiConversation CreateConversation()
+    {
+        int conversationNumber = _conversationState.Conversations.Count + 1;
+        DateTimeOffset timestamp = DateTimeOffset.UtcNow;
+
+        return new AiConversation
+        {
+            Title = $"Conversation {conversationNumber}",
+            CreatedUtc = timestamp,
+            UpdatedUtc = timestamp
+        };
+    }
+
+    private void RefreshConversationSelector()
+    {
+        AiConversation activeConversation = EnsureActiveConversation();
+        _isUpdatingConversationSelection = true;
+
+        try
+        {
+            ConversationSelector.ItemsSource = null;
+            ConversationSelector.ItemsSource = _conversationState.Conversations;
+            ConversationSelector.SelectedItem = activeConversation;
+        }
+        finally
+        {
+            _isUpdatingConversationSelection = false;
+        }
+    }
+
+    private void TouchConversation(AiConversation conversation)
+    {
+        ArgumentNullException.ThrowIfNull(conversation);
+        conversation.UpdatedUtc = DateTimeOffset.UtcNow;
+    }
+
+    private void EnsureConversationTitle(AiConversation conversation, string userText)
+    {
+        ArgumentNullException.ThrowIfNull(conversation);
+        ArgumentException.ThrowIfNullOrWhiteSpace(userText);
+
+        if (conversation.Messages.Count > 0 || !conversation.References.Any())
+        {
+            if (!string.Equals(conversation.Title, "New conversation", StringComparison.OrdinalIgnoreCase) &&
+                !conversation.Title.StartsWith("Conversation ", StringComparison.OrdinalIgnoreCase))
+            {
+                return;
+            }
+        }
+
+        if (conversation.Messages.Count == 0)
+        {
+            conversation.Title = CreateConversationTitle(userText);
+        }
+    }
+
+    private static string BuildToolResultHeader(string toolName, string toolCallId)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(toolName);
+        ArgumentException.ThrowIfNullOrWhiteSpace(toolCallId);
+
+        return $"{toolName} ({toolCallId})";
+    }
+
+    private static bool TryParseToolResult(string content, out bool success, out string resultText)
+    {
+        ArgumentNullException.ThrowIfNull(content);
+
+        const string errorPrefix = "Error: ";
+        if (content.StartsWith(errorPrefix, StringComparison.Ordinal))
+        {
+            success = false;
+            resultText = content[errorPrefix.Length..];
+            return true;
+        }
+
+        success = true;
+        resultText = content;
+        return true;
+    }
+
+    private void ClearConversationReferences()
+    {
+        AiConversation conversation = EnsureActiveConversation();
+        conversation.References.Clear();
         RenderReferenceTags();
+        SavePersistedConversation();
     }
 
     private void AddMessageToHistories(List<AiChatMessage> requestConversationHistory, AiChatMessage message)
@@ -622,7 +764,9 @@ public partial class AiChatPanel : UserControl
         ArgumentNullException.ThrowIfNull(requestConversationHistory);
         ArgumentNullException.ThrowIfNull(message);
 
-        _conversationHistory.Add(message);
+        AiConversation conversation = EnsureActiveConversation();
+        conversation.Messages.Add(message);
+        TouchConversation(conversation);
         requestConversationHistory.Add(CloneConversationMessage(message));
     }
 
@@ -645,6 +789,35 @@ public partial class AiChatPanel : UserControl
                 AddReference(reference);
             }
         }
+    }
+
+    private void NewConversationButton_Click(object sender, RoutedEventArgs e)
+    {
+        AiConversation conversation = CreateConversation();
+        _conversationState.Conversations.Insert(0, conversation);
+        _conversationState.ActiveConversationId = conversation.Id;
+        _activeConversation = conversation;
+        RefreshConversationSelector();
+        RenderActiveConversation();
+        SavePersistedConversation();
+    }
+
+    private void ConversationSelector_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_isUpdatingConversationSelection || ConversationSelector.SelectedItem is not AiConversation selectedConversation)
+        {
+            return;
+        }
+
+        if (_activeConversation is not null && string.Equals(_activeConversation.Id, selectedConversation.Id, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        _activeConversation = selectedConversation;
+        _conversationState.ActiveConversationId = selectedConversation.Id;
+        RenderActiveConversation();
+        SavePersistedConversation();
     }
 
     private async void SendButton_Click(object sender, RoutedEventArgs e)
@@ -871,37 +1044,96 @@ public partial class AiChatPanel : UserControl
         }
     }
 
-    private void ClearButton_Click(object sender, RoutedEventArgs e)
+    private void RenderActiveConversation()
     {
+        AiConversation conversation = EnsureActiveConversation();
         CancelStreaming();
-        _conversationHistory.Clear();
-        ClearPendingReferences();
+        _pendingSelectionContext = null;
         _streamSections.Clear();
         MessagePanel.Children.Clear();
         PinnedSectionPanel.Children.Clear();
         PinnedSectionPanel.Visibility = Visibility.Collapsed;
-        _pendingSelectionContext = null;
-        _projectContextInjected = false;
-        ResetContextWindowBar();
+        RenderReferenceTags();
 
-        var key = _projectConversationKeyProvider?.Invoke();
-        if (!string.IsNullOrWhiteSpace(key))
+        Dictionary<string, ToolCallSectionVisual> toolCallBlocks = new(StringComparer.Ordinal);
+        StackPanel? lastAssistantContainer = null;
+        RichTextBox? lastAssistantBlock = null;
+
+        foreach (AiChatMessage message in conversation.Messages)
         {
-            try
+            switch (message.Role)
             {
-                AiConversationStore.Clear(key);
-            }
-            catch (IOException ex)
-            {
-                AppendSystemMessage($"Could not clear conversation history: {ex.Message}");
-            }
-            catch (UnauthorizedAccessException ex)
-            {
-                AppendSystemMessage($"Could not clear conversation history: {ex.Message}");
+                case AiChatRole.System:
+                    AppendSystemMessage(message.Content);
+                    lastAssistantContainer = null;
+                    lastAssistantBlock = null;
+                    break;
+                case AiChatRole.User:
+                    AppendUserMessage(message.Content);
+                    lastAssistantContainer = null;
+                    lastAssistantBlock = null;
+                    break;
+                case AiChatRole.Assistant:
+                    (lastAssistantContainer, lastAssistantBlock) = CreateAssistantMessageBlock();
+
+                    if (!string.IsNullOrWhiteSpace(message.ThinkingContent))
+                    {
+                        (StreamSectionVisual thinkingSection, TextBlock thinkingTextBlock) = CreateThinkingSection(lastAssistantContainer, lastAssistantBlock);
+                        thinkingTextBlock.Text = FormatDisplayedAssistantContent(message.ThinkingContent, ShouldRemoveVerticalWhitespace());
+                        thinkingTextBlock.Visibility = Visibility.Visible;
+                        SetInlineSectionHeader(thinkingSection, "Thought");
+                    }
+
+                    if (message.ToolCalls is not null)
+                    {
+                        foreach (AiToolCallRequest toolCall in message.ToolCalls)
+                        {
+                            ToolCallSectionVisual block = CreateToolCallBlock(toolCall.FunctionName, toolCall.ArgumentsJson, lastAssistantContainer, lastAssistantBlock);
+                            toolCallBlocks[toolCall.Id] = block;
+                        }
+                    }
+
+                    RenderAssistantContent(lastAssistantBlock, message.Content);
+                    break;
+                case AiChatRole.Tool:
+                    if (message.ToolCallId is not null && toolCallBlocks.TryGetValue(message.ToolCallId, out ToolCallSectionVisual? toolCallBlock))
+                    {
+                        TryParseToolResult(message.Content, out bool success, out string resultText);
+                        ToolCallResult toolCallResult = success
+                            ? ToolCallResult.Ok(resultText)
+                            : ToolCallResult.Fail(resultText);
+                        FinalizeToolCallBlock(toolCallBlock, toolCallBlock.Section.HeaderText.Text, toolCallResult);
+                    }
+                    else
+                    {
+                        AppendSystemMessage($"Tool result: {message.Content}");
+                    }
+
+                    break;
             }
         }
 
         RefreshContextWindowDisplay();
+        UpdatePinnedSectionHeaders();
+    }
+
+    private void ClearButton_Click(object sender, RoutedEventArgs e)
+    {
+        CancelStreaming();
+        AiConversation conversation = EnsureActiveConversation();
+        conversation.Messages.Clear();
+        conversation.References.Clear();
+        conversation.ProjectContextInjected = false;
+        if (string.Equals(conversation.Title, "Imported conversation", StringComparison.OrdinalIgnoreCase) ||
+            conversation.Title.StartsWith("Conversation ", StringComparison.OrdinalIgnoreCase))
+        {
+            conversation.Title = "New conversation";
+        }
+
+        TouchConversation(conversation);
+        RefreshConversationSelector();
+        RenderActiveConversation();
+        SavePersistedConversation();
     }
 
     private async void ProviderSelector_SelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -1064,6 +1296,8 @@ public partial class AiChatPanel : UserControl
             return;
         }
 
+        AiConversation conversation = EnsureActiveConversation();
+
         if (_provider is null || !_provider.IsConfigured)
         {
             AppendSystemMessage("No AI provider configured. Go to Options → AI Providers.");
@@ -1081,20 +1315,22 @@ public partial class AiChatPanel : UserControl
         string displayedUserContent;
 
         // Inject project-wide system context once per conversation
-        if (!_projectContextInjected)
+        if (!conversation.ProjectContextInjected)
         {
             IReadOnlyList<ProjectItem> projectItems = _projectItemsProvider?.Invoke() ?? [];
             string projectContext = AiProjectContextBuilder.Build(projectItems);
 
             if (!string.IsNullOrWhiteSpace(projectContext))
             {
-                _conversationHistory.Add(new AiChatMessage(AiChatRole.System, projectContext));
+                conversation.Messages.Add(new AiChatMessage(AiChatRole.System, projectContext));
             }
 
-            _projectContextInjected = true;
+            conversation.ProjectContextInjected = true;
         }
 
-        List<AiChatReference> pendingReferences = [.. _references];
+        EnsureConversationTitle(conversation, text);
+
+        List<AiChatReference> pendingReferences = [.. conversation.References];
         List<string> pendingExternalDirectories = pendingReferences
             .Where(reference => reference.Kind == AiReferenceKind.ExternalFolder)
             .Select(reference => reference.FullPath)
@@ -1102,7 +1338,6 @@ public partial class AiChatPanel : UserControl
             .ToList();
         string pendingContext = BuildPendingPromptContext(pendingReferences, _pendingSelectionContext);
 
-        ClearPendingReferences();
         _pendingSelectionContext = null;
 
         _externalContextDirectoryRegistry?.SetAllowedDirectories(pendingExternalDirectories);
@@ -1115,8 +1350,10 @@ public partial class AiChatPanel : UserControl
 
         AppendUserMessage(displayedUserContent);
 
-        _conversationHistory.Add(new AiChatMessage(AiChatRole.User, text));
-        List<AiChatMessage> requestConversationHistory = BuildRequestConversationHistory(_conversationHistory, outboundUserContent);
+        conversation.Messages.Add(new AiChatMessage(AiChatRole.User, text));
+        TouchConversation(conversation);
+        RefreshConversationSelector();
+        List<AiChatMessage> requestConversationHistory = BuildRequestConversationHistory(conversation.Messages, outboundUserContent);
 
         SavePersistedConversation();
 
@@ -1924,7 +2161,7 @@ public partial class AiChatPanel : UserControl
     private void RefreshContextWindowDisplay()
     {
         bool includeToolMessages = _activeMode?.ToolsEnabled == true;
-        AiContextWindowSnapshot snapshot = AiContextWindowBuilder.Build(_conversationHistory, GetOutboundTokenBudget(), includeToolMessages);
+        AiContextWindowSnapshot snapshot = AiContextWindowBuilder.Build(EnsureActiveConversation().Messages, GetOutboundTokenBudget(), includeToolMessages);
         UpdateContextWindowBar(snapshot.Info);
     }
 
@@ -3081,7 +3318,7 @@ public partial class AiChatPanel : UserControl
 
     private void MessageArea_SaveConversation(object sender, RoutedEventArgs e)
     {
-        if (_conversationHistory.Count == 0)
+        if (EnsureActiveConversation().Messages.Count == 0)
         {
             AppendSystemMessage("No conversation to save.");
             return;
@@ -3089,13 +3326,15 @@ public partial class AiChatPanel : UserControl
 
         try
         {
-            var timestamp = DateTime.Now.ToString("yyyy-MM-dd_HH-mm-ss");
-            var fileName = $"ai-conversation_{timestamp}.txt";
-            var tempPath = Path.Combine(Path.GetTempPath(), fileName);
+            DateTime now = DateTime.Now;
+            string timestamp = now.ToString("yyyy-MM-dd_HH-mm-ss");
+            string fileName = $"ai-conversation_{timestamp}.txt";
+            string tempPath = Path.Combine(Path.GetTempPath(), fileName);
+            AiConversation conversation = EnsureActiveConversation();
 
-            var sb = new System.Text.StringBuilder();
+            System.Text.StringBuilder sb = new();
             sb.AppendLine("═══════════════════════════════════════════════════════════════");
-            sb.AppendLine($"AI Chat Conversation Export — {DateTime.Now:g}");
+            sb.AppendLine($"AI Chat Conversation Export — {now:g}");
             sb.AppendLine("═══════════════════════════════════════════════════════════════");
             sb.AppendLine();
 
@@ -3105,8 +3344,8 @@ public partial class AiChatPanel : UserControl
                 sb.AppendLine();
             }
 
-            var messageCount = 0;
-            foreach (var message in _conversationHistory)
+            int messageCount = 0;
+            foreach (AiChatMessage message in conversation.Messages)
             {
                 sb.AppendLine($"[{message.Role}]");
                 sb.AppendLine("───────────────────────────────────────────────────────────────");
@@ -3117,12 +3356,12 @@ public partial class AiChatPanel : UserControl
 
             sb.AppendLine("═══════════════════════════════════════════════════════════════");
             sb.AppendLine($"Total messages: {messageCount}");
-            sb.AppendLine($"Exported: {DateTime.Now:g}");
+            sb.AppendLine($"Exported: {now:g}");
             sb.AppendLine("═══════════════════════════════════════════════════════════════");
 
             File.WriteAllText(tempPath, sb.ToString(), System.Text.Encoding.UTF8);
 
-            using var process = new Process
+            using Process process = new()
             {
                 StartInfo = new ProcessStartInfo
                 {

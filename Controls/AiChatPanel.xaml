@@ -43,6 +43,55 @@
                         </Style>
                     </ComboBox.Resources>
                 </ComboBox>
+                <StackPanel DockPanel.Dock="Left"
+                            Orientation="Horizontal"
+                            Margin="0,0,8,0">
+                    <ComboBox x:Name="ConversationSelector"
+                              SelectionChanged="ConversationSelector_SelectionChanged"
+                              DisplayMemberPath="Title"
+                              FontSize="11"
+                              MinWidth="170"
+                              VerticalAlignment="Center"
+                              Margin="0,0,6,0"
+                              Foreground="{DynamicResource AiChatForeground}"
+                              Background="{DynamicResource AiChatInputBackground}"
+                              BorderBrush="{DynamicResource AiChatBorder}"
+                              BorderThickness="1"
+                              ToolTip="Select an AI conversation">
+                        <ComboBox.Resources>
+                            <SolidColorBrush x:Key="{x:Static SystemColors.WindowBrushKey}"
+                                             Color="{Binding Color, Source={DynamicResource AiChatInputBackground}}" />
+                            <SolidColorBrush x:Key="{x:Static SystemColors.ControlBrushKey}"
+                                             Color="{Binding Color, Source={DynamicResource AiChatInputBackground}}" />
+                            <Style TargetType="ComboBoxItem">
+                                <Setter Property="Background" Value="{DynamicResource AiChatInputBackground}" />
+                                <Setter Property="Foreground" Value="{DynamicResource AiChatForeground}" />
+                                <Style.Triggers>
+                                    <Trigger Property="IsHighlighted" Value="True">
+                                        <Setter Property="Background" Value="{DynamicResource ButtonMouseOverBackground}" />
+                                        <Setter Property="Foreground" Value="{DynamicResource AiChatSendButtonForeground}" />
+                                    </Trigger>
+                                    <Trigger Property="IsSelected" Value="True">
+                                        <Setter Property="Background" Value="{DynamicResource ButtonPressedBackground}" />
+                                        <Setter Property="Foreground" Value="{DynamicResource AiChatSendButtonForeground}" />
+                                    </Trigger>
+                                </Style.Triggers>
+                            </Style>
+                        </ComboBox.Resources>
+                    </ComboBox>
+                    <Button x:Name="NewConversationButton"
+                            Content="New"
+                            Click="NewConversationButton_Click"
+                            Padding="6,2"
+                            FontSize="11"
+                            VerticalAlignment="Center"
+                            Foreground="{DynamicResource AiChatForeground}"
+                            Background="{DynamicResource AiChatInputBackground}"
+                            BorderBrush="{DynamicResource AiChatBorder}"
+                            BorderThickness="1"
+                            Cursor="Hand"
+                            ToolTip="Start a new AI conversation" />
+                </StackPanel>
                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
                     <Grid Margin="0,0,6,0">
                         <primitives:ToggleButton x:Name="FormattingOptionsButton"

@@ -66,7 +66,7 @@ internal sealed class AiChatReference
             AiReferenceKind.BuildOutput => $"[Build output]\n```text\n{Content}\n```",
             AiReferenceKind.Class => $"[Class: {DisplayName}]\nPath: {FullPath}\n```csharp\n{Content}\n```",
             AiReferenceKind.ExternalFolder =>
-                $"[External folder: {DisplayName}]\nPath: {FullPath}\nThis folder is external context outside the loaded project. For this request only, the agent may use read_file, list_files, and search_files with paths inside this folder.\nFiles:\n{Content}",
+                $"[External folder: {DisplayName}]\nPath: {FullPath}\nThis folder is external context outside the loaded project. For this conversation, the agent may use read_file, list_files, and search_files with paths inside this folder.\nFiles:\n{Content}",
             _ => Content
         };
     }
