@@ -207,6 +207,7 @@ public partial class MainWindow : Window
         AiChatPanel.SetModeRegistry(_aiChatModeRegistry);
         AiChatPanel.SetExternalContextDirectoryRegistry(_externalContextDirectoryRegistry);
         AiDebugPanel.ToolFailures = _aiDebugLogService.ToolFailures;
+        AiDebugPanel.SetDebugLogService(_aiDebugLogService);
     }
     /// </summary>
     private void RegisterAiChatModes()

@@ -47,7 +47,14 @@
                           BorderThickness="0"
                           CanUserSortColumns="True"
                           CanUserResizeColumns="True"
-                          CanUserReorderColumns="False">
+                          CanUserReorderColumns="False"
+                          PreviewMouseRightButtonDown="ToolFailuresGrid_PreviewMouseRightButtonDown">
+                    <DataGrid.ContextMenu>
+                        <ContextMenu>
+                            <MenuItem Header="Open in text editor"
+                                      Click="ContextMenu_OpenInTextEditor" />
+                        </ContextMenu>
+                    </DataGrid.ContextMenu>
                     <DataGrid.ColumnHeaderStyle>
                         <Style TargetType="DataGridColumnHeader">
                             <Setter Property="Background" Value="{DynamicResource ErrorListHeaderBackground}" />

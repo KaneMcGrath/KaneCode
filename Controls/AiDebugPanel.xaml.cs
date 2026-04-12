@@ -1,8 +1,14 @@
 using KaneCode.Models;
+using KaneCode.Services.Ai;
 using System.Collections.ObjectModel;
 using System.Collections.Specialized;
+using System.ComponentModel;
+using System.Diagnostics;
+using System.IO;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Input;
+using System.Windows.Media;
 
 namespace KaneCode.Controls;
 
@@ -11,6 +17,8 @@ namespace KaneCode.Controls;
 /// </summary>
 public partial class AiDebugPanel : UserControl
 {
+    private AiDebugLogService? _debugLogService;
+
     public AiDebugPanel()
     {
         InitializeComponent();
@@ -28,6 +36,12 @@ public partial class AiDebugPanel : UserControl
     {
         get => (ObservableCollection<AiToolFailureEntry>?)GetValue(ToolFailuresProperty);
         set => SetValue(ToolFailuresProperty, value);
+    }
+
+    internal void SetDebugLogService(AiDebugLogService debugLogService)
+    {
+        ArgumentNullException.ThrowIfNull(debugLogService);
+        _debugLogService = debugLogService;
     }
 
     private static void OnToolFailuresChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
@@ -75,5 +89,88 @@ public partial class AiDebugPanel : UserControl
     private void ClearButton_Click(object sender, RoutedEventArgs e)
     {
         ToolFailures?.Clear();
+    }
+
+    private void ToolFailuresGrid_PreviewMouseRightButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        DataGridRow? row = FindVisualParent<DataGridRow>(e.OriginalSource as DependencyObject);
+        if (row?.Item is AiToolFailureEntry entry)
+        {
+            row.IsSelected = true;
+            ToolFailuresGrid.SelectedItem = entry;
+            ToolFailuresGrid.Focus();
+        }
+    }
+
+    private void ContextMenu_OpenInTextEditor(object sender, RoutedEventArgs e)
+    {
+        if (ToolFailuresGrid.SelectedItem is not AiToolFailureEntry entry)
+        {
+            return;
+        }
+
+        try
+        {
+            string filePath = _debugLogService is null
+                ? AiDebugLogService.ExportToolFailureEntry(entry, Path.GetTempPath())
+                : _debugLogService.ExportToolFailureEntry(entry);
+
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = filePath,
+                UseShellExecute = true
+            });
+        }
+        catch (ArgumentException ex)
+        {
+            ShowExportError(ex.Message);
+        }
+        catch (IOException ex)
+        {
+            ShowExportError(ex.Message);
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            ShowExportError(ex.Message);
+        }
+        catch (Win32Exception ex)
+        {
+            ShowExportError(ex.Message);
+        }
+        catch (InvalidOperationException ex)
+        {
+            ShowExportError(ex.Message);
+        }
+    }
+
+    private void ShowExportError(string message)
+    {
+        Window? owner = Window.GetWindow(this);
+
+        if (owner is null)
+        {
+            MessageBox.Show(message, "AI Debug", MessageBoxButton.OK, MessageBoxImage.Error);
+            return;
+        }
+
+        MessageBox.Show(owner, message, "AI Debug", MessageBoxButton.OK, MessageBoxImage.Error);
+    }
+
+    private static T? FindVisualParent<T>(DependencyObject? dependencyObject)
+        where T : DependencyObject
+    {
+        DependencyObject? current = dependencyObject;
+
+        while (current is not null)
+        {
+            if (current is T parent)
+            {
+                return parent;
+            }
+
+            current = VisualTreeHelper.GetParent(current);
+        }
+
+        return null;
     }
 }
