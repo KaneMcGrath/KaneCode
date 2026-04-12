@@ -37,8 +37,8 @@ internal static class MalformedToolCallRecovery
     public static IReadOnlyList<RecoveredMalformedToolCall> Recover(string? reasoningContent, string? responseContent)
     {
         List<RecoveredMalformedToolCall> recoveredToolCalls = [];
-        AddRecoveredToolCalls(recoveredToolCalls, reasoningContent, "reasoning");
-        AddRecoveredToolCalls(recoveredToolCalls, responseContent, "response");
+        AddRecoveredToolCalls(recoveredToolCalls, reasoningContent);
+        AddRecoveredToolCalls(recoveredToolCalls, responseContent);
         return recoveredToolCalls;
     }
 
@@ -76,7 +76,7 @@ internal static class MalformedToolCallRecovery
         return builder.ToString().Trim();
     }
 
-    private static void AddRecoveredToolCalls(List<RecoveredMalformedToolCall> recoveredToolCalls, string? text, string source)
+    private static void AddRecoveredToolCalls(List<RecoveredMalformedToolCall> recoveredToolCalls, string? text)
     {
         if (string.IsNullOrWhiteSpace(text))
         {
@@ -85,38 +85,21 @@ internal static class MalformedToolCallRecovery
 
         foreach (ToolCallMarkupSegment segment in EnumerateToolCallMarkup(text))
         {
-            string? functionName = TryGetFunctionName(segment.Body);
-            string argumentsJson = "{}";
-            string error;
-            bool parseSucceeded;
-
-            if (segment.IsComplete)
+            if (!segment.IsComplete)
             {
-                parseSucceeded = TryParseToolCall(segment.Body, out string? parsedFunctionName, out argumentsJson, out error);
-                if (!string.IsNullOrWhiteSpace(parsedFunctionName))
-                {
-                    functionName = parsedFunctionName;
-                }
-            }
-            else
-            {
-                parseSucceeded = false;
-                error = "The tool-call markup did not contain a closing </tool_call> tag.";
+                continue;
             }
 
-            string resolvedFunctionName = string.IsNullOrWhiteSpace(functionName)
-                ? "invalid_tool_call"
-                : functionName;
-
-            string recoveryError = parseSucceeded
-                ? $"Malformed tool call detected in assistant {source}. The model wrote tool markup instead of invoking the tool API. Retry the same call as a real tool invocation."
-                : $"Malformed tool call detected in assistant {source}. {error} Retry using a real tool invocation.";
+            if (!TryParseToolCall(segment.Body, out string? functionName, out string argumentsJson, out _ ) ||
+                string.IsNullOrWhiteSpace(functionName))
+            {
+                continue;
+            }
 
             recoveredToolCalls.Add(new RecoveredMalformedToolCall(
                 recoveredToolCalls.Count,
-                resolvedFunctionName,
-                argumentsJson,
-                recoveryError));
+                functionName,
+                argumentsJson));
         }
     }
 
@@ -271,5 +254,4 @@ internal sealed record ToolCallMarkupSegment(
 internal sealed record RecoveredMalformedToolCall(
     int Index,
     string FunctionName,
-    string ArgumentsJson,
-    string Error);
+    string ArgumentsJson);

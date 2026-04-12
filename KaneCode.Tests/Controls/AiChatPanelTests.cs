@@ -97,6 +97,36 @@ public class AiChatPanelTests
     }
 
     [Fact]
+    public void WhenToolsEnabledThenVisibleAssistantContentStripsMalformedToolMarkup()
+    {
+        string content = """
+            I will inspect the file.
+            <tool_call>
+            <function=read_file>
+            <parameter=filePath>
+            README.md
+            </parameter>
+            </function>
+            </tool_call>
+            Then I will summarize the result.
+            """;
+
+        string result = AiChatPanel.GetVisibleAssistantContent(content, toolsEnabled: true);
+
+        Assert.Equal("I will inspect the file.\n\nThen I will summarize the result.", result.Replace("\r\n", "\n", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void WhenToolsDisabledThenVisibleAssistantContentRemainsUnchanged()
+    {
+        string content = "Assistant text";
+
+        string result = AiChatPanel.GetVisibleAssistantContent(content, toolsEnabled: false);
+
+        Assert.Equal(content, result);
+    }
+
+    [Fact]
     public void WhenSelectingPinnedSectionsThenOnlyExpandedSectionsCrossingThePinLineAreReturned()
     {
         IReadOnlyList<int> result = AiChatPanel.GetPinnedSectionIndexes(

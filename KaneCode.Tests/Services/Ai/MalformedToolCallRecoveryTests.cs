@@ -25,7 +25,7 @@ public class MalformedToolCallRecoveryTests
     }
 
     [Fact]
-    public void WhenReasoningContainsMalformedToolCallMarkupThenRecoveryReturnsSyntheticFailure()
+    public void WhenReasoningContainsMalformedToolCallMarkupThenRecoveryReturnsExecutableToolCall()
     {
         string reasoning = """
             <tool_call>
@@ -41,8 +41,6 @@ public class MalformedToolCallRecoveryTests
 
         RecoveredMalformedToolCall recoveredToolCall = Assert.Single(result);
         Assert.Equal("read_file", recoveredToolCall.FunctionName);
-        Assert.Contains("assistant reasoning", recoveredToolCall.Error, StringComparison.Ordinal);
-        Assert.DoesNotContain("README.md", recoveredToolCall.Error, StringComparison.Ordinal);
 
         using JsonDocument argsDocument = JsonDocument.Parse(recoveredToolCall.ArgumentsJson);
         Assert.Equal("README.md", argsDocument.RootElement.GetProperty("filePath").GetString());
@@ -82,7 +80,7 @@ public class MalformedToolCallRecoveryTests
     }
 
     [Fact]
-    public void WhenToolCallMarkupIsIncompleteThenRecoveryKeepsFunctionNameAndReturnsFailure()
+    public void WhenToolCallMarkupIsIncompleteThenRecoveryReturnsEmpty()
     {
         string response = """
             <tool_call>
@@ -95,14 +93,11 @@ public class MalformedToolCallRecoveryTests
 
         IReadOnlyList<RecoveredMalformedToolCall> result = MalformedToolCallRecovery.Recover(string.Empty, response);
 
-        RecoveredMalformedToolCall recoveredToolCall = Assert.Single(result);
-        Assert.Equal("read_file", recoveredToolCall.FunctionName);
-        Assert.Contains("did not contain a complete function block", recoveredToolCall.Error, StringComparison.Ordinal);
-        Assert.Equal("{}", recoveredToolCall.ArgumentsJson);
+        Assert.Empty(result);
     }
 
     [Fact]
-    public void WhenToolCallMarkupDoesNotCloseThenRecoveryReturnsInvalidToolCallFailure()
+    public void WhenToolCallMarkupDoesNotCloseThenRecoveryReturnsEmpty()
     {
         string reasoning = """
             <tool_call>
@@ -115,10 +110,7 @@ public class MalformedToolCallRecoveryTests
 
         IReadOnlyList<RecoveredMalformedToolCall> result = MalformedToolCallRecovery.Recover(reasoning, string.Empty);
 
-        RecoveredMalformedToolCall recoveredToolCall = Assert.Single(result);
-        Assert.Equal("read_file", recoveredToolCall.FunctionName);
-        Assert.Contains("did not contain a closing </tool_call> tag", recoveredToolCall.Error, StringComparison.Ordinal);
-        Assert.Equal("{}", recoveredToolCall.ArgumentsJson);
+        Assert.Empty(result);
     }
 
     [Fact]
