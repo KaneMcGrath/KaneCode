@@ -9,6 +9,10 @@ namespace KaneCode.Services.Ai.Tools;
 /// </summary>
 internal sealed class EditFileTool : IAgentTool
 {
+    private readonly record struct TextMatch(int StartIndex, int Length);
+
+    private readonly record struct LineSegment(int StartIndex, int Length, bool HasTrailingNewline);
+
     private static readonly JsonElement Schema = JsonDocument.Parse("""
         {
             "type": "object",
@@ -132,12 +136,7 @@ internal sealed class EditFileTool : IAgentTool
         string normalizedContent = NormalizeLineEndings(originalContent);
 
         int matchCount = CountOccurrences(normalizedContent, oldText);
-
-        if (matchCount == 0)
-        {
-            return Task.FromResult(ToolCallResult.Fail(
-                $"oldText not found in '{filePath}'. Ensure the text matches exactly, including whitespace and line endings."));
-        }
+        TextMatch match;
 
         if (matchCount > 1)
         {
@@ -145,8 +144,33 @@ internal sealed class EditFileTool : IAgentTool
                 $"oldText matches {matchCount} locations in '{filePath}'. Provide more surrounding context to make it unique."));
         }
 
+        if (matchCount == 1)
+        {
+            int matchIndex = normalizedContent.IndexOf(oldText, StringComparison.Ordinal);
+            match = new TextMatch(matchIndex, oldText.Length);
+        }
+        else
+        {
+            IReadOnlyList<TextMatch> indentationInsensitiveMatches = FindIndentationInsensitiveMatches(normalizedContent, oldText);
+
+            if (indentationInsensitiveMatches.Count == 0)
+            {
+                return Task.FromResult(ToolCallResult.Fail(
+                    $"oldText not found in '{filePath}'. Ensure the text matches exactly, including whitespace and line endings."));
+            }
+
+            if (indentationInsensitiveMatches.Count > 1)
+            {
+                return Task.FromResult(ToolCallResult.Fail(
+                    $"oldText matches {indentationInsensitiveMatches.Count} locations in '{filePath}'. Provide more surrounding context to make it unique."));
+            }
+
+            match = indentationInsensitiveMatches[0];
+        }
+
         // Perform the replacement on normalized content
-        string updatedNormalizedContent = normalizedContent.Replace(oldText, newText, StringComparison.Ordinal);
+        string updatedNormalizedContent = normalizedContent.Remove(match.StartIndex, match.Length)
+            .Insert(match.StartIndex, newText);
 
         // Convert back to platform-specific line endings before writing
         string finalContent = ConvertToPlatformLineEndings(updatedNormalizedContent);
@@ -166,9 +190,90 @@ internal sealed class EditFileTool : IAgentTool
         }
 
         // Calculate line number in the normalized content
-        int lineNumber = GetLineNumber(normalizedContent, normalizedContent.IndexOf(oldText, StringComparison.Ordinal));
+        int lineNumber = GetLineNumber(normalizedContent, match.StartIndex);
         return Task.FromResult(ToolCallResult.Ok(
             $"Edit applied at line {lineNumber} in '{resolvedPath}'."));
+    }
+
+    private static IReadOnlyList<TextMatch> FindIndentationInsensitiveMatches(string content, string oldText)
+    {
+        List<LineSegment> contentLines = GetLineSegments(content);
+        List<LineSegment> oldTextLines = GetLineSegments(oldText);
+        List<TextMatch> matches = new List<TextMatch>();
+
+        if (oldTextLines.Count == 0 || oldTextLines.Count > contentLines.Count)
+        {
+            return matches;
+        }
+
+        for (int contentLineIndex = 0; contentLineIndex <= contentLines.Count - oldTextLines.Count; contentLineIndex++)
+        {
+            bool isMatch = true;
+
+            for (int oldTextLineIndex = 0; oldTextLineIndex < oldTextLines.Count; oldTextLineIndex++)
+            {
+                LineSegment contentLine = contentLines[contentLineIndex + oldTextLineIndex];
+                LineSegment oldTextLine = oldTextLines[oldTextLineIndex];
+                string contentLineText = content.Substring(contentLine.StartIndex, contentLine.Length);
+                string oldTextLineText = oldText.Substring(oldTextLine.StartIndex, oldTextLine.Length);
+
+                if (contentLine.HasTrailingNewline != oldTextLine.HasTrailingNewline ||
+                    !string.Equals(TrimLeadingIndentation(contentLineText), TrimLeadingIndentation(oldTextLineText), StringComparison.Ordinal))
+                {
+                    isMatch = false;
+                    break;
+                }
+            }
+
+            if (!isMatch)
+            {
+                continue;
+            }
+
+            LineSegment firstLine = contentLines[contentLineIndex];
+            LineSegment lastLine = contentLines[contentLineIndex + oldTextLines.Count - 1];
+            int matchStartIndex = firstLine.StartIndex;
+            int matchEndIndex = lastLine.StartIndex + lastLine.Length + (lastLine.HasTrailingNewline ? 1 : 0);
+            matches.Add(new TextMatch(matchStartIndex, matchEndIndex - matchStartIndex));
+        }
+
+        return matches;
+    }
+
+    private static List<LineSegment> GetLineSegments(string content)
+    {
+        List<LineSegment> segments = new List<LineSegment>();
+        int lineStartIndex = 0;
+
+        for (int index = 0; index < content.Length; index++)
+        {
+            if (content[index] != '\n')
+            {
+                continue;
+            }
+
+            segments.Add(new LineSegment(lineStartIndex, index - lineStartIndex, true));
+            lineStartIndex = index + 1;
+        }
+
+        if (lineStartIndex < content.Length || content.Length == 0)
+        {
+            segments.Add(new LineSegment(lineStartIndex, content.Length - lineStartIndex, false));
+        }
+
+        return segments;
+    }
+
+    private static string TrimLeadingIndentation(string line)
+    {
+        int index = 0;
+
+        while (index < line.Length && (line[index] == ' ' || line[index] == '\t'))
+        {
+            index++;
+        }
+
+        return line[index..];
     }
 
     private static int CountOccurrences(string source, string search)
