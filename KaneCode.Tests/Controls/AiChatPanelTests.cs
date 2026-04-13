@@ -89,6 +89,34 @@ public class AiChatPanelTests
     }
 
     [Fact]
+    public void WhenFormattingToolCallHeaderForFileToolThenAffectedFileIsIncluded()
+    {
+        string result = AiChatPanel.FormatToolCallHeader(
+            "read_file",
+            "{\"filePath\":\"Controls/AiChatPanel.xaml.cs\"}");
+
+        Assert.Equal("read_file - Controls/AiChatPanel.xaml.cs", result);
+    }
+
+    [Fact]
+    public void WhenFormattingToolCallHeaderForRenameToolThenSourceAndDestinationAreIncluded()
+    {
+        string result = AiChatPanel.FormatToolCallHeader(
+            "rename_path",
+            "{\"sourcePath\":\"Old.cs\",\"destinationPath\":\"New.cs\"}");
+
+        Assert.Equal("rename_path - Old.cs -> New.cs", result);
+    }
+
+    [Fact]
+    public void WhenFormattingToolCallHeaderWithInvalidArgumentsThenOnlyToolNameIsShown()
+    {
+        string result = AiChatPanel.FormatToolCallHeader("read_file", "not json");
+
+        Assert.Equal("read_file", result);
+    }
+
+    [Fact]
     public void WhenFormattingToolCallBodyThenArgumentsRemainMultiLine()
     {
         string result = AiChatPanel.FormatToolCallBody("{\"query\":\"hotkey\",\"limit\":5}");

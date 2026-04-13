@@ -1102,7 +1102,7 @@ public partial class AiChatPanel : UserControl
                         ToolCallResult toolCallResult = success
                             ? ToolCallResult.Ok(resultText)
                             : ToolCallResult.Fail(resultText);
-                        FinalizeToolCallBlock(toolCallBlock, toolCallBlock.Section.HeaderText.Text, toolCallResult);
+                        FinalizeToolCallBlock(toolCallBlock, toolCallResult);
                     }
                     else
                     {
@@ -1831,7 +1831,7 @@ public partial class AiChatPanel : UserControl
                                 return;
                             }
 
-                            FinalizeToolCallBlock(toolCallBlock!, toolCall.FunctionName, result);
+                            FinalizeToolCallBlock(toolCallBlock!, result);
                         });
                     }
 
@@ -2528,7 +2528,7 @@ public partial class AiChatPanel : UserControl
         Brush toolForeground = FindBrush(ThemeResourceKeys.AiChatToolCallForeground);
         Brush toolBorder = FindBrush(ThemeResourceKeys.AiChatToolCallBorder);
         StreamSectionVisual section = CreateInlineSection(
-            FormatToolCallHeader(toolName),
+            FormatToolCallHeader(toolName, argumentsJson),
             toolBackground,
             toolBackground,
             toolForeground,
@@ -2573,17 +2573,16 @@ public partial class AiChatPanel : UserControl
     private void UpdateToolCallBlock(ToolCallSectionVisual block, string toolName, string argumentsJson)
     {
         ArgumentNullException.ThrowIfNull(block);
-        SetInlineSectionHeader(block.Section, FormatToolCallHeader(toolName));
+        SetInlineSectionHeader(block.Section, FormatToolCallHeader(toolName, argumentsJson));
         UpdateToolCallArgumentsContent(block.ArgumentsBlock, block.ResultBlock, argumentsJson);
     }
 
     /// <summary>
     /// Updates a tool-call block with the final result (success or error).
     /// </summary>
-    private void FinalizeToolCallBlock(ToolCallSectionVisual block, string toolName, ToolCallResult result)
+    private void FinalizeToolCallBlock(ToolCallSectionVisual block, ToolCallResult result)
     {
         ArgumentNullException.ThrowIfNull(block);
-        SetInlineSectionHeader(block.Section, FormatToolCallHeader(toolName));
 
         if (result.Success)
         {
@@ -2664,11 +2663,74 @@ public partial class AiChatPanel : UserControl
             : content;
     }
 
-    internal static string FormatToolCallHeader(string toolName)
+    internal static string FormatToolCallHeader(string toolName, string? argumentsJson = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(toolName);
 
-        return Truncate(toolName, 180);
+        string header = toolName;
+        string? argumentSummary = TryFormatToolCallHeaderArgumentSummary(argumentsJson);
+
+        if (!string.IsNullOrWhiteSpace(argumentSummary))
+        {
+            header = $"{toolName} - {argumentSummary}";
+        }
+
+        return Truncate(header, 180);
+    }
+
+    private static string? TryFormatToolCallHeaderArgumentSummary(string? argumentsJson)
+    {
+        if (string.IsNullOrWhiteSpace(argumentsJson))
+        {
+            return null;
+        }
+
+        try
+        {
+            using JsonDocument document = JsonDocument.Parse(argumentsJson);
+            JsonElement root = document.RootElement;
+
+            if (root.ValueKind != JsonValueKind.Object)
+            {
+                return null;
+            }
+
+            if (TryGetToolHeaderPathArgument(root, "sourcePath", out string? sourcePath) &&
+                TryGetToolHeaderPathArgument(root, "destinationPath", out string? destinationPath))
+            {
+                return $"{sourcePath} -> {destinationPath}";
+            }
+
+            if (TryGetToolHeaderPathArgument(root, "filePath", out string? filePath))
+            {
+                return filePath;
+            }
+
+            return null;
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
+
+    private static bool TryGetToolHeaderPathArgument(JsonElement root, string propertyName, out string? propertyValue)
+    {
+        propertyValue = null;
+
+        if (!root.TryGetProperty(propertyName, out JsonElement property) || property.ValueKind != JsonValueKind.String)
+        {
+            return false;
+        }
+
+        string? value = property.GetString();
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return false;
+        }
+
+        propertyValue = value.Trim();
+        return true;
     }
 
     internal static IReadOnlyList<int> GetPinnedSectionIndexes(
