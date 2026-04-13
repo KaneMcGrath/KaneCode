@@ -912,7 +912,7 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
 
     private void OnExplorerWatcherChanged(object sender, FileSystemEventArgs e)
     {
-        if (IsGitMetadataPath(e.FullPath))
+        if (!ShouldRefreshExplorerForPath(e.FullPath, ProjectRootPath))
         {
             return;
         }
@@ -922,7 +922,9 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
 
     private void OnExplorerWatcherRenamed(object sender, RenamedEventArgs e)
     {
-        if (IsGitMetadataPath(e.FullPath) && IsGitMetadataPath(e.OldFullPath))
+        bool shouldRefreshNewPath = ShouldRefreshExplorerForPath(e.FullPath, ProjectRootPath);
+        bool shouldRefreshOldPath = ShouldRefreshExplorerForPath(e.OldFullPath, ProjectRootPath);
+        if (!shouldRefreshNewPath && !shouldRefreshOldPath)
         {
             return;
         }
@@ -968,6 +970,26 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
             || path.EndsWith($"{Path.DirectorySeparatorChar}.git", StringComparison.OrdinalIgnoreCase);
     }
 
+    internal static bool ShouldRefreshExplorerForPath(string path, string? projectRootPath)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            return false;
+        }
+
+        if (IsGitMetadataPath(path))
+        {
+            return false;
+        }
+
+        if (string.IsNullOrWhiteSpace(projectRootPath))
+        {
+            return true;
+        }
+
+        return !EditorService.IsPathExcludedFromTree(projectRootPath, path);
+    }
+
     private void RefreshProjectItems()
     {
         if (string.IsNullOrWhiteSpace(ProjectRootPath) || !Directory.Exists(ProjectRootPath))
@@ -976,8 +998,7 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
         }
 
         // Collect expanded paths before rebuilding the tree
-        var expandedPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        CollectExpandedPaths(ProjectItems, expandedPaths);
+        HashSet<string> expandedPaths = CaptureExpandedPaths(ProjectItems);
 
         // Rebuild tree based on what was originally loaded
         if (!string.IsNullOrEmpty(_loadedProjectOrSolutionPath))
@@ -1021,8 +1042,20 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
         }
     }
 
-    private static void RestoreExpandedPaths(ProjectItem root, HashSet<string> expandedPaths)
+    internal static HashSet<string> CaptureExpandedPaths(IEnumerable<ProjectItem> items)
     {
+        ArgumentNullException.ThrowIfNull(items);
+
+        HashSet<string> expandedPaths = new(StringComparer.OrdinalIgnoreCase);
+        CollectExpandedPaths(items, expandedPaths);
+        return expandedPaths;
+    }
+
+    internal static void RestoreExpandedPaths(ProjectItem root, ISet<string> expandedPaths)
+    {
+        ArgumentNullException.ThrowIfNull(root);
+        ArgumentNullException.ThrowIfNull(expandedPaths);
+
         if (expandedPaths.Contains(root.FullPath))
         {
             root.IsExpanded = true;
@@ -1120,6 +1153,8 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
             return;
         }
 
+        HashSet<string> expandedPaths = CaptureExpandedPaths(ProjectItems);
+
         CancelPreviousLoad();
         var cts = new CancellationTokenSource();
         _loadCts = cts;
@@ -1150,6 +1185,7 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
             ProjectRootPath = projectDir;
             _loadedProjectOrSolutionPath = projectPath;
             var root = EditorService.BuildProjectTree(projectPath);
+            RestoreExpandedPaths(root, expandedPaths);
             ProjectItems = new ObservableCollection<ProjectItem> { root };
             ConfigureExplorerWatcher(projectDir);
             ConfigureProjectFileWatcher(projectDir);
@@ -1185,6 +1221,8 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
             return;
         }
 
+        HashSet<string> expandedPaths = CaptureExpandedPaths(ProjectItems);
+
         CancelPreviousLoad();
         var cts = new CancellationTokenSource();
         _loadCts = cts;
@@ -1210,6 +1248,7 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
             _loadedSolutionProjectPaths = result.Projects.Select(p => p.ProjectPath).ToList();
             var projectPaths = result.Projects.Select(p => p.ProjectPath).ToList();
             var root = EditorService.BuildSolutionTree(solutionPath, projectPaths);
+            RestoreExpandedPaths(root, expandedPaths);
             ProjectItems = new ObservableCollection<ProjectItem> { root };
             ConfigureExplorerWatcher(solutionDir);
             ConfigureProjectFileWatcher(solutionDir);

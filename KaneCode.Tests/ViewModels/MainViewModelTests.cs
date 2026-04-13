@@ -1,3 +1,4 @@
+using KaneCode.Models;
 using KaneCode.ViewModels;
 
 namespace KaneCode.Tests.ViewModels;
@@ -122,6 +123,70 @@ public class MainViewModelTests
             loadedProjectOrSolutionPath);
 
         Assert.False(result);
+    }
+
+    [Theory]
+    [InlineData(@"C:\repo\obj\Debug\net8.0\Generated.g.cs")]
+    [InlineData(@"C:\repo\bin\Debug\net8.0\App.dll")]
+    [InlineData(@"C:\repo\.git\index.lock")]
+    public void WhenPathIsInExcludedExplorerAreaThenExplorerRefreshIsSkipped(string filePath)
+    {
+        bool result = MainViewModel.ShouldRefreshExplorerForPath(filePath, @"C:\repo");
+
+        Assert.False(result);
+    }
+
+    [Fact]
+    public void WhenPathIsVisibleInExplorerThenExplorerRefreshIsAllowed()
+    {
+        bool result = MainViewModel.ShouldRefreshExplorerForPath(@"C:\repo\Services\DogService.cs", @"C:\repo");
+
+        Assert.True(result);
+    }
+
+    [Fact]
+    public void WhenExpandedPathsAreCapturedThenExpandedNodeIsRestored()
+    {
+        ProjectItem sourceRoot = new(@"C:\repo\App.csproj", ProjectItemType.Project)
+        {
+            IsExpanded = true
+        };
+        ProjectItem sourceFolder = new(@"C:\repo\Services", isDirectory: true)
+        {
+            IsExpanded = true
+        };
+        sourceRoot.Children.Add(sourceFolder);
+
+        HashSet<string> expandedPaths = MainViewModel.CaptureExpandedPaths([sourceRoot]);
+
+        ProjectItem restoredRoot = new(@"C:\repo\App.csproj", ProjectItemType.Project);
+        ProjectItem restoredFolder = new(@"C:\repo\Services", isDirectory: true);
+        restoredRoot.Children.Add(restoredFolder);
+
+        MainViewModel.RestoreExpandedPaths(restoredRoot, expandedPaths);
+
+        Assert.True(restoredFolder.IsExpanded);
+    }
+
+    [Fact]
+    public void WhenExpandedPathsAreCapturedThenCollapsedNodeStaysCollapsed()
+    {
+        ProjectItem sourceRoot = new(@"C:\repo\App.csproj", ProjectItemType.Project)
+        {
+            IsExpanded = true
+        };
+        ProjectItem sourceFolder = new(@"C:\repo\Services", isDirectory: true);
+        sourceRoot.Children.Add(sourceFolder);
+
+        HashSet<string> expandedPaths = MainViewModel.CaptureExpandedPaths([sourceRoot]);
+
+        ProjectItem restoredRoot = new(@"C:\repo\App.csproj", ProjectItemType.Project);
+        ProjectItem restoredFolder = new(@"C:\repo\Services", isDirectory: true);
+        restoredRoot.Children.Add(restoredFolder);
+
+        MainViewModel.RestoreExpandedPaths(restoredRoot, expandedPaths);
+
+        Assert.False(restoredFolder.IsExpanded);
     }
 
 }

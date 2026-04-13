@@ -234,6 +234,33 @@ internal static class EditorService
         return root;
     }
 
+    internal static bool IsPathExcludedFromTree(string rootPath, string path)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(rootPath);
+        ArgumentException.ThrowIfNullOrWhiteSpace(path);
+
+        string normalizedRootPath = Path.TrimEndingDirectorySeparator(Path.GetFullPath(rootPath));
+        string normalizedPath = Path.GetFullPath(path);
+        if (!normalizedPath.StartsWith(normalizedRootPath, StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        string relativePath = Path.GetRelativePath(normalizedRootPath, normalizedPath);
+        if (relativePath.Equals(".", StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        string[] segments = relativePath.Split([Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar], StringSplitOptions.RemoveEmptyEntries);
+        if (segments.Any(ExcludedDirectories.Contains))
+        {
+            return true;
+        }
+
+        return ExcludedExtensions.Contains(Path.GetExtension(normalizedPath));
+    }
+
     private static void PopulateChildren(ProjectItem parent, DirectoryInfo dirInfo)
     {
         try
