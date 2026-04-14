@@ -74,7 +74,7 @@ public partial class AiChatPanel : UserControl
 
         public Brush ContentBackground { get; } = contentBackground;
 
-        public Brush Foreground { get; } = foreground;
+        public Brush Foreground { get; set; } = foreground;
 
         public Brush BorderBrush { get; } = borderBrush;
 
@@ -2476,6 +2476,17 @@ public partial class AiChatPanel : UserControl
         UpdatePinnedSectionHeaders();
     }
 
+    private void SetInlineSectionForeground(StreamSectionVisual section, Brush foreground)
+    {
+        ArgumentNullException.ThrowIfNull(section);
+        ArgumentNullException.ThrowIfNull(foreground);
+
+        section.Foreground = foreground;
+        section.HeaderGlyph.Foreground = foreground;
+        section.HeaderText.Foreground = foreground;
+        UpdatePinnedSectionHeaders();
+    }
+
     private static void UpdateInlineSectionState(StreamSectionVisual section)
     {
         ArgumentNullException.ThrowIfNull(section);
@@ -2615,17 +2626,20 @@ public partial class AiChatPanel : UserControl
 
         if (result.Success)
         {
+            Brush successForeground = FindBrush(GetToolCallHeaderForegroundKey(success: true));
             block.ResultBlock.Text = result.Output;
-            block.ResultBlock.Foreground = FindBrush(ThemeResourceKeys.AiChatToolCallSuccessForeground);
+            block.ResultBlock.Foreground = successForeground;
+            SetInlineSectionForeground(block.Section, successForeground);
         }
         else
         {
+            Brush errorForeground = FindBrush(GetToolCallHeaderForegroundKey(success: false));
             block.ResultBlock.Text = result.Error ?? "Unknown error";
-            block.ResultBlock.Foreground = FindBrush(ThemeResourceKeys.AiChatToolCallErrorForeground);
+            block.ResultBlock.Foreground = errorForeground;
+            SetInlineSectionForeground(block.Section, errorForeground);
         }
 
         bool shouldStickToBottom = IsMessageScrollerNearBottom();
-        UpdatePinnedSectionHeaders();
 
         if (shouldStickToBottom)
         {
@@ -2705,6 +2719,13 @@ public partial class AiChatPanel : UserControl
         }
 
         return Truncate(header, 180);
+    }
+
+    internal static string GetToolCallHeaderForegroundKey(bool success)
+    {
+        return success
+            ? ThemeResourceKeys.AiChatToolCallSuccessForeground
+            : ThemeResourceKeys.AiChatToolCallErrorForeground;
     }
 
     private static string? TryFormatToolCallHeaderArgumentSummary(string? argumentsJson)

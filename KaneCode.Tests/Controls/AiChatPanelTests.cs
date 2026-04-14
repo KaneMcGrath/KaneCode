@@ -117,6 +117,22 @@ public class AiChatPanelTests
     }
 
     [Fact]
+    public void WhenGettingToolCallHeaderForegroundKeyForSuccessfulToolThenSuccessKeyIsReturned()
+    {
+        string result = AiChatPanel.GetToolCallHeaderForegroundKey(success: true);
+
+        Assert.Equal("AiChatToolCallSuccessForeground", result);
+    }
+
+    [Fact]
+    public void WhenGettingToolCallHeaderForegroundKeyForFailedToolThenErrorKeyIsReturned()
+    {
+        string result = AiChatPanel.GetToolCallHeaderForegroundKey(success: false);
+
+        Assert.Equal("AiChatToolCallErrorForeground", result);
+    }
+
+    [Fact]
     public void WhenFormattingToolCallBodyThenArgumentsRemainMultiLine()
     {
         string result = AiChatPanel.FormatToolCallBody("{\"query\":\"hotkey\",\"limit\":5}");
