@@ -212,8 +212,8 @@ public partial class MainWindow : Window
     /// </summary>
     private void RegisterAiChatModes()
     {
-        _aiChatModeRegistry.Register(new ChatMode());
         _aiChatModeRegistry.Register(new AgentMode());
+        _aiChatModeRegistry.Register(new ChatMode());
         _aiChatModeRegistry.Register(new TeacherMode());
     }
 

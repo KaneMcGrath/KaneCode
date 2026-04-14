@@ -60,11 +60,11 @@ public class AiChatModeRegistryTests
     }
 
     [Fact]
-    public void WhenMultipleModesRegisteredThenDefaultReturnsFirst()
+    public void WhenMultipleModesRegisteredThenDefaultReturnsFirstRegisteredMode()
     {
         AiChatModeRegistry registry = new AiChatModeRegistry();
-        FakeMode first = new FakeMode("chat", "Chat");
-        FakeMode second = new FakeMode("agent", "Agent");
+        FakeMode first = new FakeMode("agent", "Agent");
+        FakeMode second = new FakeMode("chat", "Chat");
 
         registry.Register(first);
         registry.Register(second);
