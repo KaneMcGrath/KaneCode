@@ -212,6 +212,35 @@ public class AiChatPanelTests
     }
 
     [Fact]
+    public void WhenApiUsageIsAvailableThenFinalStatsBarUsesReportedTokenCounts()
+    {
+        AiUsageStats usage = new(120, 45, 165);
+
+        string result = AiChatPanel.BuildFinalStatsBarText(usage, reasoningTokens: 8, contentTokens: 11, TimeSpan.FromSeconds(3));
+
+        Assert.Equal("ctx: 120  •  out: 45  •  total: 165  •  15.0 tok/s  •  3.0s", result);
+    }
+
+    [Fact]
+    public void WhenApiUsageIsMissingThenFinalStatsBarFallsBackToEstimatedTokenCounts()
+    {
+        string result = AiChatPanel.BuildFinalStatsBarText(null, reasoningTokens: 8, contentTokens: 11, TimeSpan.FromSeconds(3));
+
+        Assert.Equal("think: 8  •  out: 11  •  6.3 tok/s  •  3.0s", result);
+    }
+
+    [Fact]
+    public void WhenMergingUsageStatsThenTokenCountsAreSummed()
+    {
+        AiUsageStats initialUsage = new(120, 45, 165);
+        AiUsageStats nextUsage = new(30, 10, 40);
+
+        AiUsageStats? result = AiChatPanel.MergeUsageStats(initialUsage, nextUsage);
+
+        Assert.Equal(new AiUsageStats(150, 55, 205), result);
+    }
+
+    [Fact]
     public void WhenBuildingRequestConversationHistoryThenPersistedUserMessageRemainsUnchanged()
     {
         List<AiChatMessage> persistedConversationHistory =

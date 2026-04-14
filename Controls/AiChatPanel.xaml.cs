@@ -28,7 +28,7 @@ public partial class AiChatPanel : UserControl
     private CancellationTokenSource? _streamCts;
     private bool _isStreaming;
     private bool _isUpdatingModelListSelection;
-    private AiUsageStats? _lastUsageStats;
+    private AiUsageStats? _aggregatedUsageStats;
     private Func<IReadOnlyList<ProjectItem>>? _projectItemsProvider;
     private Func<string?>? _projectConversationKeyProvider;
     private Func<AiContextDocumentSnapshot?>? _currentDocumentProvider;
@@ -1367,6 +1367,7 @@ public partial class AiChatPanel : UserControl
         var reasoningTokenCount = 0;
         var contentTokenCount = 0;
         var streamStopwatch = Stopwatch.StartNew();
+        _aggregatedUsageStats = null;
 
         CancelStreaming();
         _streamCts = new CancellationTokenSource();
@@ -1435,7 +1436,7 @@ public partial class AiChatPanel : UserControl
                 {
                     if (token.Type == AiStreamTokenType.Usage)
                     {
-                        _lastUsageStats = token.UsageStats;
+                        _aggregatedUsageStats = MergeUsageStats(_aggregatedUsageStats, token.UsageStats);
                         continue;
                     }
 
@@ -1871,7 +1872,6 @@ public partial class AiChatPanel : UserControl
         {
             _externalContextDirectoryRegistry?.Clear();
             streamStopwatch.Stop();
-            var finalTokenCount = reasoningTokenCount + contentTokenCount;
 
             await Dispatcher.InvokeAsync(() =>
             {
@@ -1881,7 +1881,7 @@ public partial class AiChatPanel : UserControl
                 SendButton.Click -= StopButton_Click;
                 SendButton.Click += SendButton_Click;
 
-                UpdateStatsBarFinal(finalTokenCount, reasoningTokenCount, contentTokenCount, streamStopwatch);
+                UpdateStatsBarFinal(reasoningTokenCount, contentTokenCount, streamStopwatch);
                 RefreshContextWindowDisplay();
             });
         }
@@ -1997,28 +1997,57 @@ public partial class AiChatPanel : UserControl
     /// Updates the stats bar with final summary after streaming completes.
     /// Shows prompt tokens (context), completion breakdown, and tokens/sec.
     /// </summary>
-    private void UpdateStatsBarFinal(int totalGenerated, int reasoningTokens, int contentTokens, Stopwatch stopwatch)
+    private void UpdateStatsBarFinal(int reasoningTokens, int contentTokens, Stopwatch stopwatch)
     {
-        double elapsed = stopwatch.Elapsed.TotalSeconds;
-        double tokPerSec = elapsed > 0.1 ? totalGenerated / elapsed : 0;
+        StatsBar.Text = BuildFinalStatsBarText(_aggregatedUsageStats, reasoningTokens, contentTokens, stopwatch.Elapsed);
+    }
 
+    internal static string BuildFinalStatsBarText(AiUsageStats? usageStats, int reasoningTokens, int contentTokens, TimeSpan elapsed)
+    {
+        double elapsedSeconds = elapsed.TotalSeconds;
+        int generatedTokens = reasoningTokens + contentTokens;
         List<string> parts = new();
 
-        if (_lastUsageStats is { } usage)
+        if (usageStats is not null)
         {
-            parts.Add($"ctx: {usage.PromptTokens:N0}");
+            generatedTokens = usageStats.CompletionTokens;
+            parts.Add($"ctx: {usageStats.PromptTokens:N0}");
+            parts.Add($"out: {usageStats.CompletionTokens:N0}");
+            parts.Add($"total: {usageStats.TotalTokens:N0}");
+        }
+        else
+        {
+            if (reasoningTokens > 0)
+            {
+                parts.Add($"think: {reasoningTokens:N0}");
+            }
+
+            parts.Add($"out: {contentTokens:N0}");
         }
 
-        if (reasoningTokens > 0)
-        {
-            parts.Add($"think: {reasoningTokens:N0}");
-        }
-
-        parts.Add($"out: {contentTokens:N0}");
+        double tokPerSec = elapsedSeconds > 0.1 ? generatedTokens / elapsedSeconds : 0;
         parts.Add($"{tokPerSec:F1} tok/s");
-        parts.Add($"{elapsed:F1}s");
+        parts.Add($"{elapsedSeconds:F1}s");
 
-        StatsBar.Text = string.Join("  •  ", parts);
+        return string.Join("  •  ", parts);
+    }
+
+    internal static AiUsageStats? MergeUsageStats(AiUsageStats? existingUsage, AiUsageStats? nextUsage)
+    {
+        if (nextUsage is null)
+        {
+            return existingUsage;
+        }
+
+        if (existingUsage is null)
+        {
+            return nextUsage;
+        }
+
+        return new AiUsageStats(
+            existingUsage.PromptTokens + nextUsage.PromptTokens,
+            existingUsage.CompletionTokens + nextUsage.CompletionTokens,
+            existingUsage.TotalTokens + nextUsage.TotalTokens);
     }
 
     private void ResetContextWindowBar()

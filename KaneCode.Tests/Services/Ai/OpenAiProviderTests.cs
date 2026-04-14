@@ -31,6 +31,34 @@ public class OpenAiProviderTests
     }
 
     [Fact]
+    public void WhenStreamingEnabledThenRequestPayloadIncludesUsageMetadata()
+    {
+        AiProviderSettings settings = new AiProviderSettings
+        {
+            Endpoint = "https://example.test/v1",
+            SelectedModel = "gpt-test"
+        };
+        using JsonDocument messagesDocument = JsonDocument.Parse("[{\"role\":\"user\",\"content\":\"Hello\"}]");
+
+        string json = OpenAiProvider.BuildChatCompletionRequestJson(
+            "gpt-test",
+            messagesDocument.RootElement.Clone(),
+            default,
+            settings,
+            isGroqCompatibleEndpoint: false,
+            streamResponse: true);
+
+        using JsonDocument payloadDocument = JsonDocument.Parse(json);
+
+        bool includeUsage = payloadDocument.RootElement
+            .GetProperty("stream_options")
+            .GetProperty("include_usage")
+            .GetBoolean();
+
+        Assert.True(includeUsage);
+    }
+
+    [Fact]
     public void WhenStreamingDisabledThenRequestPayloadSetsStreamFalse()
     {
         AiProviderSettings settings = new AiProviderSettings
@@ -53,6 +81,29 @@ public class OpenAiProviderTests
         bool result = payloadDocument.RootElement.GetProperty("stream").GetBoolean();
 
         Assert.False(result);
+    }
+
+    [Fact]
+    public void WhenStreamingDisabledThenRequestPayloadOmitsUsageMetadata()
+    {
+        AiProviderSettings settings = new AiProviderSettings
+        {
+            Endpoint = "https://example.test/v1",
+            SelectedModel = "gpt-test"
+        };
+        using JsonDocument messagesDocument = JsonDocument.Parse("[{\"role\":\"user\",\"content\":\"Hello\"}]");
+
+        string json = OpenAiProvider.BuildChatCompletionRequestJson(
+            "gpt-test",
+            messagesDocument.RootElement.Clone(),
+            default,
+            settings,
+            isGroqCompatibleEndpoint: false,
+            streamResponse: false);
+
+        using JsonDocument payloadDocument = JsonDocument.Parse(json);
+
+        Assert.False(payloadDocument.RootElement.TryGetProperty("stream_options", out JsonElement _));
     }
 
     [Fact]

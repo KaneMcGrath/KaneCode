@@ -199,6 +199,13 @@ internal sealed class OpenAiProvider : IAiProvider, IDisposable
 
             writer.WriteBoolean("stream", streamResponse);
 
+            if (streamResponse)
+            {
+                writer.WriteStartObject("stream_options");
+                writer.WriteBoolean("include_usage", true);
+                writer.WriteEndObject();
+            }
+
             if (tools.ValueKind == JsonValueKind.Array && tools.GetArrayLength() > 0)
             {
                 writer.WritePropertyName("tools");
