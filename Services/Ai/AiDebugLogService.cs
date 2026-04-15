@@ -30,7 +30,7 @@ internal sealed class AiDebugLogService
             DateTimeOffset.Now,
             toolName,
             normalizedError,
-            FormatArguments(argumentsJson),
+            FormatArguments(toolName, argumentsJson),
             normalizedToolCallId));
 
         while (ToolFailures.Count > MaxToolFailureEntries)
@@ -65,7 +65,7 @@ internal sealed class AiDebugLogService
         return filePath;
     }
 
-    internal static string FormatArguments(string? argumentsJson)
+    internal static string FormatArguments(string toolName, string? argumentsJson)
     {
         if (string.IsNullOrWhiteSpace(argumentsJson))
         {
@@ -76,7 +76,7 @@ internal sealed class AiDebugLogService
 
         try
         {
-            using JsonDocument document = JsonDocument.Parse(trimmedArguments);
+            using JsonDocument document = AgentToolArgumentsParser.Parse(toolName, trimmedArguments);
             return JsonSerializer.Serialize(document.RootElement, new JsonSerializerOptions
             {
                 WriteIndented = true

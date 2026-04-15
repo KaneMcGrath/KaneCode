@@ -1,5 +1,6 @@
 using KaneCode.Services.Ai;
 using System.IO;
+using System.Text;
 using System.Text.Json;
 
 namespace KaneCode.Services.Ai.Tools;
@@ -20,9 +21,19 @@ internal sealed class ReadFileTool : IAgentTool
                 "filePath": {
                     "type": "string",
                     "description": "The path to the file to read. Can be absolute or relative to the loaded project root, or inside an attached external context folder for the current request."
+                },
+                "filePaths": {
+                    "type": "array",
+                    "description": "Multiple file paths to read in a single call. Each path can be absolute or relative to the loaded project root, or inside an attached external context folder for the current request.",
+                    "items": {
+                        "type": "string"
+                    }
                 }
             },
-            "required": ["filePath"]
+            "anyOf": [
+                { "required": ["filePath"] },
+                { "required": ["filePaths"] }
+            ]
         }
         """).RootElement.Clone();
 
@@ -44,59 +55,144 @@ internal sealed class ReadFileTool : IAgentTool
 
     public Task<ToolCallResult> ExecuteAsync(JsonElement arguments, CancellationToken cancellationToken = default)
     {
-        if (!arguments.TryGetProperty("filePath", out var filePathElement) ||
-            string.IsNullOrWhiteSpace(filePathElement.GetString()))
+        if (!TryGetRequestedFilePaths(arguments, out IReadOnlyList<string>? requestedFilePaths))
         {
-            return Task.FromResult(ToolCallResult.Fail("Missing required parameter: filePath"));
+            return Task.FromResult(ToolCallResult.Fail("Missing required parameter: filePath or filePaths"));
         }
 
-        string filePath = filePathElement.GetString()!.Trim();
-        string resolvedPath;
-
-        try
+        List<(string RequestedPath, string Content)> fileContents = [];
+        foreach (string requestedFilePath in requestedFilePaths)
         {
-            if (_externalContextDirectoryRegistry is not null)
+            cancellationToken.ThrowIfCancellationRequested();
+
+            string resolvedPath;
+
+            try
             {
-                resolvedPath = AgentToolPathResolver.ResolvePath(
-                    _projectRootProvider,
-                    filePath,
-                    _externalContextDirectoryRegistry.GetAllowedDirectories());
+                if (_externalContextDirectoryRegistry is not null)
+                {
+                    resolvedPath = AgentToolPathResolver.ResolvePath(
+                        _projectRootProvider,
+                        requestedFilePath,
+                        _externalContextDirectoryRegistry.GetAllowedDirectories());
+                }
+                else
+                {
+                    resolvedPath = AgentToolPathResolver.ResolvePath(_projectRootProvider, requestedFilePath);
+                }
             }
-            else
+            catch (Exception ex) when (ex is InvalidOperationException or ArgumentException or NotSupportedException or PathTooLongException)
             {
-                resolvedPath = AgentToolPathResolver.ResolvePath(_projectRootProvider, filePath);
+                return Task.FromResult(ToolCallResult.Fail(ex.Message));
+            }
+
+            if (!File.Exists(resolvedPath))
+            {
+                return Task.FromResult(ToolCallResult.Fail($"File not found: {requestedFilePath}"));
+            }
+
+            FileInfo fileInfo = new(resolvedPath);
+            if (fileInfo.Length > MaxFileSizeBytes)
+            {
+                return Task.FromResult(ToolCallResult.Fail(
+                    $"File too large ({fileInfo.Length / 1024} KB). Maximum is {MaxFileSizeBytes / 1024} KB."));
+            }
+
+            try
+            {
+                string content = File.ReadAllText(resolvedPath);
+                fileContents.Add((requestedFilePath, content));
+            }
+            catch (IOException ex)
+            {
+                return Task.FromResult(ToolCallResult.Fail($"IO error reading file: {ex.Message}"));
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                return Task.FromResult(ToolCallResult.Fail($"Access denied: {ex.Message}"));
             }
         }
-        catch (Exception ex) when (ex is InvalidOperationException or ArgumentException or NotSupportedException or PathTooLongException)
+
+        return Task.FromResult(ToolCallResult.Ok(BuildOutput(fileContents)));
+    }
+
+    private static bool TryGetRequestedFilePaths(JsonElement arguments, out IReadOnlyList<string>? filePaths)
+    {
+        filePaths = null;
+
+        if (arguments.ValueKind != JsonValueKind.Object)
         {
-            return Task.FromResult(ToolCallResult.Fail(ex.Message));
+            return false;
         }
 
-        if (!File.Exists(resolvedPath))
+        if (arguments.TryGetProperty("filePaths", out JsonElement filePathsElement))
         {
-            return Task.FromResult(ToolCallResult.Fail($"File not found: {filePath}"));
+            if (filePathsElement.ValueKind != JsonValueKind.Array)
+            {
+                return false;
+            }
+
+            List<string> requestedFilePaths = [];
+            foreach (JsonElement filePathElement in filePathsElement.EnumerateArray())
+            {
+                if (filePathElement.ValueKind != JsonValueKind.String)
+                {
+                    return false;
+                }
+
+                string? filePath = filePathElement.GetString();
+                if (string.IsNullOrWhiteSpace(filePath))
+                {
+                    return false;
+                }
+
+                requestedFilePaths.Add(filePath.Trim());
+            }
+
+            if (requestedFilePaths.Count == 0)
+            {
+                return false;
+            }
+
+            filePaths = requestedFilePaths;
+            return true;
         }
 
-        var fileInfo = new FileInfo(resolvedPath);
-        if (fileInfo.Length > MaxFileSizeBytes)
+        if (!arguments.TryGetProperty("filePath", out JsonElement filePathValue) ||
+            string.IsNullOrWhiteSpace(filePathValue.GetString()))
         {
-            return Task.FromResult(ToolCallResult.Fail(
-                $"File too large ({fileInfo.Length / 1024} KB). Maximum is {MaxFileSizeBytes / 1024} KB."));
+            return false;
         }
 
-        try
+        filePaths = [filePathValue.GetString()!.Trim()];
+        return true;
+    }
+
+    private static string BuildOutput(IReadOnlyList<(string RequestedPath, string Content)> fileContents)
+    {
+        if (fileContents.Count == 1)
         {
-            string content = File.ReadAllText(resolvedPath);
-            return Task.FromResult(ToolCallResult.Ok(content));
+            return fileContents[0].Content;
         }
-        catch (IOException ex)
+
+        StringBuilder builder = new();
+        for (int i = 0; i < fileContents.Count; i++)
         {
-            return Task.FromResult(ToolCallResult.Fail($"IO error reading file: {ex.Message}"));
+            (string requestedPath, string content) = fileContents[i];
+
+            if (i > 0)
+            {
+                builder.AppendLine();
+                builder.AppendLine();
+            }
+
+            builder.Append("[File: ");
+            builder.Append(requestedPath);
+            builder.AppendLine("]");
+            builder.Append(content);
         }
-        catch (UnauthorizedAccessException ex)
-        {
-            return Task.FromResult(ToolCallResult.Fail($"Access denied: {ex.Message}"));
-        }
+
+        return builder.ToString();
     }
 
 }

@@ -1458,13 +1458,13 @@ public partial class AiChatPanel : UserControl
                             {
                                 string rawToolCallText = FormatRawTranscriptEntry(
                                     $"Tool Call ({toolCall.FunctionName})",
-                                    FormatToolArgs(toolCall.ArgumentsJson));
+                                    FormatToolArgs(toolCall.FunctionName, toolCall.ArgumentsJson));
 
                                 if (!rawToolCallBlocks.TryGetValue(toolCall.Index, out TextBlock? rawBlock))
                                 {
                                     rawBlock = AppendRawTranscriptEntry(
                                         $"Tool Call ({toolCall.FunctionName})",
-                                        FormatToolArgs(toolCall.ArgumentsJson),
+                                        FormatToolArgs(toolCall.FunctionName, toolCall.ArgumentsJson),
                                         FindBrush(ThemeResourceKeys.AiChatToolCallForeground),
                                         assistantContainer);
                                     rawToolCallBlocks[toolCall.Index] = rawBlock;
@@ -1751,7 +1751,7 @@ public partial class AiChatPanel : UserControl
                                 {
                                     rawBlock = AppendRawTranscriptEntry(
                                         $"Tool Call ({toolCall.FunctionName})",
-                                        FormatToolArgs(toolCall.ArgumentsJson),
+                                        FormatToolArgs(toolCall.FunctionName, toolCall.ArgumentsJson),
                                         FindBrush(ThemeResourceKeys.AiChatToolCallForeground),
                                         assistantContainer);
                                     rawToolCallBlocks[toolCall.Index] = rawBlock;
@@ -1790,9 +1790,13 @@ public partial class AiChatPanel : UserControl
                         {
                             try
                             {
-                                JsonElement args = string.IsNullOrWhiteSpace(toolCall.ArgumentsJson)
+                                using JsonDocument? argumentsDocument = string.IsNullOrWhiteSpace(toolCall.ArgumentsJson)
+                                    ? null
+                                    : AgentToolArgumentsParser.Parse(toolCall.FunctionName, toolCall.ArgumentsJson);
+
+                                JsonElement args = argumentsDocument is null
                                     ? default
-                                    : JsonDocument.Parse(toolCall.ArgumentsJson).RootElement;
+                                    : argumentsDocument.RootElement;
 
                                 result = await tool.ExecuteAsync(args, ct).ConfigureAwait(false);
                             }
@@ -2593,7 +2597,7 @@ public partial class AiChatPanel : UserControl
             FontFamily = new FontFamily("Cascadia Code, Consolas, Courier New")
         };
 
-        UpdateToolCallArgumentsContent(argumentsBlock, resultBlock, argumentsJson);
+        UpdateToolCallArgumentsContent(argumentsBlock, resultBlock, toolName, argumentsJson);
         section.ContentPanel.Children.Add(argumentsBlock);
         section.ContentPanel.Children.Add(resultBlock);
         SetInlineSectionExpanded(section, isExpanded: ShouldAutoExpandToolSections());
@@ -2614,7 +2618,7 @@ public partial class AiChatPanel : UserControl
     {
         ArgumentNullException.ThrowIfNull(block);
         SetInlineSectionHeader(block.Section, FormatToolCallHeader(toolName, argumentsJson));
-        UpdateToolCallArgumentsContent(block.ArgumentsBlock, block.ResultBlock, argumentsJson);
+        UpdateToolCallArgumentsContent(block.ArgumentsBlock, block.ResultBlock, toolName, argumentsJson);
     }
 
     /// <summary>
@@ -2662,7 +2666,7 @@ public partial class AiChatPanel : UserControl
     /// <summary>
     /// Formats tool arguments JSON into a readable display string.
     /// </summary>
-    private static string FormatToolArgs(string argumentsJson)
+    private static string FormatToolArgs(string toolName, string argumentsJson)
     {
         if (string.IsNullOrWhiteSpace(argumentsJson))
         {
@@ -2671,7 +2675,7 @@ public partial class AiChatPanel : UserControl
 
         try
         {
-            using JsonDocument doc = JsonDocument.Parse(argumentsJson);
+            using JsonDocument doc = AgentToolArgumentsParser.Parse(toolName, argumentsJson);
             List<string> entries = [];
             foreach (JsonProperty prop in doc.RootElement.EnumerateObject())
             {
@@ -2690,11 +2694,11 @@ public partial class AiChatPanel : UserControl
         }
     }
 
-    internal static string FormatToolCallBody(string argumentsJson)
+    internal static string FormatToolCallBody(string toolName, string argumentsJson)
     {
         return string.IsNullOrWhiteSpace(argumentsJson)
             ? string.Empty
-            : FormatToolArgs(argumentsJson);
+            : FormatToolArgs(toolName, argumentsJson);
     }
 
     internal static string GetVisibleAssistantContent(string content, bool toolsEnabled)
@@ -2711,7 +2715,7 @@ public partial class AiChatPanel : UserControl
         ArgumentException.ThrowIfNullOrWhiteSpace(toolName);
 
         string header = toolName;
-        string? argumentSummary = TryFormatToolCallHeaderArgumentSummary(argumentsJson);
+        string? argumentSummary = TryFormatToolCallHeaderArgumentSummary(toolName, argumentsJson);
 
         if (!string.IsNullOrWhiteSpace(argumentSummary))
         {
@@ -2728,7 +2732,7 @@ public partial class AiChatPanel : UserControl
             : ThemeResourceKeys.AiChatToolCallErrorForeground;
     }
 
-    private static string? TryFormatToolCallHeaderArgumentSummary(string? argumentsJson)
+    private static string? TryFormatToolCallHeaderArgumentSummary(string toolName, string? argumentsJson)
     {
         if (string.IsNullOrWhiteSpace(argumentsJson))
         {
@@ -2737,7 +2741,7 @@ public partial class AiChatPanel : UserControl
 
         try
         {
-            using JsonDocument document = JsonDocument.Parse(argumentsJson);
+            using JsonDocument document = AgentToolArgumentsParser.Parse(toolName, argumentsJson);
             JsonElement root = document.RootElement;
 
             if (root.ValueKind != JsonValueKind.Object)
@@ -2754,6 +2758,24 @@ public partial class AiChatPanel : UserControl
             if (TryGetToolHeaderPathArgument(root, "filePath", out string? filePath))
             {
                 return filePath;
+            }
+
+            if (root.TryGetProperty("filePaths", out JsonElement filePathsElement) &&
+                filePathsElement.ValueKind == JsonValueKind.Array &&
+                filePathsElement.GetArrayLength() > 0)
+            {
+                JsonElement firstPathElement = filePathsElement[0];
+                if (firstPathElement.ValueKind != JsonValueKind.String ||
+                    string.IsNullOrWhiteSpace(firstPathElement.GetString()))
+                {
+                    return null;
+                }
+
+                string firstPath = firstPathElement.GetString()!.Trim();
+                int remainingFileCount = filePathsElement.GetArrayLength() - 1;
+                return remainingFileCount > 0
+                    ? $"{firstPath} (+{remainingFileCount} more)"
+                    : firstPath;
             }
 
             return null;
@@ -2802,9 +2824,9 @@ public partial class AiChatPanel : UserControl
         return pinnedIndexes;
     }
 
-    private static void UpdateToolCallArgumentsContent(TextBlock argumentsBlock, TextBlock resultBlock, string argumentsJson)
+    private static void UpdateToolCallArgumentsContent(TextBlock argumentsBlock, TextBlock resultBlock, string toolName, string argumentsJson)
     {
-        UpdateToolCallBodyContent(argumentsBlock, resultBlock, FormatToolCallBody(argumentsJson));
+        UpdateToolCallBodyContent(argumentsBlock, resultBlock, FormatToolCallBody(toolName, argumentsJson));
     }
 
     private static void UpdateToolCallBodyContent(TextBlock argumentsBlock, TextBlock resultBlock, string content)

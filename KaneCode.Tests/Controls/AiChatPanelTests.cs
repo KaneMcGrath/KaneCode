@@ -99,6 +99,16 @@ public class AiChatPanelTests
     }
 
     [Fact]
+    public void WhenFormattingToolCallHeaderForConsecutiveReadFileArgumentsThenFirstFileAndCountAreIncluded()
+    {
+        string result = AiChatPanel.FormatToolCallHeader(
+            "read_file",
+            "{\"filePath\":\"MainWindow.xaml\"}{\"filePath\":\"MainWindow.xaml.cs\"}");
+
+        Assert.Equal("read_file - MainWindow.xaml (+1 more)", result);
+    }
+
+    [Fact]
     public void WhenFormattingToolCallHeaderForRenameToolThenSourceAndDestinationAreIncluded()
     {
         string result = AiChatPanel.FormatToolCallHeader(
@@ -135,9 +145,19 @@ public class AiChatPanelTests
     [Fact]
     public void WhenFormattingToolCallBodyThenArgumentsRemainMultiLine()
     {
-        string result = AiChatPanel.FormatToolCallBody("{\"query\":\"hotkey\",\"limit\":5}");
+        string result = AiChatPanel.FormatToolCallBody("search_files", "{\"query\":\"hotkey\",\"limit\":5}");
 
         Assert.Equal("query: hotkey\nlimit: 5", result);
+    }
+
+    [Fact]
+    public void WhenFormattingToolCallBodyForConsecutiveReadFileArgumentsThenNormalizedFilePathsAreShown()
+    {
+        string result = AiChatPanel.FormatToolCallBody(
+            "read_file",
+            "{\"filePath\":\"MainWindow.xaml\"}{\"filePath\":\"MainWindow.xaml.cs\"}");
+
+        Assert.Equal("filePaths: [\"MainWindow.xaml\",\"MainWindow.xaml.cs\"]", result);
     }
 
     [Fact]

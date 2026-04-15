@@ -66,6 +66,25 @@ public class ReadFileToolTests : IDisposable
     }
 
     [Fact]
+    public async Task WhenMultipleFilePathsProvidedThenReturnsContentsForEachFile()
+    {
+        string firstFilePath = Path.Combine(_tempDir, "first.txt");
+        string secondFilePath = Path.Combine(_tempDir, "second.txt");
+        await File.WriteAllTextAsync(firstFilePath, "first content");
+        await File.WriteAllTextAsync(secondFilePath, "second content");
+        ReadFileTool tool = new ReadFileTool(() => _tempDir);
+        JsonElement args = JsonDocument.Parse("""{ "filePaths": ["first.txt", "second.txt"] }""").RootElement;
+
+        ToolCallResult result = await tool.ExecuteAsync(args);
+
+        Assert.True(result.Success);
+        Assert.Contains("[File: first.txt]", result.Output, StringComparison.Ordinal);
+        Assert.Contains("first content", result.Output, StringComparison.Ordinal);
+        Assert.Contains("[File: second.txt]", result.Output, StringComparison.Ordinal);
+        Assert.Contains("second content", result.Output, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task WhenFileNotFoundThenReturnsFailure()
     {
         ReadFileTool tool = new ReadFileTool(() => _tempDir);

@@ -64,6 +64,22 @@ public class AiDebugLogServiceTests
     }
 
     [Fact]
+    public void WhenLoggingReadFileFailureWithConsecutiveArgumentsThenArgumentsAreNormalized()
+    {
+        AiDebugLogService service = new();
+
+        service.LogToolFailure(
+            "read_file",
+            "{\"filePath\":\"MainWindow.xaml\"}{\"filePath\":\"MainWindow.xaml.cs\"}",
+            "bad arguments",
+            "call-11");
+
+        Assert.Single(service.ToolFailures);
+        Assert.Contains("\"filePaths\"", service.ToolFailures[0].Arguments, StringComparison.Ordinal);
+        Assert.Contains("MainWindow.xaml.cs", service.ToolFailures[0].Arguments, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void WhenExportingToolFailureEntryWithBlankDirectoryThenArgumentExceptionIsThrown()
     {
         AiDebugLogService service = new();
