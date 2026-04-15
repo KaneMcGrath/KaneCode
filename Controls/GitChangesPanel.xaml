@@ -4,12 +4,12 @@
              xmlns:models="clr-namespace:KaneCode.Models">
     <DockPanel Background="{DynamicResource ErrorListBackground}">
 
-        <!-- Header bar -->
         <Border DockPanel.Dock="Top"
                 Background="{DynamicResource ErrorListHeaderBackground}"
                 Padding="8,4">
             <DockPanel>
-                <StackPanel DockPanel.Dock="Right"
+                <StackPanel x:Name="BranchSelectorPanel"
+                            DockPanel.Dock="Right"
                             Orientation="Horizontal"
                             VerticalAlignment="Center"
                             Margin="8,0,0,0">
@@ -50,204 +50,248 @@
             </DockPanel>
         </Border>
 
-        <!-- Two-section list: Unstaged (top) and Staged (bottom) -->
+        <Border x:Name="CommitPanel"
+                DockPanel.Dock="Top"
+                Background="{DynamicResource PanelSecondaryBackground}"
+                BorderBrush="{DynamicResource WindowBorderBrush}"
+                BorderThickness="0,0,0,1"
+                Padding="8">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <TextBox Grid.Column="0"
+                         Margin="0,0,8,0"
+                         Text="{Binding GitCommitMessage, UpdateSourceTrigger=PropertyChanged}"
+                         ToolTip="Commit message" />
+                <Button Grid.Column="1"
+                        Content="Commit"
+                        MinWidth="88"
+                        Padding="12,4"
+                        Command="{Binding CommitStagedChangesCommand}" />
+            </Grid>
+        </Border>
+
         <Grid>
-            <Grid.RowDefinitions>
-                <RowDefinition Height="*" />
-                <RowDefinition Height="4" />
-                <RowDefinition Height="*" />
-            </Grid.RowDefinitions>
+            <Grid x:Name="RepositoryContent">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="*" />
+                    <RowDefinition x:Name="SplitterRow" Height="4" />
+                    <RowDefinition x:Name="StagedSectionRow" Height="*" />
+                </Grid.RowDefinitions>
 
-            <!-- Unstaged Changes -->
-            <DockPanel Grid.Row="0">
-                <Border DockPanel.Dock="Top"
-                        Background="{DynamicResource PanelSecondaryBackground}"
-                        Padding="4,2,4,2">
-                    <DockPanel>
-                        <Button x:Name="StageAllButton"
-                                DockPanel.Dock="Right"
-                                Content="Stage All"
-                                Padding="6,1"
-                                Margin="4,0,0,0"
-                                Click="StageAllButton_Click"
-                                Background="{DynamicResource PanelSecondaryBackground}"
-                                Foreground="{DynamicResource ErrorListHeaderForeground}"
-                                BorderThickness="1"
-                                Cursor="Hand"
-                                VerticalAlignment="Center"
-                                FontSize="10" />
-                        <TextBlock x:Name="UnstagedHeader"
-                                   Text="Unstaged Changes"
-                                   FontSize="11"
-                                   FontWeight="SemiBold"
-                                   VerticalAlignment="Center"
-                                   Foreground="{DynamicResource ErrorListHeaderForeground}" />
-                    </DockPanel>
-                </Border>
-                <ListBox x:Name="UnstagedList"
-                         Background="{DynamicResource ErrorListBackground}"
-                         Foreground="{DynamicResource ErrorListForeground}"
-                         BorderThickness="0"
-                         ScrollViewer.HorizontalScrollBarVisibility="Auto"
-                         MouseDoubleClick="UnstagedList_MouseDoubleClick">
-                    <ListBox.ContextMenu>
-                        <ContextMenu>
-                            <MenuItem Header="View _Diff" Click="UnstagedContextMenu_ViewDiff" />
-                            <Separator />
-                            <MenuItem Header="Conflict _Helpers">
-                                <MenuItem Header="Accept _Current" Click="UnstagedContextMenu_AcceptCurrent" />
-                                <MenuItem Header="Accept _Incoming" Click="UnstagedContextMenu_AcceptIncoming" />
-                                <MenuItem Header="Accept _Both" Click="UnstagedContextMenu_AcceptBoth" />
-                            </MenuItem>
-                            <Separator />
-                            <MenuItem Header="_Stage" Click="UnstagedContextMenu_Stage" />
-                            <MenuItem Header="_Discard Changes..." Click="UnstagedContextMenu_Discard" />
-                        </ContextMenu>
-                    </ListBox.ContextMenu>
-                    <ListBox.ItemContainerStyle>
-                        <Style TargetType="ListBoxItem">
-                            <Setter Property="Padding" Value="4,2" />
-                            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
-                            <Style.Triggers>
-                                <Trigger Property="IsSelected" Value="True">
-                                    <Setter Property="Background" Value="{DynamicResource ErrorListSelectedBackground}" />
-                                </Trigger>
-                            </Style.Triggers>
-                        </Style>
-                    </ListBox.ItemContainerStyle>
-                    <ListBox.ItemTemplate>
-                        <DataTemplate DataType="{x:Type models:GitChangesEntry}">
-                            <StackPanel Orientation="Horizontal">
-                                <TextBlock Text="{Binding BadgeText}"
-                                           FontSize="10" FontWeight="Bold"
-                                           Width="14" TextAlignment="Center"
-                                           VerticalAlignment="Center"
-                                           Margin="0,0,6,0">
-                                    <TextBlock.Style>
-                                        <Style TargetType="TextBlock">
-                                            <Style.Triggers>
-                                                <DataTrigger Binding="{Binding Badge}" Value="Modified">
-                                                    <Setter Property="Foreground" Value="{DynamicResource GitModifiedForeground}" />
-                                                </DataTrigger>
-                                                <DataTrigger Binding="{Binding Badge}" Value="Added">
-                                                    <Setter Property="Foreground" Value="{DynamicResource GitAddedForeground}" />
-                                                </DataTrigger>
-                                                <DataTrigger Binding="{Binding Badge}" Value="Untracked">
-                                                    <Setter Property="Foreground" Value="{DynamicResource GitUntrackedForeground}" />
-                                                </DataTrigger>
-                                                <DataTrigger Binding="{Binding Badge}" Value="Deleted">
-                                                    <Setter Property="Foreground" Value="{DynamicResource GitDeletedForeground}" />
-                                                </DataTrigger>
-                                                <DataTrigger Binding="{Binding Badge}" Value="Conflict">
-                                                    <Setter Property="Foreground" Value="{DynamicResource GitConflictForeground}" />
-                                                </DataTrigger>
-                                            </Style.Triggers>
-                                        </Style>
-                                    </TextBlock.Style>
-                                </TextBlock>
-                                <TextBlock Text="{Binding RelativePath}"
-                                           FontFamily="Cascadia Code, Consolas, Courier New"
-                                           FontSize="12"
-                                           Foreground="{DynamicResource ErrorListForeground}"
-                                           VerticalAlignment="Center" />
-                            </StackPanel>
-                        </DataTemplate>
-                    </ListBox.ItemTemplate>
-                </ListBox>
-            </DockPanel>
+                <DockPanel Grid.Row="0">
+                    <Border DockPanel.Dock="Top"
+                            Background="{DynamicResource PanelSecondaryBackground}"
+                            Padding="4,2,4,2">
+                        <DockPanel>
+                            <Button x:Name="StageAllButton"
+                                    DockPanel.Dock="Right"
+                                    Content="Stage All"
+                                    Padding="6,1"
+                                    Margin="4,0,0,0"
+                                    Click="StageAllButton_Click"
+                                    Background="{DynamicResource PanelSecondaryBackground}"
+                                    Foreground="{DynamicResource ErrorListHeaderForeground}"
+                                    BorderThickness="1"
+                                    Cursor="Hand"
+                                    VerticalAlignment="Center"
+                                    FontSize="10" />
+                            <TextBlock x:Name="UnstagedHeader"
+                                       Text="Changes"
+                                       FontSize="11"
+                                       FontWeight="SemiBold"
+                                       VerticalAlignment="Center"
+                                       Foreground="{DynamicResource ErrorListHeaderForeground}" />
+                        </DockPanel>
+                    </Border>
+                    <ListBox x:Name="UnstagedList"
+                             Background="{DynamicResource ErrorListBackground}"
+                             Foreground="{DynamicResource ErrorListForeground}"
+                             BorderThickness="0"
+                             ScrollViewer.HorizontalScrollBarVisibility="Auto"
+                             MouseDoubleClick="UnstagedList_MouseDoubleClick">
+                        <ListBox.ContextMenu>
+                            <ContextMenu>
+                                <MenuItem Header="View _Diff" Click="UnstagedContextMenu_ViewDiff" />
+                                <Separator />
+                                <MenuItem Header="Conflict _Helpers">
+                                    <MenuItem Header="Accept _Current" Click="UnstagedContextMenu_AcceptCurrent" />
+                                    <MenuItem Header="Accept _Incoming" Click="UnstagedContextMenu_AcceptIncoming" />
+                                    <MenuItem Header="Accept _Both" Click="UnstagedContextMenu_AcceptBoth" />
+                                </MenuItem>
+                                <Separator />
+                                <MenuItem Header="_Stage" Click="UnstagedContextMenu_Stage" />
+                                <MenuItem Header="_Discard Changes..." Click="UnstagedContextMenu_Discard" />
+                            </ContextMenu>
+                        </ListBox.ContextMenu>
+                        <ListBox.ItemContainerStyle>
+                            <Style TargetType="ListBoxItem">
+                                <Setter Property="Padding" Value="4,2" />
+                                <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                                <Style.Triggers>
+                                    <Trigger Property="IsSelected" Value="True">
+                                        <Setter Property="Background" Value="{DynamicResource ErrorListSelectedBackground}" />
+                                    </Trigger>
+                                </Style.Triggers>
+                            </Style>
+                        </ListBox.ItemContainerStyle>
+                        <ListBox.ItemTemplate>
+                            <DataTemplate DataType="{x:Type models:GitChangesEntry}">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="{Binding BadgeText}"
+                                               FontSize="10"
+                                               FontWeight="Bold"
+                                               Width="14"
+                                               TextAlignment="Center"
+                                               VerticalAlignment="Center"
+                                               Margin="0,0,6,0">
+                                        <TextBlock.Style>
+                                            <Style TargetType="TextBlock">
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding Badge}" Value="Modified">
+                                                        <Setter Property="Foreground" Value="{DynamicResource GitModifiedForeground}" />
+                                                    </DataTrigger>
+                                                    <DataTrigger Binding="{Binding Badge}" Value="Added">
+                                                        <Setter Property="Foreground" Value="{DynamicResource GitAddedForeground}" />
+                                                    </DataTrigger>
+                                                    <DataTrigger Binding="{Binding Badge}" Value="Untracked">
+                                                        <Setter Property="Foreground" Value="{DynamicResource GitUntrackedForeground}" />
+                                                    </DataTrigger>
+                                                    <DataTrigger Binding="{Binding Badge}" Value="Deleted">
+                                                        <Setter Property="Foreground" Value="{DynamicResource GitDeletedForeground}" />
+                                                    </DataTrigger>
+                                                    <DataTrigger Binding="{Binding Badge}" Value="Conflict">
+                                                        <Setter Property="Foreground" Value="{DynamicResource GitConflictForeground}" />
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </TextBlock.Style>
+                                    </TextBlock>
+                                    <TextBlock Text="{Binding RelativePath}"
+                                               FontFamily="Cascadia Code, Consolas, Courier New"
+                                               FontSize="12"
+                                               Foreground="{DynamicResource ErrorListForeground}"
+                                               VerticalAlignment="Center" />
+                                </StackPanel>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+                </DockPanel>
 
-            <!-- Splitter -->
-            <GridSplitter Grid.Row="1"
-                          Height="4"
-                          HorizontalAlignment="Stretch"
-                          Background="{DynamicResource PanelSecondaryBackground}"
-                          ResizeDirection="Rows" />
+                <GridSplitter x:Name="StagedSplitter"
+                              Grid.Row="1"
+                              Height="4"
+                              HorizontalAlignment="Stretch"
+                              Background="{DynamicResource PanelSecondaryBackground}"
+                              ResizeDirection="Rows" />
 
-            <!-- Staged Changes -->
-            <DockPanel Grid.Row="2">
-                <Border DockPanel.Dock="Top"
-                        Background="{DynamicResource PanelSecondaryBackground}"
-                        Padding="4,2,4,2">
-                    <DockPanel>
-                        <Button x:Name="UnstageAllButton"
-                                DockPanel.Dock="Right"
-                                Content="Unstage All"
-                                Padding="6,1"
-                                Margin="4,0,0,0"
-                                Click="UnstageAllButton_Click"
-                                Background="{DynamicResource PanelSecondaryBackground}"
-                                Foreground="{DynamicResource ErrorListHeaderForeground}"
-                                BorderThickness="1"
-                                Cursor="Hand"
-                                VerticalAlignment="Center"
-                                FontSize="10" />
-                        <TextBlock x:Name="StagedHeader"
-                                   Text="Staged Changes"
-                                   FontSize="11"
-                                   FontWeight="SemiBold"
-                                   VerticalAlignment="Center"
-                                   Foreground="{DynamicResource ErrorListHeaderForeground}" />
-                    </DockPanel>
-                </Border>
-                <ListBox x:Name="StagedList"
-                         Background="{DynamicResource ErrorListBackground}"
-                         Foreground="{DynamicResource ErrorListForeground}"
-                         BorderThickness="0"
-                         ScrollViewer.HorizontalScrollBarVisibility="Auto"
-                         MouseDoubleClick="StagedList_MouseDoubleClick">
-                    <ListBox.ContextMenu>
-                        <ContextMenu>
-                            <MenuItem Header="View _Diff" Click="StagedContextMenu_ViewDiff" />
-                            <Separator />
-                            <MenuItem Header="_Unstage" Click="StagedContextMenu_Unstage" />
-                        </ContextMenu>
-                    </ListBox.ContextMenu>
-                    <ListBox.ItemContainerStyle>
-                        <Style TargetType="ListBoxItem">
-                            <Setter Property="Padding" Value="4,2" />
-                            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
-                            <Style.Triggers>
-                                <Trigger Property="IsSelected" Value="True">
-                                    <Setter Property="Background" Value="{DynamicResource ErrorListSelectedBackground}" />
-                                </Trigger>
-                            </Style.Triggers>
-                        </Style>
-                    </ListBox.ItemContainerStyle>
-                    <ListBox.ItemTemplate>
-                        <DataTemplate DataType="{x:Type models:GitChangesEntry}">
-                            <StackPanel Orientation="Horizontal">
-                                <TextBlock Text="{Binding BadgeText}"
-                                           FontSize="10" FontWeight="Bold"
-                                           Width="14" TextAlignment="Center"
-                                           VerticalAlignment="Center"
-                                           Margin="0,0,6,0">
-                                    <TextBlock.Style>
-                                        <Style TargetType="TextBlock">
-                                            <Style.Triggers>
-                                                <DataTrigger Binding="{Binding Badge}" Value="Modified">
-                                                    <Setter Property="Foreground" Value="{DynamicResource GitModifiedForeground}" />
-                                                </DataTrigger>
-                                                <DataTrigger Binding="{Binding Badge}" Value="Added">
-                                                    <Setter Property="Foreground" Value="{DynamicResource GitAddedForeground}" />
-                                                </DataTrigger>
-                                                <DataTrigger Binding="{Binding Badge}" Value="Deleted">
-                                                    <Setter Property="Foreground" Value="{DynamicResource GitDeletedForeground}" />
-                                                </DataTrigger>
-                                            </Style.Triggers>
-                                        </Style>
-                                    </TextBlock.Style>
-                                </TextBlock>
-                                <TextBlock Text="{Binding RelativePath}"
-                                           FontFamily="Cascadia Code, Consolas, Courier New"
-                                           FontSize="12"
-                                           Foreground="{DynamicResource ErrorListForeground}"
-                                           VerticalAlignment="Center" />
-                            </StackPanel>
-                        </DataTemplate>
-                    </ListBox.ItemTemplate>
-                </ListBox>
-            </DockPanel>
+                <DockPanel x:Name="StagedSection" Grid.Row="2">
+                    <Border DockPanel.Dock="Top"
+                            Background="{DynamicResource PanelSecondaryBackground}"
+                            Padding="4,2,4,2">
+                        <DockPanel>
+                            <Button x:Name="UnstageAllButton"
+                                    DockPanel.Dock="Right"
+                                    Content="Unstage All"
+                                    Padding="6,1"
+                                    Margin="4,0,0,0"
+                                    Click="UnstageAllButton_Click"
+                                    Background="{DynamicResource PanelSecondaryBackground}"
+                                    Foreground="{DynamicResource ErrorListHeaderForeground}"
+                                    BorderThickness="1"
+                                    Cursor="Hand"
+                                    VerticalAlignment="Center"
+                                    FontSize="10" />
+                            <TextBlock x:Name="StagedHeader"
+                                       Text="Staged Changes"
+                                       FontSize="11"
+                                       FontWeight="SemiBold"
+                                       VerticalAlignment="Center"
+                                       Foreground="{DynamicResource ErrorListHeaderForeground}" />
+                        </DockPanel>
+                    </Border>
+                    <ListBox x:Name="StagedList"
+                             Background="{DynamicResource ErrorListBackground}"
+                             Foreground="{DynamicResource ErrorListForeground}"
+                             BorderThickness="0"
+                             ScrollViewer.HorizontalScrollBarVisibility="Auto"
+                             MouseDoubleClick="StagedList_MouseDoubleClick">
+                        <ListBox.ContextMenu>
+                            <ContextMenu>
+                                <MenuItem Header="View _Diff" Click="StagedContextMenu_ViewDiff" />
+                                <Separator />
+                                <MenuItem Header="_Unstage" Click="StagedContextMenu_Unstage" />
+                            </ContextMenu>
+                        </ListBox.ContextMenu>
+                        <ListBox.ItemContainerStyle>
+                            <Style TargetType="ListBoxItem">
+                                <Setter Property="Padding" Value="4,2" />
+                                <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                                <Style.Triggers>
+                                    <Trigger Property="IsSelected" Value="True">
+                                        <Setter Property="Background" Value="{DynamicResource ErrorListSelectedBackground}" />
+                                    </Trigger>
+                                </Style.Triggers>
+                            </Style>
+                        </ListBox.ItemContainerStyle>
+                        <ListBox.ItemTemplate>
+                            <DataTemplate DataType="{x:Type models:GitChangesEntry}">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="{Binding BadgeText}"
+                                               FontSize="10"
+                                               FontWeight="Bold"
+                                               Width="14"
+                                               TextAlignment="Center"
+                                               VerticalAlignment="Center"
+                                               Margin="0,0,6,0">
+                                        <TextBlock.Style>
+                                            <Style TargetType="TextBlock">
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding Badge}" Value="Modified">
+                                                        <Setter Property="Foreground" Value="{DynamicResource GitModifiedForeground}" />
+                                                    </DataTrigger>
+                                                    <DataTrigger Binding="{Binding Badge}" Value="Added">
+                                                        <Setter Property="Foreground" Value="{DynamicResource GitAddedForeground}" />
+                                                    </DataTrigger>
+                                                    <DataTrigger Binding="{Binding Badge}" Value="Deleted">
+                                                        <Setter Property="Foreground" Value="{DynamicResource GitDeletedForeground}" />
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </TextBlock.Style>
+                                    </TextBlock>
+                                    <TextBlock Text="{Binding RelativePath}"
+                                               FontFamily="Cascadia Code, Consolas, Courier New"
+                                               FontSize="12"
+                                               Foreground="{DynamicResource ErrorListForeground}"
+                                               VerticalAlignment="Center" />
+                                </StackPanel>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+                </DockPanel>
+            </Grid>
 
+            <Border x:Name="NoRepositoryState"
+                    Background="{DynamicResource ErrorListBackground}"
+                    Visibility="Collapsed">
+                <StackPanel VerticalAlignment="Center"
+                            HorizontalAlignment="Center"
+                            Margin="24">
+                    <TextBlock Text="No repository"
+                               FontSize="16"
+                               FontWeight="SemiBold"
+                               HorizontalAlignment="Center"
+                               Foreground="{DynamicResource ErrorListForeground}" />
+                    <TextBlock Text="Open a folder with Git or initialize a repository to see changes here."
+                               Margin="0,8,0,0"
+                               TextAlignment="Center"
+                               TextWrapping="Wrap"
+                               Foreground="{DynamicResource ErrorListForeground}" />
+                </StackPanel>
+            </Border>
         </Grid>
     </DockPanel>
 </UserControl>

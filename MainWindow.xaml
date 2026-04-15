@@ -305,6 +305,21 @@ ResizeMode="CanResizeWithGrip">
                                 </TreeView>
                             </Border>
                         </avalonDock:LayoutAnchorable>
+                        <avalonDock:LayoutAnchorable x:Name="GitChangesAnchorable" Title="Git Changes"
+                                                     CanClose="False"
+                                                     CanHide="True"
+                                                     CanAutoHide="True"
+                                                     ContentId="GitChangesPane">
+                            <controls:GitChangesPanel x:Name="GitChangesPanel"
+                                                      UnstagedChanges="{Binding UnstagedChanges}"
+                                                      StagedChanges="{Binding StagedChanges}"
+                                                      GitBranches="{Binding GitBranches}"
+                                                      SelectedGitBranch="{Binding SelectedGitBranch, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                      PanelStatusText="{Binding GitChangesStatusText}"
+                                                      IsRepositoryOpen="{Binding IsGitRepositoryOpen}"
+                                                      RefreshRequested="GitChangesPanel_RefreshRequested"
+                                                      FileOpenRequested="GitChangesPanel_FileOpenRequested" />
+                        </avalonDock:LayoutAnchorable>
                     </avalonDock:LayoutAnchorablePane>
 
                     <!-- Center: Document + Error List (vertical split) -->
@@ -470,20 +485,6 @@ ResizeMode="CanResizeWithGrip">
                                                               PeekContentText="{Binding ReferencePeekContentText}"
                                                               PreviewRequested="FindReferencesPanel_PreviewRequested"
                                                               NavigateRequested="FindReferencesPanel_NavigateRequested" />
-                            </avalonDock:LayoutAnchorable>
-                            <avalonDock:LayoutAnchorable x:Name="GitChangesAnchorable" Title="Git Changes"
-                                                         CanClose="False"
-                                                         CanHide="True"
-                                                         CanAutoHide="True"
-                                                         ContentId="GitChangesPane">
-                                <controls:GitChangesPanel x:Name="GitChangesPanel"
-                                                          UnstagedChanges="{Binding UnstagedChanges}"
-                                                          StagedChanges="{Binding StagedChanges}"
-                                                          GitBranches="{Binding GitBranches}"
-                                                          SelectedGitBranch="{Binding SelectedGitBranch, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                                          PanelStatusText="{Binding GitChangesStatusText}"
-                                                          RefreshRequested="GitChangesPanel_RefreshRequested"
-                                                          FileOpenRequested="GitChangesPanel_FileOpenRequested" />
                             </avalonDock:LayoutAnchorable>
                             <avalonDock:LayoutAnchorable x:Name="GitDiffAnchorable" Title="Git Diff"
                                                          CanClose="False"

@@ -138,6 +138,9 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
         AcceptIncomingConflictCommand = new RelayCommand(param => ResolveConflict(param as GitChangesEntry, GitConflictResolution.AcceptIncoming), _ => _gitService.IsRepositoryOpen);
         AcceptBothConflictCommand = new RelayCommand(param => ResolveConflict(param as GitChangesEntry, GitConflictResolution.AcceptBoth), _ => _gitService.IsRepositoryOpen);
         CommitCommand = new RelayCommand(async _ => await CommitChangesAsync(), _ => _gitService.IsRepositoryOpen);
+        CommitStagedChangesCommand = new RelayCommand(
+            async _ => await CommitChangesFromPanelAsync(),
+            _ => CanCommitStagedChanges(_gitService.IsRepositoryOpen, StagedChanges.Count, GitCommitMessage));
         CreateBranchCommand = new RelayCommand(async _ => await CreateBranchAsync(), _ => _gitService.IsRepositoryOpen);
         DeleteBranchCommand = new RelayCommand(async _ => await DeleteBranchAsync(), _ => _gitService.IsRepositoryOpen);
         FetchCommand = new RelayCommand(async _ => await FetchAsync(), _ => _gitService.IsRepositoryOpen);
@@ -192,6 +195,7 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
     public ICommand AcceptIncomingConflictCommand { get; }
     public ICommand AcceptBothConflictCommand { get; }
     public ICommand CommitCommand { get; }
+    public ICommand CommitStagedChangesCommand { get; }
     public ICommand CreateBranchCommand { get; }
     public ICommand DeleteBranchCommand { get; }
     public ICommand FetchCommand { get; }
@@ -315,6 +319,21 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
     public string GitRepositoryStatusText => _gitService.IsRepositoryOpen
         ? $"Branch: {_gitService.CurrentBranchName ?? "(detached)"}"
         : "No repository";
+
+    public bool IsGitRepositoryOpen => _gitService.IsRepositoryOpen;
+
+    private string _gitCommitMessage = string.Empty;
+    public string GitCommitMessage
+    {
+        get => _gitCommitMessage;
+        set
+        {
+            if (SetProperty(ref _gitCommitMessage, value))
+            {
+                CommandManager.InvalidateRequerySuggested();
+            }
+        }
+    }
 
     private string? _selectedGitBranch;
     public string? SelectedGitBranch
@@ -3323,13 +3342,23 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
 
     private async Task CommitChangesAsync()
     {
-        var message = PromptForInput("Git Commit", "Commit message:", string.Empty);
+        string? message = PromptForInput("Git Commit", "Commit message:", GitCommitMessage);
         if (message is null)
         {
             return;
         }
 
-        if (string.IsNullOrWhiteSpace(message))
+        await CommitChangesAsync(message).ConfigureAwait(true);
+    }
+
+    private async Task CommitChangesFromPanelAsync()
+    {
+        await CommitChangesAsync(GitCommitMessage).ConfigureAwait(true);
+    }
+
+    private async Task CommitChangesAsync(string? commitMessage)
+    {
+        if (string.IsNullOrWhiteSpace(commitMessage))
         {
             MessageBox.Show("Commit message is required.", "Git Commit",
                 MessageBoxButton.OK, MessageBoxImage.Warning);
@@ -3338,8 +3367,9 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
 
         try
         {
-            await _gitService.CommitAsync(message.Trim()).ConfigureAwait(true);
+            await _gitService.CommitAsync(commitMessage.Trim()).ConfigureAwait(true);
             RefreshGitStatus();
+            GitCommitMessage = string.Empty;
             MessageBox.Show("Commit created.", "Git Commit",
                 MessageBoxButton.OK, MessageBoxImage.Information);
         }
@@ -3364,6 +3394,34 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
     {
         _gitService.RefreshStatus();
         UpdateGitRepositoryState();
+    }
+
+    internal static bool CanCommitStagedChanges(bool isRepositoryOpen, int stagedCount, string? commitMessage)
+    {
+        return isRepositoryOpen
+            && stagedCount > 0
+            && !string.IsNullOrWhiteSpace(commitMessage);
+    }
+
+    internal static string GetGitChangesStatusText(bool isRepositoryOpen, int unstagedCount, int stagedCount)
+    {
+        if (!isRepositoryOpen)
+        {
+            return "No repository";
+        }
+
+        int totalCount = unstagedCount + stagedCount;
+        if (totalCount == 0)
+        {
+            return "No changes";
+        }
+
+        if (stagedCount == 0)
+        {
+            return totalCount == 1 ? "1 change" : $"{totalCount} changes";
+        }
+
+        return $"{unstagedCount} unstaged, {stagedCount} staged";
     }
 
     private void InitializeGitRepository()
@@ -3725,6 +3783,7 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
         RefreshGitLog();
         OnPropertyChanged(nameof(CanInitializeGitRepository));
         OnPropertyChanged(nameof(GitRepositoryStatusText));
+        OnPropertyChanged(nameof(IsGitRepositoryOpen));
         CommandManager.InvalidateRequerySuggested();
     }
 
@@ -3847,16 +3906,21 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
             }
         }
 
-        GitChangesStatusText = UnstagedChanges.Count + StagedChanges.Count > 0
-            ? $"{UnstagedChanges.Count} unstaged, {StagedChanges.Count} staged"
-            : "No changes";
+        GitChangesStatusText = GetGitChangesStatusText(
+            _gitService.IsRepositoryOpen,
+            UnstagedChanges.Count,
+            StagedChanges.Count);
     }
 
     private void ClearGitChangesCollections()
     {
         UnstagedChanges.Clear();
         StagedChanges.Clear();
-        GitChangesStatusText = string.Empty;
+        GitCommitMessage = string.Empty;
+        GitChangesStatusText = GetGitChangesStatusText(
+            _gitService.IsRepositoryOpen,
+            UnstagedChanges.Count,
+            StagedChanges.Count);
     }
 
     private static GitStatusBadge ToStagedBadge(LibGit2Sharp.FileStatus status)

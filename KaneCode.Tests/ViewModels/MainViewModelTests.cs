@@ -63,6 +63,68 @@ public class MainViewModelTests
         Assert.Equal("Editing: C:\\repo\\Program.cs  |  1 error(s), 0 warning(s)", result);
     }
 
+    [Fact]
+    public void WhenGitRepositoryIsNotOpenThenGitChangesStatusShowsNoRepository()
+    {
+        string result = MainViewModel.GetGitChangesStatusText(
+            isRepositoryOpen: false,
+            unstagedCount: 0,
+            stagedCount: 0);
+
+        Assert.Equal("No repository", result);
+    }
+
+    [Fact]
+    public void WhenNothingIsStagedThenGitChangesStatusUsesCombinedCount()
+    {
+        string result = MainViewModel.GetGitChangesStatusText(
+            isRepositoryOpen: true,
+            unstagedCount: 3,
+            stagedCount: 0);
+
+        Assert.Equal("3 changes", result);
+    }
+
+    [Fact]
+    public void WhenItemsAreStagedThenGitChangesStatusShowsSplitCounts()
+    {
+        string result = MainViewModel.GetGitChangesStatusText(
+            isRepositoryOpen: true,
+            unstagedCount: 2,
+            stagedCount: 1);
+
+        Assert.Equal("2 unstaged, 1 staged", result);
+    }
+
+    [Fact]
+    public void WhenRepositoryHasStagedChangesAndCommitMessageThenPanelCommitIsEnabled()
+    {
+        bool result = MainViewModel.CanCommitStagedChanges(
+            isRepositoryOpen: true,
+            stagedCount: 1,
+            commitMessage: "Initial commit");
+
+        Assert.True(result);
+    }
+
+    [Theory]
+    [InlineData(false, 1, "Initial commit")]
+    [InlineData(true, 0, "Initial commit")]
+    [InlineData(true, 1, "")]
+    [InlineData(true, 1, "   ")]
+    public void WhenPanelCommitRequirementsAreMissingThenPanelCommitIsDisabled(
+        bool isRepositoryOpen,
+        int stagedCount,
+        string commitMessage)
+    {
+        bool result = MainViewModel.CanCommitStagedChanges(
+            isRepositoryOpen,
+            stagedCount,
+            commitMessage);
+
+        Assert.False(result);
+    }
+
     [Theory]
     [InlineData(@"C:\repo\App.csproj")]
     [InlineData(@"C:\repo\App.slnx")]

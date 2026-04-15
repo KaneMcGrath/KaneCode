@@ -13,6 +13,7 @@ public partial class GitChangesPanel : UserControl
     public GitChangesPanel()
     {
         InitializeComponent();
+        UpdatePanelLayout();
     }
 
     /// <summary>
@@ -95,6 +96,22 @@ public partial class GitChangesPanel : UserControl
         set => SetValue(SelectedGitBranchProperty, value);
     }
 
+    /// <summary>
+    /// Indicates whether the current workspace is backed by an open Git repository.
+    /// </summary>
+    public static readonly DependencyProperty IsRepositoryOpenProperty =
+        DependencyProperty.Register(
+            nameof(IsRepositoryOpen),
+            typeof(bool),
+            typeof(GitChangesPanel),
+            new PropertyMetadata(false, OnIsRepositoryOpenChanged));
+
+    public bool IsRepositoryOpen
+    {
+        get => (bool)GetValue(IsRepositoryOpenProperty);
+        set => SetValue(IsRepositoryOpenProperty, value);
+    }
+
     /// <summary>Raised when the user clicks the Refresh button.</summary>
     public event EventHandler? RefreshRequested;
 
@@ -133,7 +150,7 @@ public partial class GitChangesPanel : UserControl
         if (d is GitChangesPanel panel)
         {
             panel.UnstagedList.ItemsSource = e.NewValue as ObservableCollection<GitChangesEntry>;
-            panel.UpdateSectionHeaders();
+            panel.UpdatePanelLayout();
 
             if (e.OldValue is ObservableCollection<GitChangesEntry> old)
             {
@@ -152,7 +169,7 @@ public partial class GitChangesPanel : UserControl
         if (d is GitChangesPanel panel)
         {
             panel.StagedList.ItemsSource = e.NewValue as ObservableCollection<GitChangesEntry>;
-            panel.UpdateSectionHeaders();
+            panel.UpdatePanelLayout();
 
             if (e.OldValue is ObservableCollection<GitChangesEntry> old)
             {
@@ -190,22 +207,56 @@ public partial class GitChangesPanel : UserControl
         }
     }
 
+    private static void OnIsRepositoryOpenChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+    {
+        if (d is GitChangesPanel panel)
+        {
+            panel.UpdatePanelLayout();
+        }
+    }
+
     private void OnUnstagedCollectionChanged(
         object? sender,
         System.Collections.Specialized.NotifyCollectionChangedEventArgs e) =>
-        UpdateSectionHeaders();
+        UpdatePanelLayout();
 
     private void OnStagedCollectionChanged(
         object? sender,
         System.Collections.Specialized.NotifyCollectionChangedEventArgs e) =>
-        UpdateSectionHeaders();
+        UpdatePanelLayout();
 
     private void UpdateSectionHeaders()
     {
-        var unstagedCount = UnstagedChanges?.Count ?? 0;
-        var stagedCount = StagedChanges?.Count ?? 0;
-        UnstagedHeader.Text = $"Unstaged Changes ({unstagedCount})";
-        StagedHeader.Text = $"Staged Changes ({stagedCount})";
+        int unstagedCount = UnstagedChanges?.Count ?? 0;
+        int stagedCount = StagedChanges?.Count ?? 0;
+
+        if (stagedCount > 0)
+        {
+            UnstagedHeader.Text = $"Unstaged Changes ({unstagedCount})";
+            StagedHeader.Text = $"Staged Changes ({stagedCount})";
+            return;
+        }
+
+        int totalCount = unstagedCount + stagedCount;
+        UnstagedHeader.Text = $"Changes ({totalCount})";
+        StagedHeader.Text = "Staged Changes (0)";
+    }
+
+    private void UpdatePanelLayout()
+    {
+        UpdateSectionHeaders();
+
+        bool hasRepository = IsRepositoryOpen;
+        bool hasStagedChanges = (StagedChanges?.Count ?? 0) > 0;
+
+        RepositoryContent.Visibility = hasRepository ? Visibility.Visible : Visibility.Collapsed;
+        NoRepositoryState.Visibility = hasRepository ? Visibility.Collapsed : Visibility.Visible;
+        BranchSelectorPanel.Visibility = hasRepository ? Visibility.Visible : Visibility.Collapsed;
+        CommitPanel.Visibility = hasRepository ? Visibility.Visible : Visibility.Collapsed;
+        SplitterRow.Height = hasStagedChanges ? new GridLength(4) : new GridLength(0);
+        StagedSectionRow.Height = hasStagedChanges ? new GridLength(1, GridUnitType.Star) : new GridLength(0);
+        StagedSplitter.Visibility = hasStagedChanges ? Visibility.Visible : Visibility.Collapsed;
+        StagedSection.Visibility = hasStagedChanges ? Visibility.Visible : Visibility.Collapsed;
     }
 
     private void RefreshButton_Click(object sender, RoutedEventArgs e)
