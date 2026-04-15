@@ -66,10 +66,10 @@
                          Text="{Binding GitCommitMessage, UpdateSourceTrigger=PropertyChanged}"
                          ToolTip="Commit message" />
                 <Button Grid.Column="1"
-                        Content="Commit"
+                        Content="{Binding GitCommitButtonText}"
                         MinWidth="88"
                         Padding="12,4"
-                        Command="{Binding CommitStagedChangesCommand}" />
+                        Command="{Binding CommitGitChangesCommand}" />
             </Grid>
         </Border>
 

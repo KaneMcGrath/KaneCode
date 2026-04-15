@@ -138,9 +138,9 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
         AcceptIncomingConflictCommand = new RelayCommand(param => ResolveConflict(param as GitChangesEntry, GitConflictResolution.AcceptIncoming), _ => _gitService.IsRepositoryOpen);
         AcceptBothConflictCommand = new RelayCommand(param => ResolveConflict(param as GitChangesEntry, GitConflictResolution.AcceptBoth), _ => _gitService.IsRepositoryOpen);
         CommitCommand = new RelayCommand(async _ => await CommitChangesAsync(), _ => _gitService.IsRepositoryOpen);
-        CommitStagedChangesCommand = new RelayCommand(
+        CommitGitChangesCommand = new RelayCommand(
             async _ => await CommitChangesFromPanelAsync(),
-            _ => CanCommitStagedChanges(_gitService.IsRepositoryOpen, StagedChanges.Count, GitCommitMessage));
+            _ => CanCommitGitChanges(_gitService.IsRepositoryOpen, UnstagedChanges.Count, StagedChanges.Count, GitCommitMessage));
         CreateBranchCommand = new RelayCommand(async _ => await CreateBranchAsync(), _ => _gitService.IsRepositoryOpen);
         DeleteBranchCommand = new RelayCommand(async _ => await DeleteBranchAsync(), _ => _gitService.IsRepositoryOpen);
         FetchCommand = new RelayCommand(async _ => await FetchAsync(), _ => _gitService.IsRepositoryOpen);
@@ -195,7 +195,7 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
     public ICommand AcceptIncomingConflictCommand { get; }
     public ICommand AcceptBothConflictCommand { get; }
     public ICommand CommitCommand { get; }
-    public ICommand CommitStagedChangesCommand { get; }
+    public ICommand CommitGitChangesCommand { get; }
     public ICommand CreateBranchCommand { get; }
     public ICommand DeleteBranchCommand { get; }
     public ICommand FetchCommand { get; }
@@ -321,6 +321,8 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
         : "No repository";
 
     public bool IsGitRepositoryOpen => _gitService.IsRepositoryOpen;
+
+    public string GitCommitButtonText => GetGitCommitButtonText(StagedChanges.Count);
 
     private string _gitCommitMessage = string.Empty;
     public string GitCommitMessage
@@ -3353,6 +3355,32 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
 
     private async Task CommitChangesFromPanelAsync()
     {
+        try
+        {
+            if (StagedChanges.Count == 0)
+            {
+                _gitService.StageAll();
+            }
+        }
+        catch (ArgumentException ex)
+        {
+            MessageBox.Show(ex.Message, "Git Commit",
+                MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+        catch (InvalidOperationException ex)
+        {
+            MessageBox.Show(ex.Message, "Git Commit",
+                MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+        catch (LibGit2Sharp.LibGit2SharpException ex)
+        {
+            MessageBox.Show($"Commit preparation failed:\n{ex.Message}", "Git Commit",
+                MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
         await CommitChangesAsync(GitCommitMessage).ConfigureAwait(true);
     }
 
@@ -3396,11 +3424,16 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
         UpdateGitRepositoryState();
     }
 
-    internal static bool CanCommitStagedChanges(bool isRepositoryOpen, int stagedCount, string? commitMessage)
+    internal static bool CanCommitGitChanges(bool isRepositoryOpen, int unstagedCount, int stagedCount, string? commitMessage)
     {
         return isRepositoryOpen
-            && stagedCount > 0
+            && (unstagedCount > 0 || stagedCount > 0)
             && !string.IsNullOrWhiteSpace(commitMessage);
+    }
+
+    internal static string GetGitCommitButtonText(int stagedCount)
+    {
+        return stagedCount > 0 ? "Commit Staged" : "Commit";
     }
 
     internal static string GetGitChangesStatusText(bool isRepositoryOpen, int unstagedCount, int stagedCount)
@@ -3784,6 +3817,7 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(CanInitializeGitRepository));
         OnPropertyChanged(nameof(GitRepositoryStatusText));
         OnPropertyChanged(nameof(IsGitRepositoryOpen));
+        OnPropertyChanged(nameof(GitCommitButtonText));
         CommandManager.InvalidateRequerySuggested();
     }
 
@@ -3910,6 +3944,7 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
             _gitService.IsRepositoryOpen,
             UnstagedChanges.Count,
             StagedChanges.Count);
+        OnPropertyChanged(nameof(GitCommitButtonText));
     }
 
     private void ClearGitChangesCollections()
@@ -3921,6 +3956,7 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
             _gitService.IsRepositoryOpen,
             UnstagedChanges.Count,
             StagedChanges.Count);
+        OnPropertyChanged(nameof(GitCommitButtonText));
     }
 
     private static GitStatusBadge ToStagedBadge(LibGit2Sharp.FileStatus status)

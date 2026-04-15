@@ -99,30 +99,61 @@ public class MainViewModelTests
     [Fact]
     public void WhenRepositoryHasStagedChangesAndCommitMessageThenPanelCommitIsEnabled()
     {
-        bool result = MainViewModel.CanCommitStagedChanges(
+        bool result = MainViewModel.CanCommitGitChanges(
             isRepositoryOpen: true,
+            unstagedCount: 0,
             stagedCount: 1,
             commitMessage: "Initial commit");
 
         Assert.True(result);
     }
 
+    [Fact]
+    public void WhenRepositoryHasOnlyUnstagedChangesAndCommitMessageThenPanelCommitIsEnabled()
+    {
+        bool result = MainViewModel.CanCommitGitChanges(
+            isRepositoryOpen: true,
+            unstagedCount: 2,
+            stagedCount: 0,
+            commitMessage: "Initial commit");
+
+        Assert.True(result);
+    }
+
     [Theory]
-    [InlineData(false, 1, "Initial commit")]
-    [InlineData(true, 0, "Initial commit")]
-    [InlineData(true, 1, "")]
-    [InlineData(true, 1, "   ")]
+    [InlineData(false, 0, 1, "Initial commit")]
+    [InlineData(true, 0, 0, "Initial commit")]
+    [InlineData(true, 0, 1, "")]
+    [InlineData(true, 2, 0, "   ")]
     public void WhenPanelCommitRequirementsAreMissingThenPanelCommitIsDisabled(
         bool isRepositoryOpen,
+        int unstagedCount,
         int stagedCount,
         string commitMessage)
     {
-        bool result = MainViewModel.CanCommitStagedChanges(
+        bool result = MainViewModel.CanCommitGitChanges(
             isRepositoryOpen,
+            unstagedCount,
             stagedCount,
             commitMessage);
 
         Assert.False(result);
+    }
+
+    [Fact]
+    public void WhenNoChangesAreStagedThenCommitButtonTextShowsCommit()
+    {
+        string result = MainViewModel.GetGitCommitButtonText(stagedCount: 0);
+
+        Assert.Equal("Commit", result);
+    }
+
+    [Fact]
+    public void WhenChangesAreStagedThenCommitButtonTextShowsCommitStaged()
+    {
+        string result = MainViewModel.GetGitCommitButtonText(stagedCount: 1);
+
+        Assert.Equal("Commit Staged", result);
     }
 
     [Theory]
