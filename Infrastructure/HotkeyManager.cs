@@ -167,8 +167,7 @@ internal static class HotkeyManager
         Register(HotkeyAction.NewFile, "New File", Key.N, ModifierKeys.Control);
         Register(HotkeyAction.OpenFile, "Open File", Key.O, ModifierKeys.Control);
         Register(HotkeyAction.OpenFolder, "Open Folder", Key.None, ModifierKeys.None);
-        Register(HotkeyAction.OpenProject, "Open Project", Key.None, ModifierKeys.None);
-        Register(HotkeyAction.OpenSolution, "Open Solution", Key.None, ModifierKeys.None);
+        Register(HotkeyAction.OpenProjectOrSolution, "Open Project or Solution", Key.None, ModifierKeys.None);
         Register(HotkeyAction.Save, "Save", Key.S, ModifierKeys.Control);
         Register(HotkeyAction.SaveAs, "Save As", Key.S, ModifierKeys.Control | ModifierKeys.Shift);
         Register(HotkeyAction.CloseTab, "Close Tab", Key.W, ModifierKeys.Control);

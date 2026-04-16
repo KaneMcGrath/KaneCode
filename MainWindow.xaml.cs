@@ -335,8 +335,7 @@ public partial class MainWindow : Window
         AddWindowBinding(HotkeyAction.NewFile, _viewModel.NewFileCommand);
         AddWindowBinding(HotkeyAction.OpenFile, _viewModel.OpenFileCommand);
         AddWindowBinding(HotkeyAction.OpenFolder, _viewModel.OpenFolderCommand);
-        AddWindowBinding(HotkeyAction.OpenProject, _viewModel.OpenProjectCommand);
-        AddWindowBinding(HotkeyAction.OpenSolution, _viewModel.OpenSolutionCommand);
+        AddWindowBinding(HotkeyAction.OpenProjectOrSolution, _viewModel.OpenProjectOrSolutionCommand);
         AddWindowBinding(HotkeyAction.Save, _viewModel.SaveCommand);
         AddWindowBinding(HotkeyAction.SaveAs, _viewModel.SaveAsCommand);
         AddWindowBinding(HotkeyAction.CloseTab, _viewModel.CloseTabCommand);
@@ -469,8 +468,7 @@ public partial class MainWindow : Window
         ["_New"] = HotkeyAction.NewFile,
         ["_Open File"] = HotkeyAction.OpenFile,
         ["Open _Folder"] = HotkeyAction.OpenFolder,
-        ["Open _Project..."] = HotkeyAction.OpenProject,
-        ["Open _Solution..."] = HotkeyAction.OpenSolution,
+        ["Open _Project or Solution..."] = HotkeyAction.OpenProjectOrSolution,
         ["_Save"] = HotkeyAction.Save,
         ["Save _As..."] = HotkeyAction.SaveAs,
         ["_Close Tab"] = HotkeyAction.CloseTab,

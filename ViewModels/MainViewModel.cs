@@ -98,8 +98,7 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
         NewFileCommand = new RelayCommand(_ => NewFile());
         OpenFileCommand = new RelayCommand(_ => OpenFile());
         OpenFolderCommand = new RelayCommand(_ => OpenFolder());
-        OpenProjectCommand = new RelayCommand(_ => OpenProject(), _ => !_isLoadingProject);
-        OpenSolutionCommand = new RelayCommand(_ => OpenSolution(), _ => !_isLoadingProject);
+        OpenProjectOrSolutionCommand = new RelayCommand(_ => OpenProjectOrSolution(), _ => !_isLoadingProject);
         SaveCommand = new RelayCommand(_ => Save(), _ => ActiveTab is not null);
         SaveAsCommand = new RelayCommand(_ => SaveAs(), _ => ActiveTab is not null);
         UndoCommand = new RelayCommand(_ => _editor?.Undo(), _ => _editor?.CanUndo == true);
@@ -155,8 +154,7 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
     public ICommand NewFileCommand { get; }
     public ICommand OpenFileCommand { get; }
     public ICommand OpenFolderCommand { get; }
-    public ICommand OpenProjectCommand { get; }
-    public ICommand OpenSolutionCommand { get; }
+    public ICommand OpenProjectOrSolutionCommand { get; }
     public ICommand SaveCommand { get; }
     public ICommand SaveAsCommand { get; }
     public ICommand UndoCommand { get; }
@@ -381,7 +379,7 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
                 parts.Add(ActiveTab.DisplayName);
             }
 
-            return string.Join(" — ", parts);
+            return string.Join(" ï¿½ ", parts);
         }
     }
 
@@ -1115,12 +1113,12 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
         LoadProjectRoot(dialog.FolderName);
     }
 
-    private void OpenProject()
+    private void OpenProjectOrSolution()
     {
         var dialog = new OpenFileDialog
         {
-            Filter = "C# Project Files (*.csproj)|*.csproj",
-            Title = "Open C# Project"
+            Filter = "Project and Solution Files (*.csproj;*.sln;*.slnx)|*.csproj;*.sln;*.slnx|All Files (*.*)|*.*",
+            Title = "Open Project or Solution"
         };
 
         if (dialog.ShowDialog() != true)
@@ -1128,23 +1126,16 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
             return;
         }
 
-        _ = LoadProjectFileAsync(dialog.FileName);
-    }
-
-    private void OpenSolution()
-    {
-        var dialog = new OpenFileDialog
+        var path = dialog.FileName;
+        var extension = Path.GetExtension(path).ToLowerInvariant();
+        if (extension == ".csproj")
         {
-            Filter = "Solution Files (*.sln;*.slnx)|*.sln;*.slnx",
-            Title = "Open Solution"
-        };
-
-        if (dialog.ShowDialog() != true)
-        {
-            return;
+            _ = LoadProjectFileAsync(path);
         }
-
-        _ = LoadSolutionFileAsync(dialog.FileName);
+        else
+        {
+            _ = LoadSolutionFileAsync(path);
+        }
     }
 
     internal Task OpenProjectByPathAsync(string projectPath)
@@ -1213,7 +1204,7 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
 
             OpenRepositoryForPath(projectDir);
 
-            LoadingStatus = $"Loaded: {result.Name} ({result.TargetFramework}) — {result.SourceFiles.Length} file(s)";
+            LoadingStatus = $"Loaded: {result.Name} ({result.TargetFramework}) ï¿½ {result.SourceFiles.Length} file(s)";
             ScheduleLoadingStatusClear();
         }
         catch (OperationCanceledException)
@@ -1278,7 +1269,7 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
 
             var totalFiles = result.Projects.Sum(p => p.SourceFiles.Length);
             var projectNames = string.Join(", ", result.Projects.Select(p => p.Name));
-            LoadingStatus = $"Loaded: {result.Name} — {result.Projects.Length} project(s), {totalFiles} file(s) [{projectNames}]";
+            LoadingStatus = $"Loaded: {result.Name} ï¿½ {result.Projects.Length} project(s), {totalFiles} file(s) [{projectNames}]";
             ScheduleLoadingStatusClear();
         }
         catch (OperationCanceledException)
@@ -1599,7 +1590,7 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
 
             bool isCSharpFile = RoslynWorkspaceService.IsCSharpFile(tab.FilePath);
 
-            // Swap the underlying document — this preserves each tab's undo/redo history
+            // Swap the underlying document ï¿½ this preserves each tab's undo/redo history
             _editor.Document = tab.Document;
 
             _classificationColorizer?.Reset(isCSharpFile ? tab.FilePath : null);
@@ -2821,7 +2812,7 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
             return;
         }
 
-        ReferencePeekHeaderText = $"{item.KindDisplayName} — {item.SymbolName} ({item.FileName}:{item.Line})";
+        ReferencePeekHeaderText = $"{item.KindDisplayName} ï¿½ {item.SymbolName} ({item.FileName}:{item.Line})";
 
         string? fileText = null;
         OpenFileTab? openTab = OpenTabs.FirstOrDefault(t => string.Equals(t.FilePath, item.FilePath, StringComparison.OrdinalIgnoreCase));
@@ -2870,7 +2861,7 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
         }
 
         string symbolName = results[0].SymbolName;
-        FindReferencesStatusText = $"{symbolName} — {results.Count} {successSuffix}";
+        FindReferencesStatusText = $"{symbolName} ï¿½ {results.Count} {successSuffix}";
         UpdateReferencePeek(results[0]);
     }
 
