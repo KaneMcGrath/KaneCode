@@ -1,7 +1,9 @@
 using KaneCode.Models;
+using KaneCode.ViewModels;
 using System.Collections.ObjectModel;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Input;
 
 namespace KaneCode.Controls;
 
@@ -356,6 +358,19 @@ public partial class GitChangesPanel : UserControl
         if (StagedList.SelectedItem is GitChangesEntry entry)
         {
             FileOpenRequested?.Invoke(this, entry);
+        }
+    }
+
+    private void CommitMessageBox_PreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        // Allow Ctrl+Enter to trigger commit (with multi-line support)
+        if (e.Key == Key.Enter && Keyboard.Modifiers == ModifierKeys.Control)
+        {
+            e.Handled = true;
+            if (DataContext is MainViewModel vm)
+            {
+                vm.CommitGitChangesCommand?.Execute(null);
+            }
         }
     }
 }

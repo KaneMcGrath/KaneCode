@@ -61,14 +61,25 @@
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
-                <TextBox Grid.Column="0"
-                         Margin="0,0,8,0"
-                         Text="{Binding GitCommitMessage, UpdateSourceTrigger=PropertyChanged}"
-                         ToolTip="Commit message" />
+                <TextBox x:Name="CommitMessageBox"
+                        Grid.Column="0"
+                        Margin="0,0,8,0"
+                        Text="{Binding GitCommitMessage, UpdateSourceTrigger=PropertyChanged}"
+                        TextWrapping="Wrap"
+                        AcceptsReturn="True"
+                        MinHeight="60"
+                        Height="60"
+                        VerticalAlignment="Center"
+                        VerticalScrollBarVisibility="Auto"
+                        VerticalContentAlignment="Top"
+                        PreviewKeyDown="CommitMessageBox_PreviewKeyDown"
+                        ToolTip="Commit message (Ctrl+Enter to commit)" />
                 <Button Grid.Column="1"
                         Content="{Binding GitCommitButtonText}"
-                        MinWidth="88"
+                        Width="88"
+                        Height="28"
                         Padding="12,4"
+                        VerticalAlignment="Center"
                         Command="{Binding CommitGitChangesCommand}" />
             </Grid>
         </Border>
