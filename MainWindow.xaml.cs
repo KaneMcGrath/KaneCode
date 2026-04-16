@@ -1165,7 +1165,7 @@ public partial class MainWindow : Window
         AddLabel(rootPanel, "Location:", 3);
         var destinationTextBox = new TextBox
         {
-            Text = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
+            Text = GeneralSettingsManager.LoadDefaultProjectFolder(),
             Margin = new Thickness(0, 0, 8, 8)
         };
         Grid.SetRow(destinationTextBox, 3);

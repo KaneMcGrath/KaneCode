@@ -73,9 +73,31 @@
                            FontSize="18" FontWeight="SemiBold"
                            Foreground="{DynamicResource WindowForeground}"
                            Margin="0,0,0,16" />
-                <TextBlock Text="No settings available yet."
+
+                <TextBlock Text="Default project location"
+                           Foreground="{DynamicResource WindowForeground}"
+                           FontSize="13" FontWeight="SemiBold"
+                           Margin="0,0,0,4" />
+                <TextBlock Text="This folder will be used as the default location for new projects."
                            Foreground="{DynamicResource PanelForeground}"
-                           FontSize="13" />
+                           FontSize="11"
+                           Margin="0,0,0,8"
+                           TextWrapping="Wrap" />
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBox x:Name="DefaultProjectFolderTextBox"
+                             Grid.Column="0"
+                             Margin="0,0,8,0"
+                             IsReadOnly="True" />
+                    <Button x:Name="BrowseDefaultFolderButton"
+                            Grid.Column="1"
+                            Content="Browse..."
+                            Width="90"
+                            Click="BrowseDefaultFolderButton_Click" />
+                </Grid>
             </StackPanel>
         </Border>
 

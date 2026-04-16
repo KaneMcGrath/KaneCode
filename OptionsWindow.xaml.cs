@@ -1,5 +1,7 @@
+using KaneCode.Services;
 using KaneCode.Theming;
 using KaneCode.ViewModels;
+using Microsoft.Win32;
 using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
@@ -26,6 +28,17 @@ public partial class OptionsWindow : Window
         _initialCategory = initialCategory;
         InitializeComponent();
         Loaded += OnLoaded;
+        Closed += OnClosed;
+    }
+
+    private void OnClosed(object? sender, EventArgs e)
+    {
+        // Save the updated default project folder
+        var newFolder = DefaultProjectFolderTextBox?.Text?.Trim();
+        if (!string.IsNullOrWhiteSpace(newFolder))
+        {
+            GeneralSettingsManager.SaveDefaultProjectFolder(newFolder);
+        }
     }
 
     private void OnLoaded(object sender, RoutedEventArgs e)
@@ -51,6 +64,9 @@ public partial class OptionsWindow : Window
                 SyncApiKeyBox();
             }
         };
+
+        // Initialize the default project folder field
+        DefaultProjectFolderTextBox.Text = GeneralSettingsManager.LoadDefaultProjectFolder();
 
         _isInitializing = false;
 
@@ -180,5 +196,19 @@ public partial class OptionsWindow : Window
     private void SyncApiKeyBox()
     {
         ApiKeyBox.Password = _aiSettingsViewModel.SelectedEntry?.ApiKey ?? string.Empty;
+    }
+
+    private void BrowseDefaultFolderButton_Click(object sender, RoutedEventArgs e)
+    {
+        var folderDialog = new OpenFolderDialog
+        {
+            Title = "Select Default Project Location",
+            InitialDirectory = DefaultProjectFolderTextBox.Text
+        };
+
+        if (folderDialog.ShowDialog() == true)
+        {
+            DefaultProjectFolderTextBox.Text = folderDialog.FolderName;
+        }
     }
 }
