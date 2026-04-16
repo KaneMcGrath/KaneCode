@@ -1,17 +1,7 @@
+![alt text](https://github.com/KaneMcGrath/KaneCode/blob/master/Icons/Title.png?raw=true "KaneCode")
+
 # KaneCode
-KaneCode is a small, personal IDE project for experimenting with new ideas for developing C# software.
-The goal is to build tools around how I program, and to try out custom tools and patterns I haven't seen elsewhere.
+KaneCode is a small, personal IDE project for experimenting with new ideas for developing C# software and using local LLMs.
 
-Plans include:
- - A standard IDE with a code editor, file explorer, and build tools.
- - single key language primitive autocomplete
- - Ai agent integration with a focus on local models
-
-AI Plans:
- - standard code completion, chat, and agent mode interfaces
- - Write with non existent functions and have the agent write them for you in the background
- - Teacher: Agents can be instructed to teach you the codebase and navagate the IDE to relevant files
- 
-
-
+![alt text](https://github.com/KaneMcGrath/KaneCode/blob/master/Icons/Capture.png?raw=true "Screenshot")
 
