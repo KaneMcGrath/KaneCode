@@ -8,7 +8,7 @@ KaneCode is a small, personal IDE project for experimenting with new ideas for d
 KaneCode is currently capable of simple C# app development, but it is not yet recommended for any production use case.
 There are still many bugs and incomplete features.
 
-#Features
+# Features
 - Solution and Project loading
 - AvalonEdit code editor with syntax highlighting
 - integrated build and run
