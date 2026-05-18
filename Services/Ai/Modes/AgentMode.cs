@@ -12,7 +12,8 @@ internal sealed class AgentMode : IAiChatMode
     {
         "presentation_new",
         "find_line",
-        "presentation_add_slide"
+        "presentation_add_slide",
+        "get_diagnostics"
     };
 
     public string Id => "agent";
