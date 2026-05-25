@@ -1,6 +1,6 @@
 # Agents
 
-KaneCode is a .NET 8 WPF desktop application for managing developer tools and lightweight AI-assisted workflows. The repository contains UI controls, theming, and AI chat/agent services used to prototype interactive agents and integrations.
+KaneCode is a .NET 8 WPF desktop IDE for C# development. The repository contains UI controls, theming, and AI chat/agent services.
 
 ## Code style
 
