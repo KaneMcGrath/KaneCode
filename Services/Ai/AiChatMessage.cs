@@ -27,7 +27,9 @@ internal sealed record AiChatMessage(AiChatRole Role, string Content)
 {
     /// <summary>
     /// Thinking/reasoning text associated with the assistant message.
-    /// This is retained for UI rendering only and is not sent back to the model.
+    /// This is retained for UI rendering and is sent back to the model as
+    /// <c>reasoning_content</c> on subsequent assistant messages so that
+    /// reasoning-capable providers can validate the conversation state.
     /// </summary>
     public string? ThinkingContent { get; init; }
 

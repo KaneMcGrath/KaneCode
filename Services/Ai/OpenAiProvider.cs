@@ -441,6 +441,11 @@ internal sealed class OpenAiProvider : IAiProvider, IDisposable
                 writer.WriteString("role", role);
                 writer.WriteString("content", m.Content);
 
+                if (m.Role == AiChatRole.Assistant && m.ThinkingContent is not null)
+                {
+                    writer.WriteString("reasoning_content", m.ThinkingContent);
+                }
+
                 if (m.Role == AiChatRole.Tool && !string.IsNullOrEmpty(m.ToolCallId))
                 {
                     writer.WriteString("tool_call_id", m.ToolCallId);
