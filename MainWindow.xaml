@@ -334,47 +334,21 @@ ResizeMode="CanResizeWithGrip">
                                                          CanAutoHide="False"
                                                          ContentId="EditorPane">
                                 <DockPanel>
-                                    <!-- Tab strip -->
-                                    <ListBox DockPanel.Dock="Top"
-                                             ItemsSource="{Binding OpenTabs}"
-                                             SelectedItem="{Binding ActiveTab, Mode=OneWay}"
-                                             SelectionChanged="TabList_SelectionChanged"
-                                             Background="{DynamicResource TabStripBackground}"
-                                             BorderThickness="0"
-                                             Height="28">
-                                        <ListBox.ItemsPanel>
-                                            <ItemsPanelTemplate>
-                                                <StackPanel Orientation="Horizontal" />
-                                            </ItemsPanelTemplate>
-                                        </ListBox.ItemsPanel>
-                                        <ListBox.ItemContainerStyle>
-                                            <Style TargetType="ListBoxItem">
-                                                <Setter Property="Background" Value="Transparent" />
-                                                <Setter Property="Foreground" Value="{DynamicResource TabForeground}" />
-                                                <Setter Property="Padding" Value="0" />
-                                                <Setter Property="Margin" Value="0" />
-                                                <Setter Property="Template">
-                                                    <Setter.Value>
-                                                        <ControlTemplate TargetType="ListBoxItem">
-                                                            <Border x:Name="Bd"
-                                                                    Background="{TemplateBinding Background}"
-                                                                    Padding="{TemplateBinding Padding}">
-                                                                <ContentPresenter />
-                                                            </Border>
-                                                            <ControlTemplate.Triggers>
-                                                                <Trigger Property="IsSelected" Value="True">
-                                                                    <Setter TargetName="Bd" Property="Background"
-                                                                            Value="{DynamicResource TabSelectedBackground}" />
-                                                                    <Setter Property="Foreground"
-                                                                            Value="{DynamicResource TabSelectedForeground}" />
-                                                                </Trigger>
-                                                            </ControlTemplate.Triggers>
-                                                        </ControlTemplate>
-                                                    </Setter.Value>
-                                                </Setter>
-                                            </Style>
-                                        </ListBox.ItemContainerStyle>
-                                        <ListBox.ItemTemplate>
+                                    <!-- Tab strip with drag-drop reordering -->
+                                    <TabControl x:Name="EditorTabControl"
+                                                DockPanel.Dock="Top"
+                                                ItemsSource="{Binding OpenTabs}"
+                                                SelectedItem="{Binding ActiveTab, Mode=TwoWay}"
+                                                SelectionChanged="TabControl_SelectionChanged"
+                                                Background="{DynamicResource TabStripBackground}"
+                                                BorderThickness="0"
+                                                Height="28"
+                                                Style="{DynamicResource NoOffsetAndNoContentTabControl}"
+                                                AllowDrop="True"
+                                                PreviewDrop="TabStrip_Drop"
+                                                PreviewDragOver="TabStrip_PreviewDragOver">
+
+                                        <TabControl.ItemTemplate>
                                             <DataTemplate DataType="{x:Type models:OpenFileTab}">
                                                 <StackPanel Orientation="Horizontal">
                                                     <StackPanel.ContextMenu>
@@ -397,8 +371,20 @@ ResizeMode="CanResizeWithGrip">
                                                             CommandParameter="{Binding}" />
                                                 </StackPanel>
                                             </DataTemplate>
-                                        </ListBox.ItemTemplate>
-                                    </ListBox>
+                                        </TabControl.ItemTemplate>
+
+                                        <TabControl.ItemContainerStyle>
+                                            <Style TargetType="TabItem" BasedOn="{StaticResource NoOffsetTabItem}">
+                                                <Setter Property="Background" Value="Transparent" />
+                                                <Setter Property="Foreground" Value="{DynamicResource TabForeground}" />
+                                                <Setter Property="Padding" Value="0" />
+                                                <Setter Property="Margin" Value="0" />
+                                                <Setter Property="AllowDrop" Value="True" />
+                                                <EventSetter Event="PreviewMouseLeftButtonDown" Handler="TabItem_PreviewMouseLeftButtonDown" />
+                                                <EventSetter Event="PreviewMouseMove" Handler="TabItem_PreviewMouseMove" />
+                                            </Style>
+                                        </TabControl.ItemContainerStyle>
+                                    </TabControl>
 
                                     <controls:CodeActionLightBulb x:Name="CodeActionPopup"
                                                                   DockPanel.Dock="Top"

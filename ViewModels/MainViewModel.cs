@@ -4071,6 +4071,39 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
     }
 
     /// <summary>
+    /// Moves a tab from one index to another in the <see cref="OpenTabs"/> collection.
+    /// Called when the user drags a tab to rearrange it.
+    /// </summary>
+    public void MoveTab(int fromIndex, int toIndex)
+    {
+        if (fromIndex < 0 || fromIndex >= OpenTabs.Count)
+        {
+            return;
+        }
+
+        if (toIndex < 0)
+        {
+            return;
+        }
+
+        // Clamp to the last valid index so drop-at-end works correctly.
+        // ObservableCollection.Move requires both indices to be valid (0 to Count-1)
+        // after the removal. If toIndex >= Count it would fail when the collection
+        // shrinks by one after removal.
+        if (toIndex >= OpenTabs.Count)
+        {
+            toIndex = OpenTabs.Count - 1;
+        }
+
+        if (fromIndex == toIndex)
+        {
+            return;
+        }
+
+        OpenTabs.Move(fromIndex, toIndex);
+    }
+
+    /// <summary>
     /// Cancels any in-flight project/solution load.
     /// </summary>
     private void CancelPreviousLoad()

@@ -523,12 +523,109 @@ public partial class MainWindow : Window
         }
     }
 
-    private void TabList_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    // ── Tab drag-drop reordering ──────────────────────────────────────
+
+    private Point _tabDragStartPoint;
+    private bool _isTabDragging;
+
+    private void TabControl_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (sender is ListBox listBox && listBox.SelectedItem is OpenFileTab tab)
+        if (sender is TabControl tabControl && tabControl.SelectedItem is OpenFileTab tab)
         {
             _viewModel.SwitchToTab(tab);
         }
+    }
+
+    private void TabItem_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        _tabDragStartPoint = e.GetPosition(null);
+        _isTabDragging = false;
+    }
+
+    private void TabItem_PreviewMouseMove(object sender, MouseEventArgs e)
+    {
+        if (e.LeftButton != MouseButtonState.Pressed)
+        {
+            return;
+        }
+
+        Point position = e.GetPosition(null);
+        Vector diff = _tabDragStartPoint - position;
+
+        if (!_isTabDragging && (Math.Abs(diff.X) > SystemParameters.MinimumHorizontalDragDistance ||
+                                Math.Abs(diff.Y) > SystemParameters.MinimumVerticalDragDistance))
+        {
+            _isTabDragging = true;
+
+            if (sender is TabItem tabItem && tabItem.DataContext is OpenFileTab draggedTab)
+            {
+                DragDrop.DoDragDrop(tabItem, draggedTab, DragDropEffects.Move);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Shows a drag-drop cursor while hovering over the tab strip.
+    /// </summary>
+    private void TabStrip_PreviewDragOver(object sender, DragEventArgs e)
+    {
+        if (e.Data.GetData(typeof(OpenFileTab)) is OpenFileTab)
+        {
+            e.Effects = DragDropEffects.Move;
+            e.Handled = true;
+        }
+    }
+
+    /// <summary>
+    /// Handles dropping a tab into a new position in the tab strip.
+    /// </summary>
+    private void TabStrip_Drop(object sender, DragEventArgs e)
+    {
+        if (e.Data.GetData(typeof(OpenFileTab)) is not OpenFileTab draggedTab)
+        {
+            return;
+        }
+
+        // Find the tab item under the drop position
+        TabControl tabControl = (TabControl)sender;
+        Point dropPosition = e.GetPosition(tabControl);
+
+        // Get the first TabItem's position and width to determine insertion index
+        int targetIndex = -1;
+        double accumulatedWidth = 0;
+
+        for (int i = 0; i < tabControl.Items.Count; i++)
+        {
+            if (tabControl.ItemContainerGenerator.ContainerFromIndex(i) is TabItem tabItem)
+            {
+                double itemWidth = tabItem.ActualWidth;
+                double itemMidpoint = accumulatedWidth + itemWidth / 2;
+
+                if (dropPosition.X < itemMidpoint)
+                {
+                    targetIndex = i;
+                    break;
+                }
+
+                accumulatedWidth += itemWidth;
+            }
+        }
+
+        if (targetIndex < 0)
+        {
+            // Drop at the end — use the last valid index since ObservableCollection.Move
+            // requires both indices to be in range (0 to Count-1) after removal.
+            targetIndex = tabControl.Items.Count;
+        }
+
+        int currentIndex = _viewModel.OpenTabs.IndexOf(draggedTab);
+        if (currentIndex < 0 || currentIndex == targetIndex)
+        {
+            return;
+        }
+
+        _viewModel.MoveTab(currentIndex, targetIndex);
+        e.Handled = true;
     }
 
     private void ErrorList_NavigateRequested(object? sender, DiagnosticItem item)
