@@ -120,21 +120,6 @@ public class ReadFileToolTests : IDisposable
     }
 
     [Fact]
-    public async Task WhenFileTooLargeThenReturnsFailure()
-    {
-        string filePath = Path.Combine(_tempDir, "large.bin");
-        byte[] largeContent = new byte[201 * 1024]; // 201 KB, over the 200 KB limit
-        await File.WriteAllBytesAsync(filePath, largeContent);
-        ReadFileTool tool = new ReadFileTool(() => _tempDir);
-        JsonElement args = BuildArgs(filePath);
-
-        ToolCallResult result = await tool.ExecuteAsync(args);
-
-        Assert.False(result.Success);
-        Assert.Contains("too large", result.Error, StringComparison.OrdinalIgnoreCase);
-    }
-
-    [Fact]
     public async Task WhenProjectRootIsNullThenRelativePathStillUsed()
     {
         ReadFileTool tool = new ReadFileTool(() => null);
@@ -199,6 +184,205 @@ public class ReadFileToolTests : IDisposable
             try { Directory.Delete(outsideDirectory, recursive: true); }
             catch { }
         }
+    }
+
+    [Fact]
+    public async Task WhenFileExceedsMaxLinesThenTrimsWithMessage()
+    {
+        string filePath = Path.Combine(_tempDir, "long.txt");
+        string[] lines = new string[2500];
+        for (int i = 0; i < lines.Length; i++)
+        {
+            lines[i] = $"Line {i + 1}";
+        }
+        await File.WriteAllLinesAsync(filePath, lines);
+
+        ReadFileTool tool = new ReadFileTool(() => _tempDir);
+        JsonElement args = BuildArgs(filePath);
+
+        ToolCallResult result = await tool.ExecuteAsync(args);
+
+        Assert.True(result.Success);
+        Assert.Contains("Line 1", result.Output, StringComparison.Ordinal);
+        Assert.Contains("Line 2000", result.Output, StringComparison.Ordinal);
+        Assert.DoesNotContain("Line 2001", result.Output, StringComparison.Ordinal);
+        Assert.Contains("trimmed to 2000 lines", result.Output, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("2500 lines", result.Output, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task WhenStartLineSpecifiedThenReturnsFromThatLine()
+    {
+        string filePath = Path.Combine(_tempDir, "range.txt");
+        string[] lines = new string[100];
+        for (int i = 0; i < lines.Length; i++)
+        {
+            lines[i] = $"Line {i + 1}";
+        }
+        await File.WriteAllLinesAsync(filePath, lines);
+
+        ReadFileTool tool = new ReadFileTool(() => _tempDir);
+        JsonElement args = JsonDocument.Parse("""{ "filePath": "range.txt", "startLine": 10 }""").RootElement;
+
+        ToolCallResult result = await tool.ExecuteAsync(args);
+
+        Assert.True(result.Success);
+        Assert.Contains("Line 10", result.Output, StringComparison.Ordinal);
+        Assert.Contains("Line 100", result.Output, StringComparison.Ordinal);
+        Assert.DoesNotContain("Line 9", result.Output, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task WhenEndLineSpecifiedThenReturnsUpToThatLine()
+    {
+        string filePath = Path.Combine(_tempDir, "range.txt");
+        string[] lines = new string[100];
+        for (int i = 0; i < lines.Length; i++)
+        {
+            lines[i] = $"Line {i + 1}";
+        }
+        await File.WriteAllLinesAsync(filePath, lines);
+
+        ReadFileTool tool = new ReadFileTool(() => _tempDir);
+        JsonElement args = JsonDocument.Parse("""{ "filePath": "range.txt", "endLine": 5 }""").RootElement;
+
+        ToolCallResult result = await tool.ExecuteAsync(args);
+
+        Assert.True(result.Success);
+        Assert.Contains("Line 1", result.Output, StringComparison.Ordinal);
+        Assert.Contains("Line 5", result.Output, StringComparison.Ordinal);
+        Assert.DoesNotContain("Line 6", result.Output, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task WhenStartLineAndEndLineSpecifiedThenReturnsExactRange()
+    {
+        string filePath = Path.Combine(_tempDir, "range.txt");
+        string[] lines = new string[100];
+        for (int i = 0; i < lines.Length; i++)
+        {
+            lines[i] = $"Line {i + 1}";
+        }
+        await File.WriteAllLinesAsync(filePath, lines);
+
+        ReadFileTool tool = new ReadFileTool(() => _tempDir);
+        JsonElement args = JsonDocument.Parse("""{ "filePath": "range.txt", "startLine": 10, "endLine": 15 }""").RootElement;
+
+        ToolCallResult result = await tool.ExecuteAsync(args);
+
+        Assert.True(result.Success);
+        Assert.Contains("Line 10", result.Output, StringComparison.Ordinal);
+        Assert.Contains("Line 15", result.Output, StringComparison.Ordinal);
+        Assert.DoesNotContain("Line 9", result.Output, StringComparison.Ordinal);
+        Assert.DoesNotContain("Line 16", result.Output, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task WhenStartLineExceedsFileLengthThenReturnsEmpty()
+    {
+        string filePath = Path.Combine(_tempDir, "short.txt");
+        await File.WriteAllTextAsync(filePath, "only one line");
+
+        ReadFileTool tool = new ReadFileTool(() => _tempDir);
+        JsonElement args = JsonDocument.Parse("""{ "filePath": "short.txt", "startLine": 10 }""").RootElement;
+
+        ToolCallResult result = await tool.ExecuteAsync(args);
+
+        Assert.True(result.Success);
+        Assert.Equal(string.Empty, result.Output);
+    }
+
+    [Fact]
+    public async Task WhenEndLineExceedsFileLengthThenCapsAtFileLength()
+    {
+        string filePath = Path.Combine(_tempDir, "short.txt");
+        string[] lines = new string[5];
+        for (int i = 0; i < lines.Length; i++)
+        {
+            lines[i] = $"Line {i + 1}";
+        }
+        await File.WriteAllLinesAsync(filePath, lines);
+
+        ReadFileTool tool = new ReadFileTool(() => _tempDir);
+        JsonElement args = JsonDocument.Parse("""{ "filePath": "short.txt", "endLine": 100 }""").RootElement;
+
+        ToolCallResult result = await tool.ExecuteAsync(args);
+
+        Assert.True(result.Success);
+        Assert.Contains("Line 1", result.Output, StringComparison.Ordinal);
+        Assert.Contains("Line 5", result.Output, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task WhenStartLineGreaterThanEndLineThenReturnsFailure()
+    {
+        string filePath = Path.Combine(_tempDir, "range.txt");
+        await File.WriteAllTextAsync(filePath, "some content");
+
+        ReadFileTool tool = new ReadFileTool(() => _tempDir);
+        JsonElement args = JsonDocument.Parse("""{ "filePath": "range.txt", "startLine": 10, "endLine": 5 }""").RootElement;
+
+        ToolCallResult result = await tool.ExecuteAsync(args);
+
+        Assert.False(result.Success);
+        Assert.Contains("startLine must be less than or equal to endLine", result.Error, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task WhenStartLineIsZeroThenReturnsFailure()
+    {
+        string filePath = Path.Combine(_tempDir, "range.txt");
+        await File.WriteAllTextAsync(filePath, "some content");
+
+        ReadFileTool tool = new ReadFileTool(() => _tempDir);
+        JsonElement args = JsonDocument.Parse("""{ "filePath": "range.txt", "startLine": 0 }""").RootElement;
+
+        ToolCallResult result = await tool.ExecuteAsync(args);
+
+        Assert.False(result.Success);
+        Assert.Contains("startLine must be a positive integer", result.Error, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task WhenEndLineIsZeroThenReturnsFailure()
+    {
+        string filePath = Path.Combine(_tempDir, "range.txt");
+        await File.WriteAllTextAsync(filePath, "some content");
+
+        ReadFileTool tool = new ReadFileTool(() => _tempDir);
+        JsonElement args = JsonDocument.Parse("""{ "filePath": "range.txt", "endLine": 0 }""").RootElement;
+
+        ToolCallResult result = await tool.ExecuteAsync(args);
+
+        Assert.False(result.Success);
+        Assert.Contains("endLine must be a positive integer", result.Error, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task WhenLineRangeUsedWithMultipleFilesThenAppliesToAll()
+    {
+        string firstFilePath = Path.Combine(_tempDir, "first.txt");
+        string secondFilePath = Path.Combine(_tempDir, "second.txt");
+        string[] lines = new string[50];
+        for (int i = 0; i < lines.Length; i++)
+        {
+            lines[i] = $"Line {i + 1}";
+        }
+        await File.WriteAllLinesAsync(firstFilePath, lines);
+        await File.WriteAllLinesAsync(secondFilePath, lines);
+
+        ReadFileTool tool = new ReadFileTool(() => _tempDir);
+        JsonElement args = JsonDocument.Parse("""{ "filePaths": ["first.txt", "second.txt"], "startLine": 5, "endLine": 10 }""").RootElement;
+
+        ToolCallResult result = await tool.ExecuteAsync(args);
+
+        Assert.True(result.Success);
+        Assert.Contains("[File: first.txt]", result.Output, StringComparison.Ordinal);
+        Assert.Contains("[File: second.txt]", result.Output, StringComparison.Ordinal);
+        Assert.Contains("Line 5", result.Output, StringComparison.Ordinal);
+        Assert.Contains("Line 10", result.Output, StringComparison.Ordinal);
+        Assert.DoesNotContain("Line 4", result.Output, StringComparison.Ordinal);
+        Assert.DoesNotContain("Line 11", result.Output, StringComparison.Ordinal);
     }
 
     private static JsonElement BuildArgs(string filePath)

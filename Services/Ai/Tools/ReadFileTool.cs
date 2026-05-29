@@ -8,11 +8,13 @@ namespace KaneCode.Services.Ai.Tools;
 /// <summary>
 /// Agent tool that reads a file's contents by path.
 /// Supports both absolute paths and paths relative to the loaded project root.
-/// Enforces a max file size to protect the context budget.
+/// Enforces a maximum line count to protect the context budget.
+/// Supports reading a specific range of lines via optional startLine/endLine parameters.
 /// </summary>
 internal sealed class ReadFileTool : IAgentTool
 {
-    private const int MaxFileSizeBytes = 200 * 1024; // 200 KB
+    /// <summary>Maximum number of lines returned when no explicit line range is requested.</summary>
+    private const int MaxLines = 2000;
 
     private static readonly JsonElement Schema = JsonDocument.Parse("""
         {
@@ -28,6 +30,14 @@ internal sealed class ReadFileTool : IAgentTool
                     "items": {
                         "type": "string"
                     }
+                },
+                "startLine": {
+                    "type": "integer",
+                    "description": "Optional 1-based starting line number. When specified, returns content from this line onward (up to endLine if also specified)."
+                },
+                "endLine": {
+                    "type": "integer",
+                    "description": "Optional 1-based ending line number (inclusive). When specified, returns content up to this line. Must be greater than or equal to startLine if both are provided."
                 }
             },
             "anyOf": [
@@ -49,7 +59,7 @@ internal sealed class ReadFileTool : IAgentTool
 
     public string Name => "read_file";
 
-    public string Description => "Read the contents of a file by path. Returns the file text or an error if the file is not found or too large (>200 KB). Supports files inside the loaded project and request-scoped external context folders.";
+    public string Description => "Read the contents of a file by path. Returns the file text or an error if the file is not found or exceeds the maximum line count. Supports files inside the loaded project and request-scoped external context folders. Optionally accepts startLine and endLine (1-based, inclusive) to read a specific range of lines.";
 
     public JsonElement ParametersSchema => Schema;
 
@@ -58,6 +68,25 @@ internal sealed class ReadFileTool : IAgentTool
         if (!TryGetRequestedFilePaths(arguments, out IReadOnlyList<string>? requestedFilePaths))
         {
             return Task.FromResult(ToolCallResult.Fail("Missing required parameter: filePath or filePaths"));
+        }
+
+        int? startLine = TryGetOptionalInt32(arguments, "startLine");
+        int? endLine = TryGetOptionalInt32(arguments, "endLine");
+
+        // Validate line range parameters
+        if (startLine.HasValue && startLine.Value < 1)
+        {
+            return Task.FromResult(ToolCallResult.Fail("startLine must be a positive integer (1-based)."));
+        }
+
+        if (endLine.HasValue && endLine.Value < 1)
+        {
+            return Task.FromResult(ToolCallResult.Fail("endLine must be a positive integer (1-based)."));
+        }
+
+        if (startLine.HasValue && endLine.HasValue && startLine.Value > endLine.Value)
+        {
+            return Task.FromResult(ToolCallResult.Fail("startLine must be less than or equal to endLine."));
         }
 
         List<(string RequestedPath, string Content)> fileContents = [];
@@ -91,16 +120,42 @@ internal sealed class ReadFileTool : IAgentTool
                 return Task.FromResult(ToolCallResult.Fail($"File not found: {requestedFilePath}"));
             }
 
-            FileInfo fileInfo = new(resolvedPath);
-            if (fileInfo.Length > MaxFileSizeBytes)
-            {
-                return Task.FromResult(ToolCallResult.Fail(
-                    $"File too large ({fileInfo.Length / 1024} KB). Maximum is {MaxFileSizeBytes / 1024} KB."));
-            }
-
             try
             {
-                string content = File.ReadAllText(resolvedPath);
+                string[] allLines = File.ReadAllLines(resolvedPath);
+                string content;
+
+                if (startLine.HasValue || endLine.HasValue)
+                {
+                    // 1-based line numbers; clamp to valid range
+                    int start = Math.Max(1, startLine ?? 1);
+                    int end = Math.Min(allLines.Length, endLine ?? allLines.Length);
+
+                    if (start > allLines.Length)
+                    {
+                        content = string.Empty;
+                    }
+                    else
+                    {
+                        int length = end - start + 1;
+                        content = string.Join(Environment.NewLine, allLines, start - 1, length);
+                    }
+                }
+                else
+                {
+                    // No explicit range — apply MaxLines cap to protect context budget
+                    if (allLines.Length > MaxLines)
+                    {
+                        content = string.Join(Environment.NewLine, allLines, 0, MaxLines);
+                        content += Environment.NewLine + Environment.NewLine +
+                            $"[Content was trimmed to {MaxLines} lines. The full file has {allLines.Length} lines. Use startLine/endLine parameters to read a specific range.]";
+                    }
+                    else
+                    {
+                        content = string.Join(Environment.NewLine, allLines);
+                    }
+                }
+
                 fileContents.Add((requestedFilePath, content));
             }
             catch (IOException ex)
@@ -114,6 +169,18 @@ internal sealed class ReadFileTool : IAgentTool
         }
 
         return Task.FromResult(ToolCallResult.Ok(BuildOutput(fileContents)));
+    }
+
+    private static int? TryGetOptionalInt32(JsonElement arguments, string propertyName)
+    {
+        if (arguments.TryGetProperty(propertyName, out JsonElement element) &&
+            element.ValueKind == JsonValueKind.Number &&
+            element.TryGetInt32(out int value))
+        {
+            return value;
+        }
+
+        return null;
     }
 
     private static bool TryGetRequestedFilePaths(JsonElement arguments, out IReadOnlyList<string>? filePaths)
