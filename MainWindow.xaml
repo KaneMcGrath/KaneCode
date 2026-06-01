@@ -338,7 +338,6 @@ ResizeMode="CanResizeWithGrip">
                                     <TabControl x:Name="EditorTabControl"
                                                 DockPanel.Dock="Top"
                                                 ItemsSource="{Binding OpenTabs}"
-                                                SelectedItem="{Binding ActiveTab, Mode=TwoWay}"
                                                 SelectionChanged="TabControl_SelectionChanged"
                                                 Background="{DynamicResource TabStripBackground}"
                                                 BorderThickness="0"
