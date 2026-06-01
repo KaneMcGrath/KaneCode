@@ -92,6 +92,9 @@ public partial class MainWindow : Window
         CodeEditor.TextArea.TextView.MouseHoverStopped += TextView_MouseHoverStopped;
         CodeEditor.TextArea.TextView.VisualLinesChanged += TextView_VisualLinesChanged;
 
+        // Markdown preview updates when editor text changes
+        CodeEditor.TextChanged += OnCodeEditorTextChanged;
+
         // Git Changes panel operations (wired here because EventHandler<T> can't be attributed in XAML)
         GitChangesPanel.StageRequested    += GitChangesPanel_StageRequested;
         GitChangesPanel.StageAllRequested += GitChangesPanel_StageAllRequested;
@@ -120,6 +123,7 @@ public partial class MainWindow : Window
         CodeEditor.TextArea.TextView.MouseHoverStopped -= TextView_MouseHoverStopped;
         CodeEditor.TextArea.TextView.VisualLinesChanged -= TextView_VisualLinesChanged;
         CodeEditor.PreviewMouseLeftButtonUp -= CodeEditor_PreviewMouseLeftButtonUp;
+        CodeEditor.TextChanged -= OnCodeEditorTextChanged;
         GitChangesPanel.StageRequested    -= GitChangesPanel_StageRequested;
         GitChangesPanel.StageAllRequested -= GitChangesPanel_StageAllRequested;
         GitChangesPanel.UnstageRequested    -= GitChangesPanel_UnstageRequested;
@@ -151,6 +155,7 @@ public partial class MainWindow : Window
             // SelectionChanged fired, causing SwitchToTab to short-circuit).
             EditorTabControl.SelectedItem = _viewModel.ActiveTab;
             UpdatePresentationLineHighlight();
+            UpdateMarkdownToolbar();
         }
 
         if (e.PropertyName == nameof(MainViewModel.BuildSummary)
@@ -419,6 +424,97 @@ public partial class MainWindow : Window
         }
 
         CodeEditor.InputBindings.Add(new KeyBinding(command, binding.Key, binding.Modifiers));
+    }
+
+    private void MarkdownViewToggle_Checked(object sender, RoutedEventArgs e)
+    {
+        // Guard: during XAML initialization the named elements may not be
+        // resolved yet (IsChecked=True triggers the Checked event on start).
+        if (!IsLoaded)
+        {
+            return;
+        }
+
+        if (sender == MarkdownEditButton)
+        {
+            MarkdownPreviewButton.IsChecked = false;
+            ShowMarkdownEditorView();
+        }
+        else if (sender == MarkdownPreviewButton)
+        {
+            MarkdownEditButton.IsChecked = false;
+            ShowMarkdownPreviewView();
+        }
+    }
+
+    private void MarkdownViewToggle_Unchecked(object sender, RoutedEventArgs e)
+    {
+        // Guard: during XAML initialization the named elements may not be
+        // resolved yet (IsChecked changes can trigger Unchecked on start).
+        if (!IsLoaded)
+        {
+            return;
+        }
+
+        // When one toggle is unchecked, we ensure the other is checked
+        // to keep exactly one active. This is handled in the Checked handler.
+    }
+
+    private void ShowMarkdownEditorView()
+    {
+        CodeEditor.Visibility = Visibility.Visible;
+        MarkdownPreview.Visibility = Visibility.Collapsed;
+    }
+
+    private void ShowMarkdownPreviewView()
+    {
+        CodeEditor.Visibility = Visibility.Collapsed;
+        MarkdownPreview.Visibility = Visibility.Visible;
+
+        // Refresh the preview with the latest editor content
+        MarkdownPreview.SetMarkdownContent(CodeEditor.Text);
+    }
+
+    /// <summary>
+    /// Updates the markdown toolbar visibility based on the active tab's file extension.
+    /// Also resets the view to Edit mode when switching tabs.
+    /// </summary>
+    private void UpdateMarkdownToolbar()
+    {
+        bool isMarkdownFile = _viewModel.ActiveTab?.FilePath is not null &&
+            Path.GetExtension(_viewModel.ActiveTab.FilePath)?.Equals(".md", StringComparison.OrdinalIgnoreCase) == true;
+
+        MarkdownToolbar.Visibility = isMarkdownFile ? Visibility.Visible : Visibility.Collapsed;
+
+        if (isMarkdownFile)
+        {
+            // Reset to edit mode when switching to a markdown file
+            if (MarkdownEditButton.IsChecked != true)
+            {
+                MarkdownEditButton.IsChecked = true;
+            }
+            else
+            {
+                ShowMarkdownEditorView();
+            }
+        }
+        else
+        {
+            // Ensure editor is visible for non-markdown files
+            ShowMarkdownEditorView();
+        }
+    }
+
+    /// <summary>
+    /// Called whenever the editor text changes. Updates the markdown preview
+    /// if preview mode is currently active.
+    /// </summary>
+    private void OnCodeEditorTextChanged(object? sender, EventArgs e)
+    {
+        if (MarkdownPreview.Visibility == Visibility.Visible)
+        {
+            MarkdownPreview.SetMarkdownContent(CodeEditor.Text);
+        }
     }
 
     private void DuplicateCurrentLine()

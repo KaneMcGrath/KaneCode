@@ -389,48 +389,90 @@ ResizeMode="CanResizeWithGrip">
                                                                   DockPanel.Dock="Top"
                                                                   ActionSelected="CodeActionLightBulb_ActionSelected" />
 
-                                    <!-- Editor + Presentation Overlay -->
-                                    <Grid>
-                                        <avalonEdit:TextEditor x:Name="CodeEditor"
-                                                           FontFamily="Cascadia Code, Consolas, Courier New"
-                                                           FontSize="14"
-                                                           ShowLineNumbers="True"
-                                                           LineNumbersForeground="{DynamicResource EditorLineNumbersForeground}"
-                                                           Background="{DynamicResource EditorBackground}"
-                                                           Foreground="{DynamicResource EditorForeground}"
-                                                           HorizontalScrollBarVisibility="Auto"
-                                                           VerticalScrollBarVisibility="Auto">
-                                            <avalonEdit:TextEditor.ContextMenu>
-                                                <ContextMenu>
-                                                    <MenuItem Header="Cu_t" Click="EditorContextMenu_Cut"
-                                                              InputGestureText="Ctrl+X" />
-                                                    <MenuItem Header="_Copy" Click="EditorContextMenu_Copy"
-                                                              InputGestureText="Ctrl+C" />
-                                                    <MenuItem Header="_Paste" Click="EditorContextMenu_Paste"
-                                                              InputGestureText="Ctrl+V" />
-                                                    <Separator />
-                                                    <MenuItem Header="_Undo" Click="EditorContextMenu_Undo"
-                                                              InputGestureText="Ctrl+Z" />
-                                                    <MenuItem Header="_Redo" Click="EditorContextMenu_Redo"
-                                                              InputGestureText="Ctrl+Y" />
-                                                    <Separator />
-                                                    <MenuItem Header="Go to _Definition" Click="EditorContextMenu_GoToDefinition"
-                                                              InputGestureText="F12" />
-                                                    <MenuItem Header="Find _References" Click="EditorContextMenu_FindReferences"
-                                                              InputGestureText="Shift+F12" />
-                                                    <MenuItem Header="Code _Actions" Click="EditorContextMenu_CodeActions"
-                                                              InputGestureText="Ctrl+." />
-                                                    <MenuItem Header="_Rename" Click="EditorContextMenu_Rename"
-                                                              InputGestureText="F2" />
-                                                    <MenuItem Header="_Extract Method" Click="EditorContextMenu_ExtractMethod"
-                                                              InputGestureText="Ctrl+Shift+M" />
-                                                    <Separator />
-                                                    <MenuItem Header="Ask AI About _Selection" Click="EditorContextMenu_AskAboutSelection" />
-                                                </ContextMenu>
-                                            </avalonEdit:TextEditor.ContextMenu>
-                                        </avalonEdit:TextEditor>
-                                        <controls:PresentationOverlay x:Name="PresentationOverlay" />
-                                    </Grid>
+                                    <!-- Editor + Presentation Overlay + Markdown Preview -->
+                                    <DockPanel>
+                                        <!-- Markdown toolbar (only visible for .md files) -->
+                                        <Border x:Name="MarkdownToolbar"
+                                                DockPanel.Dock="Bottom"
+                                                Visibility="Collapsed"
+                                                Height="28"
+                                                Background="{DynamicResource StatusBarBackground}">
+                                            <StackPanel Orientation="Horizontal" Margin="8,0">
+                                                <ToggleButton x:Name="MarkdownEditButton"
+                                                              Content="Edit"
+                                                              IsChecked="True"
+                                                              Width="80"
+                                                              Height="22"
+                                                              FontSize="11"
+                                                              Cursor="Hand"
+                                                              Foreground="{DynamicResource StatusBarForeground}"
+                                                              Background="{DynamicResource ControlBackground}"
+                                                              BorderBrush="{DynamicResource ControlBorder}"
+                                                              BorderThickness="1"
+                                                              Padding="6,1"
+                                                              Checked="MarkdownViewToggle_Checked"
+                                                              Unchecked="MarkdownViewToggle_Unchecked" />
+                                                <ToggleButton x:Name="MarkdownPreviewButton"
+                                                              Content="Preview"
+                                                              IsChecked="False"
+                                                              Width="80"
+                                                              Height="22"
+                                                              FontSize="11"
+                                                              Margin="6,0,0,0"
+                                                              Cursor="Hand"
+                                                              Foreground="{DynamicResource StatusBarForeground}"
+                                                              Background="{DynamicResource ControlBackground}"
+                                                              BorderBrush="{DynamicResource ControlBorder}"
+                                                              BorderThickness="1"
+                                                              Padding="6,1"
+                                                              Checked="MarkdownViewToggle_Checked"
+                                                              Unchecked="MarkdownViewToggle_Unchecked" />
+                                            </StackPanel>
+                                        </Border>
+
+                                        <Grid>
+                                            <avalonEdit:TextEditor x:Name="CodeEditor"
+                                                               FontFamily="Cascadia Code, Consolas, Courier New"
+                                                               FontSize="14"
+                                                               ShowLineNumbers="True"
+                                                               LineNumbersForeground="{DynamicResource EditorLineNumbersForeground}"
+                                                               Background="{DynamicResource EditorBackground}"
+                                                               Foreground="{DynamicResource EditorForeground}"
+                                                               HorizontalScrollBarVisibility="Auto"
+                                                               VerticalScrollBarVisibility="Auto">
+                                                <avalonEdit:TextEditor.ContextMenu>
+                                                    <ContextMenu>
+                                                        <MenuItem Header="Cu_t" Click="EditorContextMenu_Cut"
+                                                                  InputGestureText="Ctrl+X" />
+                                                        <MenuItem Header="_Copy" Click="EditorContextMenu_Copy"
+                                                                  InputGestureText="Ctrl+C" />
+                                                        <MenuItem Header="_Paste" Click="EditorContextMenu_Paste"
+                                                                  InputGestureText="Ctrl+V" />
+                                                        <Separator />
+                                                        <MenuItem Header="_Undo" Click="EditorContextMenu_Undo"
+                                                                  InputGestureText="Ctrl+Z" />
+                                                        <MenuItem Header="_Redo" Click="EditorContextMenu_Redo"
+                                                                  InputGestureText="Ctrl+Y" />
+                                                        <Separator />
+                                                        <MenuItem Header="Go to _Definition" Click="EditorContextMenu_GoToDefinition"
+                                                                  InputGestureText="F12" />
+                                                        <MenuItem Header="Find _References" Click="EditorContextMenu_FindReferences"
+                                                                  InputGestureText="Shift+F12" />
+                                                        <MenuItem Header="Code _Actions" Click="EditorContextMenu_CodeActions"
+                                                                  InputGestureText="Ctrl+." />
+                                                        <MenuItem Header="_Rename" Click="EditorContextMenu_Rename"
+                                                                  InputGestureText="F2" />
+                                                        <MenuItem Header="_Extract Method" Click="EditorContextMenu_ExtractMethod"
+                                                                  InputGestureText="Ctrl+Shift+M" />
+                                                        <Separator />
+                                                        <MenuItem Header="Ask AI About _Selection" Click="EditorContextMenu_AskAboutSelection" />
+                                                    </ContextMenu>
+                                                </avalonEdit:TextEditor.ContextMenu>
+                                            </avalonEdit:TextEditor>
+                                            <controls:MarkdownPreviewPanel x:Name="MarkdownPreview" Visibility="Collapsed" />
+                                            <controls:PresentationOverlay x:Name="PresentationOverlay" />
+                                        </Grid>
+                                    </DockPanel>
                                 </DockPanel>
                             </avalonDock:LayoutAnchorable>
                         </avalonDock:LayoutAnchorablePane>
