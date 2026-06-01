@@ -464,6 +464,11 @@ public partial class MainWindow : Window
     {
         CodeEditor.Visibility = Visibility.Visible;
         MarkdownPreview.Visibility = Visibility.Collapsed;
+
+        if (_viewModel.ActiveTab is not null)
+        {
+            _viewModel.ActiveTab.IsMarkdownPreviewActive = false;
+        }
     }
 
     private void ShowMarkdownPreviewView()
@@ -471,31 +476,51 @@ public partial class MainWindow : Window
         CodeEditor.Visibility = Visibility.Collapsed;
         MarkdownPreview.Visibility = Visibility.Visible;
 
+        if (_viewModel.ActiveTab is not null)
+        {
+            _viewModel.ActiveTab.IsMarkdownPreviewActive = true;
+        }
+
         // Refresh the preview with the latest editor content
         MarkdownPreview.SetMarkdownContent(CodeEditor.Text);
     }
 
     /// <summary>
     /// Updates the markdown toolbar visibility based on the active tab's file extension.
-    /// Also resets the view to Edit mode when switching tabs.
+    /// Restores the tab's saved preview state (Edit vs Preview) when switching back.
     /// </summary>
     private void UpdateMarkdownToolbar()
     {
-        bool isMarkdownFile = _viewModel.ActiveTab?.FilePath is not null &&
-            Path.GetExtension(_viewModel.ActiveTab.FilePath)?.Equals(".md", StringComparison.OrdinalIgnoreCase) == true;
+        var activeTab = _viewModel.ActiveTab;
+        bool isMarkdownFile = activeTab?.FilePath is not null &&
+            Path.GetExtension(activeTab.FilePath)?.Equals(".md", StringComparison.OrdinalIgnoreCase) == true;
 
         MarkdownToolbar.Visibility = isMarkdownFile ? Visibility.Visible : Visibility.Collapsed;
 
-        if (isMarkdownFile)
+        if (isMarkdownFile && activeTab is not null)
         {
-            // Reset to edit mode when switching to a markdown file
-            if (MarkdownEditButton.IsChecked != true)
+            // Restore the tab's saved preview state
+            if (activeTab.IsMarkdownPreviewActive)
             {
-                MarkdownEditButton.IsChecked = true;
+                if (MarkdownPreviewButton.IsChecked != true)
+                {
+                    MarkdownPreviewButton.IsChecked = true;
+                }
+                else
+                {
+                    ShowMarkdownPreviewView();
+                }
             }
             else
             {
-                ShowMarkdownEditorView();
+                if (MarkdownEditButton.IsChecked != true)
+                {
+                    MarkdownEditButton.IsChecked = true;
+                }
+                else
+                {
+                    ShowMarkdownEditorView();
+                }
             }
         }
         else

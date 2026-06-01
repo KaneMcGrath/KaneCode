@@ -1586,6 +1586,12 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
         _isActivating = true;
         try
         {
+            // Save the previous tab's scroll offset before switching
+            if (ActiveTab is not null)
+            {
+                ActiveTab.ScrollOffset = _editor.VerticalOffset;
+            }
+
             ActiveTab = tab;
 
             bool isCSharpFile = RoslynWorkspaceService.IsCSharpFile(tab.FilePath);
@@ -1631,6 +1637,12 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
 
             OnPropertyChanged(nameof(WindowTitle));
             OnPropertyChanged(nameof(StatusText));
+
+            // Restore the new tab's scroll offset after all document/layout changes
+            if (tab.ScrollOffset > 0)
+            {
+                _editor.ScrollToVerticalOffset(tab.ScrollOffset);
+            }
         }
         finally
         {
