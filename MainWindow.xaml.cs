@@ -144,6 +144,12 @@ public partial class MainWindow : Window
     {
         if (e.PropertyName == nameof(MainViewModel.ActiveTab))
         {
+            // Sync the TabControl's visual selection when ActiveTab changes
+            // programmatically (e.g., via OpenFileByPath or SwitchToTab).
+            // This is needed because we removed the SelectedItem two-way binding
+            // to fix a circular-activation bug (the binding set ActiveTab before
+            // SelectionChanged fired, causing SwitchToTab to short-circuit).
+            EditorTabControl.SelectedItem = _viewModel.ActiveTab;
             UpdatePresentationLineHighlight();
         }
 
