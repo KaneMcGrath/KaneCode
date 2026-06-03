@@ -187,10 +187,7 @@ public partial class GitChangesPanel : UserControl
 
     private static void OnPanelStatusTextChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {
-        if (d is GitChangesPanel panel)
-        {
-            panel.StatusText.Text = e.NewValue as string ?? string.Empty;
-        }
+        // Status text is no longer displayed in the header border.
     }
 
     private static void OnGitBranchesChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
