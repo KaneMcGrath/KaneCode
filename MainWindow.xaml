@@ -107,7 +107,7 @@ ResizeMode="CanResizeWithGrip">
                 <MenuItem Header="_Options" Command="{Binding OpenOptionsCommand}" />
             </MenuItem>
             <MenuItem Header="_Build">
-                <MenuItem Header="_Build Project" Command="{Binding BuildCommand}" />
+                <MenuItem Header="{Binding BuildSelectedText}" Command="{Binding BuildCommand}" />
                 <MenuItem Header="{Binding RunCommandText}" Command="{Binding RunCommand}" />
                 <Separator />
                 <MenuItem Header="_Cancel" Command="{Binding CancelBuildCommand}" />
@@ -141,12 +141,25 @@ ResizeMode="CanResizeWithGrip">
             <MenuItem>
                 <MenuItem.Header>
                     <StackPanel Orientation="Horizontal">
-                        <Button Content="🔨" Padding="6,2"
+                        <ComboBox ItemsSource="{Binding DataContext.BuildTargets, RelativeSource={RelativeSource AncestorType=Window}}"
+                                  SelectedItem="{Binding DataContext.SelectedBuildTarget, RelativeSource={RelativeSource AncestorType=Window}}"
+                                  DisplayMemberPath="DisplayName"
+                                  MinWidth="120"
+                                  Height="22"
+                                  FontSize="11"
+                                  VerticalAlignment="Center"
+                                  Background="{DynamicResource ControlBackground}"
+                                  Foreground="{DynamicResource MenuForeground}"
+                                  BorderBrush="{DynamicResource ControlBorder}"
+                                  BorderThickness="1"
+                                  Padding="4,1"
+                                  ToolTip="Select build target (solution or project)" />
+                        <Button Content="🔨" Padding="6,2" Margin="4,0,0,0"
                                 Background="Transparent"
                                 Foreground="{DynamicResource MenuForeground}"
                                 BorderThickness="0"
                                 Command="{Binding DataContext.BuildCommand, RelativeSource={RelativeSource AncestorType=Window}}"
-                                ToolTip="Build Project" />
+                                ToolTip="Build selected target" />
                         <Button Content="{Binding DataContext.RunQuickButtonText, RelativeSource={RelativeSource AncestorType=Window}}" Padding="6,2"
                                 Background="Transparent"
                                 Foreground="{DynamicResource MenuForeground}"

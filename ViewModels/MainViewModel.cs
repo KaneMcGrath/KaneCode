@@ -79,6 +79,48 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
     private string? _loadedProjectOrSolutionPath;
     private List<string> _loadedSolutionProjectPaths = [];
     private BuildOperation _activeBuildOperation;
+
+    /// <summary>
+    /// Available build targets: the solution (if loaded) plus all .csproj files in the solution.
+    /// When a single project is loaded, contains just that project.
+    /// </summary>
+    public ObservableCollection<BuildTargetItem> BuildTargets { get; } = [];
+
+    private BuildTargetItem? _selectedBuildTarget;
+    /// <summary>
+    /// Gets or sets the currently selected build target (solution or project).
+    /// Defaults to the solution when a solution is loaded, or the project when a single project is loaded.
+    /// </summary>
+    public BuildTargetItem? SelectedBuildTarget
+    {
+        get => _selectedBuildTarget;
+        set
+        {
+            if (SetProperty(ref _selectedBuildTarget, value))
+            {
+                OnPropertyChanged(nameof(SelectedBuildTargetDisplayName));
+                OnPropertyChanged(nameof(BuildSelectedText));
+                CommandManager.InvalidateRequerySuggested();
+            }
+        }
+    }
+
+    /// <summary>
+    /// Display name of the selected build target for the toolbar combo box.
+    /// </summary>
+    public string SelectedBuildTargetDisplayName => _selectedBuildTarget?.DisplayName ?? "(No target)";
+
+    /// <summary>
+    /// Menu text for the Build command showing the selected target name.
+    /// </summary>
+    public string BuildSelectedText
+    {
+        get
+        {
+            var name = _selectedBuildTarget?.DisplayName ?? "(No target)";
+            return $"Build _{name}";
+        }
+    }
     private bool _isOperationCancellationRequested;
     private bool _isProjectRunInProgress;
     private string? _runningProjectPath;
@@ -1204,6 +1246,15 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
 
             OpenRepositoryForPath(projectDir);
 
+            // Populate build targets with just this project
+            BuildTargets.Clear();
+            BuildTargets.Add(new BuildTargetItem
+            {
+                DisplayName = Path.GetFileName(projectPath),
+                FullPath = projectPath
+            });
+            SelectedBuildTarget = BuildTargets.FirstOrDefault();
+
             LoadingStatus = $"Loaded: {result.Name} ({result.TargetFramework}) � {result.SourceFiles.Length} file(s)";
             ScheduleLoadingStatusClear();
         }
@@ -1266,6 +1317,23 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
             ConfigureProjectFileWatcher(solutionDir);
 
             OpenRepositoryForPath(solutionDir);
+
+            // Populate build targets: solution first, then all projects
+            BuildTargets.Clear();
+            BuildTargets.Add(new BuildTargetItem
+            {
+                DisplayName = Path.GetFileName(solutionPath),
+                FullPath = solutionPath
+            });
+            foreach (var projPath in _loadedSolutionProjectPaths)
+            {
+                BuildTargets.Add(new BuildTargetItem
+                {
+                    DisplayName = Path.GetFileName(projPath),
+                    FullPath = projPath
+                });
+            }
+            SelectedBuildTarget = BuildTargets.FirstOrDefault();
 
             var totalFiles = result.Projects.Sum(p => p.SourceFiles.Length);
             var projectNames = string.Join(", ", result.Projects.Select(p => p.Name));
@@ -1431,6 +1499,10 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
         ConfigureExplorerWatcher(rootPath);
 
         OpenRepositoryForPath(rootPath);
+
+        // Clear build targets since there's no project/solution to build
+        BuildTargets.Clear();
+        SelectedBuildTarget = null;
     }
 
     private void Save()
@@ -4128,9 +4200,9 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
         }
     }
 
-    private bool CanBuild() => !string.IsNullOrEmpty(_loadedProjectOrSolutionPath) && !_buildService.IsRunning;
+    private bool CanBuild() => SelectedBuildTarget is not null && !_buildService.IsRunning;
 
-    private bool CanRunProject() => !string.IsNullOrEmpty(_loadedProjectOrSolutionPath) && (!_buildService.IsRunning || _isProjectRunInProgress);
+    private bool CanRunProject() => SelectedBuildTarget is not null && (!_buildService.IsRunning || _isProjectRunInProgress);
 
     private void ExecuteRunCommand()
     {
@@ -4144,11 +4216,12 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
     }
 
     /// <summary>
-    /// Builds the currently loaded project or solution.
+    /// Builds the currently selected build target (solution or project).
     /// </summary>
     private async Task BuildProjectAsync()
     {
-        if (string.IsNullOrEmpty(_loadedProjectOrSolutionPath))
+        var target = SelectedBuildTarget;
+        if (target is null)
         {
             return;
         }
@@ -4156,18 +4229,19 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
         BeginBuildOperation(BuildOperation.Build, null);
         BuildOutputLines.Clear();
         BuildSummary = "Building...";
-        BuildOutputLines.Add($"> dotnet build \"{_loadedProjectOrSolutionPath}\"");
+        BuildOutputLines.Add($"> dotnet build \"{target.FullPath}\"");
         BuildOutputLines.Add(string.Empty);
 
-        await _buildService.BuildAsync(_loadedProjectOrSolutionPath).ConfigureAwait(false);
+        await _buildService.BuildAsync(target.FullPath).ConfigureAwait(false);
     }
 
     /// <summary>
-    /// Runs the currently loaded project.
+    /// Runs the currently selected build target (must be a .csproj).
     /// </summary>
     private async Task RunProjectAsync()
     {
-        if (string.IsNullOrEmpty(_loadedProjectOrSolutionPath))
+        var target = SelectedBuildTarget;
+        if (target is null)
         {
             return;
         }
@@ -4179,7 +4253,7 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
         {
             BuildSummary = "Run failed";
             BuildOutputLines.Add("No runnable project (.csproj) could be resolved from the current selection.");
-            BuildOutputLines.Add("Load a project directly or ensure the solution contains at least one C# project.");
+            BuildOutputLines.Add("Select a .csproj target or load a project directly.");
             return;
         }
 
@@ -4193,35 +4267,37 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
 
     private string? ResolveRunnableProjectPath()
     {
-        if (string.IsNullOrWhiteSpace(_loadedProjectOrSolutionPath))
+        var target = SelectedBuildTarget;
+        if (target is null)
         {
             return null;
         }
 
-        var extension = Path.GetExtension(_loadedProjectOrSolutionPath);
-        if (extension.Equals(".csproj", StringComparison.OrdinalIgnoreCase))
+        // If the user selected a .csproj directly, use it
+        if (target.IsProject)
         {
-            return _loadedProjectOrSolutionPath;
+            return target.FullPath;
         }
 
-        if (!IsSolutionFile(_loadedProjectOrSolutionPath))
+        // If the user selected the solution, find the first .csproj from the loaded projects
+        if (target.IsSolution && _loadedSolutionProjectPaths.Count > 0)
         {
-            return null;
+            try
+            {
+                return _loadedSolutionProjectPaths
+                    .FirstOrDefault(File.Exists);
+            }
+            catch (IOException)
+            {
+                return null;
+            }
+            catch (UnauthorizedAccessException)
+            {
+                return null;
+            }
         }
 
-        try
-        {
-            return _loadedSolutionProjectPaths
-                .FirstOrDefault(File.Exists);
-        }
-        catch (IOException)
-        {
-            return null;
-        }
-        catch (UnauthorizedAccessException)
-        {
-            return null;
-        }
+        return null;
     }
 
     /// <summary>

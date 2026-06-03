@@ -612,7 +612,7 @@ public partial class MainWindow : Window
         ["_Extract Method"] = HotkeyAction.ExtractMethod,
         ["_Options"] = HotkeyAction.OpenOptions,
         ["E_xit"] = HotkeyAction.Exit,
-        ["_Build Project"] = HotkeyAction.BuildProject,
+        // Build menu header is now dynamic (BuildSelectedText binding), so no static lookup
         ["_Run Project"] = HotkeyAction.RunProject,
         ["_Cancel"] = HotkeyAction.CancelBuild,
     };
