@@ -41,6 +41,8 @@ internal sealed class FindLineTool : IAgentTool
 
     public string Name => "find_line";
 
+    public string Category => "Read Files";
+
     public string Description =>
         "Finds the first line in a file containing the provided search string.";
 

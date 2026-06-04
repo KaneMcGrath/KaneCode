@@ -32,6 +32,8 @@ internal sealed class DeleteFileTool : IAgentTool
 
     public string Name => "delete_file";
 
+    public string Category => "Write Files";
+
     public string Description => "Delete a file by path.";
 
     public JsonElement ParametersSchema => Schema;

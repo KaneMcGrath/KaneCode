@@ -49,6 +49,8 @@ internal sealed class PresentationAddSlideTool : IAgentTool
 
     public string Name => "presentation_add_slide";
 
+    public string Category => "Presentation";
+
     public string Description =>
         "Adds a slide to the active presentation. The slide navigates the editor to the specified file " +
         "and the first line containing the provided search text, and displays explanatory text in an overlay. " +

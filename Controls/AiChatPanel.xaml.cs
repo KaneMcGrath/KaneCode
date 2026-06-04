@@ -494,8 +494,22 @@ public partial class AiChatPanel : UserControl
     }
 
     /// <summary>
+    /// Defines the ordered tool group names and their display labels.
+    /// Groups appear in the tools dropdown in this order.
+    /// </summary>
+    private static readonly (string Category, string DisplayLabel)[] ToolGroupDefinitions =
+    [
+        ("Read Files",     "Read Files"),
+        ("Write Files",    "Write Files"),
+        ("Dotnet",         "Dotnet"),
+        ("Presentation",   "Presentation"),
+    ];
+
+    /// <summary>
     /// Populates or refreshes the tool checkboxes in the wrench-button popup
     /// based on the current tool registry and active conversation selection.
+    /// Tools are grouped by <see cref="IAgentTool.Category"/> with a separator
+    /// line and group-level checkbox to enable/disable all tools in the group.
     /// </summary>
     private void RefreshToolsCheckboxPanel()
     {
@@ -527,26 +541,174 @@ public partial class AiChatPanel : UserControl
         AiConversation conversation = EnsureActiveConversation();
         HashSet<string>? enabledTools = conversation.EnabledTools;
 
-        foreach (IAgentTool tool in _toolRegistry.Tools.OrderBy(t => t.Name))
-        {
-            bool isChecked = enabledTools is null || enabledTools.Contains(tool.Name);
+        // Group tools by category, preserving definition order for known groups
+        // and appending any unknown categories at the end.
+        Dictionary<string, List<IAgentTool>> groups = [];
+        List<string> groupOrder = [];
 
-            CheckBox checkBox = new()
+        foreach (var (category, _) in ToolGroupDefinitions)
+        {
+            if (!groups.ContainsKey(category))
             {
-                Content = tool.Name,
-                IsChecked = isChecked,
-                Tag = tool.Name,
+                groups[category] = [];
+                groupOrder.Add(category);
+            }
+        }
+
+        foreach (IAgentTool tool in _toolRegistry.Tools)
+        {
+            string category = tool.Category ?? "General";
+            if (!groups.TryGetValue(category, out var list))
+            {
+                list = [];
+                groups[category] = list;
+                groupOrder.Add(category);
+            }
+            list.Add(tool);
+        }
+
+        // Sort tools within each group by name
+        foreach (var list in groups.Values)
+        {
+            list.Sort((a, b) => string.Compare(a.Name, b.Name, StringComparison.Ordinal));
+        }
+
+        bool isFirstGroup = true;
+        foreach (string category in groupOrder)
+        {
+            List<IAgentTool> groupTools = groups[category];
+            if (groupTools.Count == 0)
+            {
+                continue;
+            }
+
+            // Separator line between groups
+            if (!isFirstGroup)
+            {
+                Separator separator = new()
+                {
+                    Margin = new Thickness(0, 4, 0, 4),
+                    Opacity = 0.4,
+                    Foreground = FindBrush("AiChatBorder")
+                };
+                ToolsCheckboxPanel.Children.Add(separator);
+            }
+            isFirstGroup = false;
+
+            // Find the display label for this category
+            string displayLabel = category;
+            foreach (var (cat, label) in ToolGroupDefinitions)
+            {
+                if (string.Equals(cat, category, StringComparison.Ordinal))
+                {
+                    displayLabel = label;
+                    break;
+                }
+            }
+
+            // Group-level checkbox
+            bool allChecked = groupTools.All(t => enabledTools is null || enabledTools.Contains(t.Name));
+            bool anyChecked = groupTools.Any(t => enabledTools is null || enabledTools.Contains(t.Name));
+            bool? groupIsChecked = allChecked ? true : anyChecked ? (bool?)null : false;
+
+            CheckBox groupCheckBox = new()
+            {
+                Content = displayLabel,
+                IsChecked = groupIsChecked,
+                IsThreeState = true,
+                Tag = category,
                 Margin = new Thickness(0, 0, 0, 2),
                 FontSize = 11,
-                FontFamily = new FontFamily("Cascadia Code, Consolas, Courier New"),
+                FontWeight = FontWeights.SemiBold,
                 Foreground = FindBrush("AiChatForeground"),
-                ToolTip = tool.Description
+                ToolTip = $"Enable or disable all {displayLabel} tools"
             };
 
-            checkBox.Checked += ToolCheckBox_Changed;
-            checkBox.Unchecked += ToolCheckBox_Changed;
-            ToolsCheckboxPanel.Children.Add(checkBox);
+            string capturedCategory = category;
+            groupCheckBox.Checked += (s, e) =>
+            {
+                if (s is CheckBox cb && cb.Tag is string cat)
+                {
+                    ToggleGroupTools(cat, true);
+                }
+            };
+            groupCheckBox.Unchecked += (s, e) =>
+            {
+                if (s is CheckBox cb && cb.Tag is string cat)
+                {
+                    ToggleGroupTools(cat, false);
+                }
+            };
+            groupCheckBox.Indeterminate += (s, e) =>
+            {
+                // When group is indeterminate, enable all tools in the group
+                if (s is CheckBox cb && cb.Tag is string cat)
+                {
+                    ToggleGroupTools(cat, true);
+                }
+            };
+
+            ToolsCheckboxPanel.Children.Add(groupCheckBox);
+
+            // Individual tool checkboxes (indented)
+            foreach (IAgentTool tool in groupTools)
+            {
+                bool isChecked = enabledTools is null || enabledTools.Contains(tool.Name);
+
+                CheckBox checkBox = new()
+                {
+                    Content = tool.Name,
+                    IsChecked = isChecked,
+                    Tag = tool.Name,
+                    Margin = new Thickness(16, 0, 0, 2),
+                    FontSize = 11,
+                    FontFamily = new FontFamily("Cascadia Code, Consolas, Courier New"),
+                    Foreground = FindBrush("AiChatForeground"),
+                    ToolTip = tool.Description
+                };
+
+                checkBox.Checked += ToolCheckBox_Changed;
+                checkBox.Unchecked += ToolCheckBox_Changed;
+                ToolsCheckboxPanel.Children.Add(checkBox);
+            }
         }
+    }
+
+    /// <summary>
+    /// Enables or disables all tools in the given category.
+    /// </summary>
+    private void ToggleGroupTools(string category, bool enable)
+    {
+        if (_toolRegistry is null)
+        {
+            return;
+        }
+
+        AiConversation conversation = EnsureActiveConversation();
+        conversation.EnabledTools ??= new HashSet<string>(StringComparer.Ordinal);
+
+        foreach (IAgentTool tool in _toolRegistry.Tools)
+        {
+            if (string.Equals(tool.Category, category, StringComparison.Ordinal))
+            {
+                if (enable)
+                {
+                    conversation.EnabledTools.Add(tool.Name);
+                }
+                else
+                {
+                    conversation.EnabledTools.Remove(tool.Name);
+                }
+            }
+        }
+
+        // Switching tools manually puts the conversation into Custom mode
+        SwitchToCustomMode();
+        TouchConversation(conversation);
+        SavePersistedConversation();
+
+        // Refresh the panel to update individual checkboxes and group state
+        RefreshToolsCheckboxPanel();
     }
 
     /// <summary>

@@ -37,6 +37,8 @@ internal sealed class GetDiagnosticsTool : IAgentTool
 
     public string Name => "get_diagnostics";
 
+    public string Category => "Dotnet";
+
     public string Description =>
         "Get Roslyn compiler diagnostics (errors, warnings, and info messages) for a source file. " +
         "Returns each diagnostic with its severity, code, line number, and message. " +

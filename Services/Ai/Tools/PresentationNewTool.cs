@@ -31,6 +31,8 @@ internal sealed class PresentationNewTool : IAgentTool
 
     public string Name => "presentation_new";
 
+    public string Category => "Presentation";
+
     public string Description =>
         "Creates a new interactive presentation to explain topics in the codebase. " +
         "Call this before adding slides. Any existing presentation is replaced.";

@@ -36,6 +36,8 @@ internal sealed class RenamePathTool : IAgentTool
 
     public string Name => "rename_path";
 
+    public string Category => "Write Files";
+
     public string Description => "Rename or move a file or directory to a new path inside the loaded project.";
 
     public JsonElement ParametersSchema => Schema;

@@ -32,6 +32,8 @@ internal sealed class CreateDirectoryTool : IAgentTool
 
     public string Name => "create_directory";
 
+    public string Category => "Write Files";
+
     public string Description => "Create a directory by path. Intermediate directories are created automatically.";
 
     public JsonElement ParametersSchema => Schema;

@@ -47,6 +47,8 @@ internal sealed class ListFilesTool : IAgentTool
 
     public string Name => "list_files";
 
+    public string Category => "Read Files";
+
     public string Description =>
         "List all files in a directory (recursively). Defaults to the project root if no directory is given. " +
         $"Returns relative paths, up to {MaxFileCount} files. Common noise directories (bin, obj, .git, node_modules, etc.) are excluded. Supports request-scoped external context folders.";

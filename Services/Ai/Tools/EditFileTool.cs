@@ -65,6 +65,8 @@ internal sealed class EditFileTool : IAgentTool
 
     public string Name => "edit_file";
 
+    public string Category => "Write Files";
+
     public string Description => "Apply a single search-and-replace edit within a file. Fails if oldText is not found or matches multiple locations.";
 
     public JsonElement ParametersSchema => Schema;

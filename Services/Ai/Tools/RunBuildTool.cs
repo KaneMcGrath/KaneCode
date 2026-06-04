@@ -34,6 +34,8 @@ internal sealed class RunBuildTool : IAgentTool
 
     public string Name => "run_build";
 
+    public string Category => "Dotnet";
+
     public string Description =>
         "Trigger a dotnet build of the loaded project or solution. " +
         "Returns the complete build output including compiler errors, warnings, and the final success/failure summary.";

@@ -38,6 +38,8 @@ internal sealed class WriteFileTool : IAgentTool
 
     public string Name => "write_file";
 
+    public string Category => "Write Files";
+
     public string Description => "Create or overwrite a file by path with provided content.";
 
     public JsonElement ParametersSchema => Schema;

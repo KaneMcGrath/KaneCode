@@ -61,6 +61,8 @@ internal sealed class ReadFileTool : IAgentTool
 
     public string Description => "Read the contents of a file by path. Returns the file text or an error if the file is not found or exceeds the maximum line count. Supports files inside the loaded project and request-scoped external context folders. Optionally accepts startLine and endLine (1-based, inclusive) to read a specific range of lines.";
 
+    public string Category => "Read Files";
+
     public JsonElement ParametersSchema => Schema;
 
     public Task<ToolCallResult> ExecuteAsync(JsonElement arguments, CancellationToken cancellationToken = default)

@@ -140,8 +140,8 @@
                                     BorderBrush="{DynamicResource AiChatBorder}"
                                     BorderThickness="1"
                                     Padding="8,6"
-                                    MinWidth="240"
-                                    MaxHeight="380">
+                                    MinWidth="280"
+                                    MaxHeight="480">
                                 <DockPanel>
                                     <Button x:Name="SystemPromptButton"
                                             DockPanel.Dock="Top"

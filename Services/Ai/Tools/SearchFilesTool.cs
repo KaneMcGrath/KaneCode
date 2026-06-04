@@ -58,6 +58,8 @@ internal sealed class SearchFilesTool : IAgentTool
 
     public string Name => "search_files";
 
+    public string Category => "Read Files";
+
     public string Description =>
         "Search file contents recursively using a plain-text or regex query. " +
         $"Returns up to {MaxMatches} matches as 'file:line: snippet'. " +

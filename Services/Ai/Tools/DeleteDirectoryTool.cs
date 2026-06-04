@@ -36,6 +36,8 @@ internal sealed class DeleteDirectoryTool : IAgentTool
 
     public string Name => "delete_directory";
 
+    public string Category => "Write Files";
+
     public string Description => "Delete a directory by path. Use recursive=true to remove non-empty directories.";
 
     public JsonElement ParametersSchema => Schema;

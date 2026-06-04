@@ -28,6 +28,13 @@ internal interface IAgentTool
     JsonElement ParametersSchema { get; }
 
     /// <summary>
+    /// The logical category/group this tool belongs to (e.g. "Read Files",
+    /// "Write Files", "Dotnet", "Presentation"). Used to group tools in the
+    /// tools dropdown UI.
+    /// </summary>
+    string Category => "General";
+
+    /// <summary>
     /// Whether this tool performs a destructive/side-effecting action
     /// that should require user confirmation before execution.
     /// </summary>
