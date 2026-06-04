@@ -3,6 +3,7 @@ using KaneCode.Services.Ai;
 using KaneCode.Theming;
 using System.Diagnostics;
 using System.IO;
+using System.Threading;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Windows;
@@ -10,6 +11,7 @@ using System.Windows.Controls;
 using System.Windows.Documents;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Threading;
 
 namespace KaneCode.Controls;
 
@@ -104,6 +106,114 @@ public partial class AiChatPanel : UserControl
 
         /// <summary>The final accumulated arguments JSON, stored so we can format nicely in <see cref="FinalizeToolCallBlock"/>.</summary>
         public string ArgumentsJson { get; } = argumentsJson;
+    }
+
+    /// <summary>
+    /// Accumulates UI update actions from the background streaming thread and dispatches
+    /// them to the UI thread in batches on a fixed interval. This avoids per-token
+    /// <c>Dispatcher.InvokeAsync</c> overhead during high-speed streaming.
+    ///
+    /// Only pure UI updates (text appending, stats, scroll) should be enqueued here.
+    /// Structural changes (creating sections, finalizing tool calls) must use
+    /// <see cref="DispatchSync"/> so they complete before the next background step.
+    /// </summary>
+    private sealed class BatchAccumulator : IDisposable
+    {
+        private readonly Dispatcher _dispatcher;
+        private readonly TimeSpan _interval;
+        private readonly object _lock = new();
+        private readonly List<Action> _pending = [];
+        private Timer? _timer;
+        private int _flushScheduled;
+
+        public BatchAccumulator(Dispatcher dispatcher, TimeSpan interval)
+        {
+            _dispatcher = dispatcher;
+            _interval = interval;
+        }
+
+        /// <summary>
+        /// Enqueues a UI update to be dispatched in the next batch.
+        /// Fast and never blocks — safe to call from background threads.
+        /// </summary>
+        public void Enqueue(Action action)
+        {
+            lock (_lock)
+            {
+                _pending.Add(action);
+            }
+
+            EnsureTimer();
+        }
+
+        /// <summary>
+        /// Dispatches an action synchronously (awaits completion).
+        /// Use for structural changes that must complete before background
+        /// code continues (e.g. creating a thinking section).
+        /// </summary>
+        public async Task DispatchSync(Action action)
+        {
+            await FlushAsync();
+            await _dispatcher.InvokeAsync(action);
+        }
+
+        /// <summary>
+        /// Flushes all pending actions to the UI thread and stops the timer.
+        /// Must be called when the streaming phase ends.
+        /// </summary>
+        public async Task FlushAsync()
+        {
+            StopTimer();
+            await DispatchBatchAsync();
+        }
+
+        /// <summary>Disposes the timer. Safe to call after the accumulator is no longer needed.</summary>
+        public void Dispose()
+        {
+            StopTimer();
+        }
+
+        private void EnsureTimer()
+        {
+            if (Interlocked.CompareExchange(ref _flushScheduled, 1, 0) == 0)
+            {
+                _timer = new Timer(
+                    _ => { _ = DispatchBatchAsync(); },
+                    null,
+                    _interval,
+                    _interval);
+            }
+        }
+
+        private void StopTimer()
+        {
+            Interlocked.Exchange(ref _flushScheduled, 0);
+            _timer?.Dispose();
+            _timer = null;
+        }
+
+        private Task DispatchBatchAsync()
+        {
+            List<Action> batch;
+            lock (_lock)
+            {
+                if (_pending.Count == 0)
+                {
+                    return Task.CompletedTask;
+                }
+
+                batch = [.. _pending];
+                _pending.Clear();
+            }
+
+            return _dispatcher.InvokeAsync(() =>
+            {
+                foreach (var action in batch)
+                {
+                    action();
+                }
+            }).Task;
+        }
     }
 
     /// <summary>
@@ -1833,6 +1943,12 @@ public partial class AiChatPanel : UserControl
                     }
                 });
 
+                /* Batch accumulator groups rapid per-token dispatches into batches
+                 * at a fixed interval (50ms), reducing UI thread overhead during
+                 * high-speed streaming. Structural first-time creations use
+                 * DispatchSync to ensure they complete before background code continues. */
+                using var batch = new BatchAccumulator(Dispatcher, TimeSpan.FromMilliseconds(50));
+
                 await foreach (AiStreamToken token in _provider.StreamCompletionAsync(outboundMessages, model, toolsDef, streamResponses, ct)
                     .ConfigureAwait(false))
                 {
@@ -1852,51 +1968,58 @@ public partial class AiChatPanel : UserControl
                             continue;
                         }
 
-                        await Dispatcher.InvokeAsync(() =>
-                        {
-                            bool shouldStickToBottom = IsMessageScrollerNearBottom();
+                        bool isFirstBlockForIndex = !toolCallBlocks.ContainsKey(toolCall.Index);
 
-                            if (rawTextMode)
+                        if (isFirstBlockForIndex)
+                        {
+                            /* First creation must complete before tool execution */
+                            await batch.DispatchSync(() =>
                             {
-                                if (!rawToolCallBlocks.TryGetValue(toolCall.Index, out TextBlock? rawBlock))
+                                if (rawTextMode)
                                 {
-                                    /* First creation: show a placeholder. The full formatted
-                                     * arguments are set once after streaming completes. */
-                                    rawBlock = AppendRawTranscriptEntry(
+                                    TextBlock rawBlock = AppendRawTranscriptEntry(
                                         $"Tool Call ({toolCall.FunctionName})",
                                         "Receiving arguments...",
                                         FindBrush(ThemeResourceKeys.AiChatToolCallForeground),
                                         assistantContainer);
                                     rawToolCallBlocks[toolCall.Index] = rawBlock;
+                                    return;
                                 }
 
-                                if (shouldStickToBottom)
-                                {
-                                    MessageScroller.ScrollToEnd();
-                                }
-
-                                return;
-                            }
-
-                            if (!toolCallBlocks.TryGetValue(toolCall.Index, out ToolCallSectionVisual? block))
-                            {
-                                block = CreateToolCallBlock(
+                                ToolCallSectionVisual block = CreateToolCallBlock(
                                     toolCall.FunctionName,
                                     toolCall.ArgumentsJson,
                                     assistantContainer,
                                     assistantBlock);
                                 toolCallBlocks[toolCall.Index] = block;
-                            }
-                            else
+                            });
+                        }
+                        else
+                        {
+                            /* Incremental updates — batch these */
+                            batch.Enqueue(() =>
                             {
-                                UpdateToolCallBlock(block, toolCall.FunctionName, toolCall.ArgumentsJson);
-                            }
+                                bool shouldStickToBottom = IsMessageScrollerNearBottom();
 
-                            if (shouldStickToBottom)
-                            {
-                                MessageScroller.ScrollToEnd();
-                            }
-                        });
+                                if (rawTextMode)
+                                {
+                                    if (shouldStickToBottom)
+                                    {
+                                        MessageScroller.ScrollToEnd();
+                                    }
+
+                                    return;
+                                }
+
+                                ToolCallSectionVisual block = toolCallBlocks[toolCall.Index];
+                                UpdateToolCallBlock(block, toolCall.FunctionName, toolCall.ArgumentsJson);
+
+                                if (shouldStickToBottom)
+                                {
+                                    MessageScroller.ScrollToEnd();
+                                }
+                            });
+                        }
 
                         continue;
                     }
@@ -1911,54 +2034,58 @@ public partial class AiChatPanel : UserControl
                             continue;
                         }
 
-                        await Dispatcher.InvokeAsync(() =>
-                        {
-                            bool shouldStickToBottom = IsMessageScrollerNearBottom();
-                            string displayedReasoningContent = GetVisibleAssistantContent(reasoningBuilder.ToString(), toolsEnabled);
+                        bool isFirstReasoningToken = thinkingSection is null;
 
-                            if (rawTextMode)
+                        if (isFirstReasoningToken)
+                        {
+                            /* First creation must complete before content tokens arrive */
+                            await batch.DispatchSync(() =>
                             {
-                                if (rawThinkingBlock is null)
+                                bool shouldStickToBottom = IsMessageScrollerNearBottom();
+
+                                if (rawTextMode)
                                 {
                                     rawThinkingBlock = AppendRawTranscriptEntry(
                                         "Thinking",
-                                        displayedReasoningContent,
+                                        GetVisibleAssistantContent(reasoningBuilder.ToString(), toolsEnabled),
                                         FindBrush("AiChatThinkingForeground"),
                                         assistantContainer);
-                                }
-                                else
-                                {
-                                    rawThinkingBlock.Text = FormatRawTranscriptEntry("Thinking", displayedReasoningContent);
+                                    UpdateStatsBar(reasoningTokenCount + contentTokenCount, streamStopwatch);
+
+                                    if (shouldStickToBottom)
+                                    {
+                                        MessageScroller.ScrollToEnd();
+                                    }
+
+                                    return;
                                 }
 
+                                (thinkingSection, thinkingPresenter) = CreateThinkingSection(assistantContainer, assistantBlock);
+                                thinkingPresenter.Append(token.Text);
+                                SetInlineSectionHeaderNoPinnedUpdate(thinkingSection, $"Thinking ({reasoningTokenCount:N0} tokens)...");
                                 UpdateStatsBar(reasoningTokenCount + contentTokenCount, streamStopwatch);
 
                                 if (shouldStickToBottom)
                                 {
                                     MessageScroller.ScrollToEnd();
                                 }
-
-                                return;
-                            }
-
-                            if (thinkingSection is null)
+                            });
+                        }
+                        else
+                        {
+                            /* Incremental tokens — batch into periodic UI updates */
+                            batch.Enqueue(() =>
                             {
-                                (thinkingSection, thinkingPresenter) = CreateThinkingSection(assistantContainer, assistantBlock);
-                            }
+                                thinkingPresenter!.Append(token.Text);
+                                SetInlineSectionHeaderNoPinnedUpdate(thinkingSection!, $"Thinking ({reasoningTokenCount:N0} tokens)...");
+                                UpdateStatsBar(reasoningTokenCount + contentTokenCount, streamStopwatch);
 
-                            /* Use the chunked presenter which only updates the latest small TextBlock.
-                             * The full StringBuilder in the background keeps the complete content. */
-                            thinkingPresenter!.Append(token.Text);
-
-                            SetInlineSectionHeaderNoPinnedUpdate(thinkingSection, $"Thinking ({reasoningTokenCount:N0} tokens)...");
-
-                            UpdateStatsBar(reasoningTokenCount + contentTokenCount, streamStopwatch);
-
-                            if (shouldStickToBottom)
-                            {
-                                MessageScroller.ScrollToEnd();
-                            }
-                        });
+                                if (IsMessageScrollerNearBottom())
+                                {
+                                    MessageScroller.ScrollToEnd();
+                                }
+                            });
+                        }
                     }
                     else
                     {
@@ -1970,7 +2097,8 @@ public partial class AiChatPanel : UserControl
                             continue;
                         }
 
-                        await Dispatcher.InvokeAsync(() =>
+                        /* Content rendering is always incremental — the RichTextBox already exists */
+                        batch.Enqueue(() =>
                         {
                             bool shouldStickToBottom = IsMessageScrollerNearBottom();
                             string displayedResponseContent = GetVisibleAssistantContent(responseBuilder.ToString(), toolsEnabled);
@@ -1993,6 +2121,9 @@ public partial class AiChatPanel : UserControl
                         });
                     }
                 }
+
+                /* Flush any remaining batched updates before processing tool results */
+                await batch.FlushAsync();
 
                 if (streamingDisabled)
                 {
