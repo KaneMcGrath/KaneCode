@@ -253,6 +253,29 @@ public partial class MainWindow : Window
         _agentToolRegistry.Register(new GetDiagnosticsTool(_viewModel.RoslynService, projectRoot));
         _agentToolRegistry.Register(new PresentationNewTool(_presentationService));
         _agentToolRegistry.Register(new PresentationAddSlideTool(_presentationService, projectRoot));
+
+        // ── Git tools ─────────────────────────────────────────────
+        Func<GitService?> gitService = () => _viewModel.GitService;
+        Action onRepositoryChanged = () => _viewModel.RefreshGitStatusCommand.Execute(null);
+
+        _agentToolRegistry.Register(new GitStatusTool(gitService));
+        _agentToolRegistry.Register(new GitCommitTool(gitService));
+        _agentToolRegistry.Register(new GitLogTool(gitService));
+        _agentToolRegistry.Register(new GitStageTool(gitService));
+        _agentToolRegistry.Register(new GitUnstageTool(gitService));
+        _agentToolRegistry.Register(new GitDiscardTool(gitService));
+        _agentToolRegistry.Register(new GitDiffTool(gitService));
+        _agentToolRegistry.Register(new GitBranchesTool(gitService));
+        _agentToolRegistry.Register(new GitCreateBranchTool(gitService));
+        _agentToolRegistry.Register(new GitDeleteBranchTool(gitService));
+        _agentToolRegistry.Register(new GitCheckoutTool(gitService));
+        _agentToolRegistry.Register(new GitFetchTool(gitService));
+        _agentToolRegistry.Register(new GitPullTool(gitService));
+        _agentToolRegistry.Register(new GitPushTool(gitService));
+        _agentToolRegistry.Register(new GitConflictsTool(gitService));
+        _agentToolRegistry.Register(new GitResolveConflictTool(gitService));
+        _agentToolRegistry.Register(new GitInitTool(projectRoot, gitService, onRepositoryChanged));
+        _agentToolRegistry.Register(new GitHeadFileTool(gitService));
     }
 
     private AiContextDocumentSnapshot? GetCurrentDocumentSnapshot()

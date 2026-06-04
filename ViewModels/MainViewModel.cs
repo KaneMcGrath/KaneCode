@@ -46,6 +46,8 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
 
     /// <summary>Exposes the build service for agent tool registration.</summary>
     internal BuildService BuildService => _buildService;
+    /// <summary>Exposes the Git service for agent tool registration.</summary>
+    internal GitService GitService => _gitService;
     /// <summary>Exposes the Roslyn workspace service for agent tool registration.</summary>
     internal RoslynWorkspaceService RoslynService => _roslynService;
     /// <summary>Exposes the theme manager for OptionsWindow creation.</summary>
