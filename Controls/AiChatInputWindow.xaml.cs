@@ -1,5 +1,7 @@
 using System;
 using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Documents;
 using System.Windows.Input;
 
 namespace KaneCode.Controls;
@@ -49,6 +51,14 @@ public partial class AiChatInputWindow : Window
         {
             e.Handled = false; // Let the default AcceptsReturn handling insert the newline
             return;
+        }
+    }
+
+    private void InputBox_ContextMenuOpening(object sender, ContextMenuEventArgs e)
+    {
+        if (sender is TextBox textBox)
+        {
+            textBox.ContextMenu = AiChatPanel.BuildSpellCheckContextMenu(textBox);
         }
     }
 }

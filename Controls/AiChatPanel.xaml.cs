@@ -1491,6 +1491,72 @@ public partial class AiChatPanel : UserControl
         popup.ShowDialog();
     }
 
+    /// <summary>
+    /// Builds a <see cref="ContextMenu"/> for a spell-check-enabled <see cref="TextBox"/>.
+    /// If the text under the cursor has a spelling error, suggestions are shown at the top
+    /// followed by a separator. Standard editing commands (Undo, Redo, Cut, Copy, Paste,
+    /// Delete, Select All) are always included.
+    /// </summary>
+    internal static ContextMenu BuildSpellCheckContextMenu(TextBox textBox)
+    {
+        ArgumentNullException.ThrowIfNull(textBox);
+
+        var menu = new ContextMenu();
+
+        // Determine the character index under the mouse cursor
+        var mousePos = Mouse.GetPosition(textBox);
+        int charIndex = textBox.GetCharacterIndexFromPoint(mousePos, snapToText: true);
+
+        if (charIndex >= 0)
+        {
+            var spellingError = textBox.GetSpellingError(charIndex);
+            if (spellingError is not null)
+            {
+                bool hasSuggestions = false;
+                // ReSharper disable once LoopCanBeConvertedToQuery
+                foreach (string suggestion in spellingError.Suggestions)
+                {
+                    hasSuggestions = true;
+                    var item = new MenuItem
+                    {
+                        Header = suggestion,
+                        FontWeight = FontWeights.Bold,
+                        Command = EditingCommands.CorrectSpellingError,
+                        CommandParameter = suggestion,
+                        CommandTarget = textBox
+                    };
+                    menu.Items.Add(item);
+                }
+
+                if (hasSuggestions)
+                {
+                    menu.Items.Add(new Separator());
+                }
+            }
+        }
+
+        // Standard editing commands
+        menu.Items.Add(new MenuItem { Header = "Undo", Command = ApplicationCommands.Undo });
+        menu.Items.Add(new MenuItem { Header = "Redo", Command = ApplicationCommands.Redo });
+        menu.Items.Add(new Separator());
+        menu.Items.Add(new MenuItem { Header = "Cut", Command = ApplicationCommands.Cut });
+        menu.Items.Add(new MenuItem { Header = "Copy", Command = ApplicationCommands.Copy });
+        menu.Items.Add(new MenuItem { Header = "Paste", Command = ApplicationCommands.Paste });
+        menu.Items.Add(new MenuItem { Header = "Delete", Command = ApplicationCommands.Delete });
+        menu.Items.Add(new Separator());
+        menu.Items.Add(new MenuItem { Header = "Select All", Command = ApplicationCommands.SelectAll });
+
+        return menu;
+    }
+
+    private void InputBox_ContextMenuOpening(object sender, ContextMenuEventArgs e)
+    {
+        if (sender is TextBox textBox)
+        {
+            textBox.ContextMenu = BuildSpellCheckContextMenu(textBox);
+        }
+    }
+
     private async void InputBox_PreviewKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
     {
         // Handle @ mention popup navigation

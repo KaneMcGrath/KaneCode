@@ -381,8 +381,11 @@
                          BorderThickness="1"
                          BorderBrush="{DynamicResource AiChatBorder}"
                          Padding="6,4"
+                         SpellCheck.IsEnabled="True"
+                         Language="en-US"
                          PreviewKeyDown="InputBox_PreviewKeyDown"
-                         TextChanged="InputBox_TextChanged" />
+                         TextChanged="InputBox_TextChanged"
+                         ContextMenuOpening="InputBox_ContextMenuOpening" />
 
                 <!-- Expand button at top of column 1, left-aligned to sit against the textbox edge -->
                 <Button x:Name="ExpandButton"

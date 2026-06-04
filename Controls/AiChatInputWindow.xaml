@@ -45,6 +45,9 @@
                  Foreground="{DynamicResource AiChatForeground}"
                  Background="{DynamicResource AiChatInputBackground}"
                  CaretBrush="{DynamicResource AiChatForeground}"
-                 PreviewKeyDown="InputBox_PreviewKeyDown" />
+                 SpellCheck.IsEnabled="True"
+                 Language="en-US"
+                 PreviewKeyDown="InputBox_PreviewKeyDown"
+                 ContextMenuOpening="InputBox_ContextMenuOpening" />
     </DockPanel>
 </Window>
