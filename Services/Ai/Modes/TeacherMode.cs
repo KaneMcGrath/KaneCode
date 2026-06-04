@@ -43,10 +43,6 @@ internal sealed class TeacherMode : IAiChatMode
     /// <inheritdoc />
     public string? BuildSystemPrompt(JsonElement toolsDef)
     {
-        var toolsJson = toolsDef.ValueKind == JsonValueKind.Array
-            ? toolsDef.GetRawText()
-            : "[]";
-
         return """
             You are operating in teacher mode. 
             Your role is to guide, explain, and assist the user in understanding their codebase. 
@@ -59,9 +55,7 @@ internal sealed class TeacherMode : IAiChatMode
             3. Call presentation_add_slide for each step, specifying the file, line number, and explanatory text.
             The user can navigate between slides using Back and Next buttons.
             Use presentations when the user asks you to explain how code works or walk through a codebase.
-
-            Available tools (OpenAI format JSON):
-            """ + toolsJson;
+            """;
     }
 
     /// <inheritdoc />

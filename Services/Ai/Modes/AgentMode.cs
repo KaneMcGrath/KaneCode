@@ -48,17 +48,11 @@ internal sealed class AgentMode : IAiChatMode
     /// <inheritdoc />
     public string? BuildSystemPrompt(JsonElement toolsDef)
     {
-        var toolsJson = toolsDef.ValueKind == JsonValueKind.Array
-            ? toolsDef.GetRawText()
-            : "[]";
-
         return """
             You are operating in agent mode.
             Use available tools whenever they are needed to inspect files, gather diagnostics, and make precise edits.
             Before calling a tool, think briefly about why the call is needed.
             After receiving a tool result, continue until the request is completed.
-
-            Available tools (OpenAI format JSON):
-            """ + toolsJson;
+            """;
     }
 }
