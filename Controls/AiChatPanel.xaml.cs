@@ -83,14 +83,170 @@ public partial class AiChatPanel : UserControl
 
     private sealed class ToolCallSectionVisual(
         StreamSectionVisual section,
-        TextBlock argumentsBlock,
-        TextBlock resultBlock)
+        ChunkedTextPresenter argumentsPresenter,
+        TextBlock resultBlock,
+        string toolName,
+        string argumentsJson)
     {
         public StreamSectionVisual Section { get; } = section;
 
-        public TextBlock ArgumentsBlock { get; } = argumentsBlock;
+        /// <summary>
+        /// Chunked presenter for the tool call arguments. During streaming, only the
+        /// current chunk (small, bounded size) is updated. Previous chunks are frozen.
+        /// The full content is set once in <see cref="FinalizeToolCallBlock"/>.
+        /// </summary>
+        public ChunkedTextPresenter ArgumentsPresenter { get; } = argumentsPresenter;
 
         public TextBlock ResultBlock { get; } = resultBlock;
+
+        /// <summary>The tool name, stored so we can format nicely in <see cref="FinalizeToolCallBlock"/>.</summary>
+        public string ToolName { get; } = toolName;
+
+        /// <summary>The final accumulated arguments JSON, stored so we can format nicely in <see cref="FinalizeToolCallBlock"/>.</summary>
+        public string ArgumentsJson { get; } = argumentsJson;
+    }
+
+    /// <summary>
+    /// Manages a collection of TextBlocks inside a panel so that only the current chunk
+    /// (bounded to <see cref="_chunkSize"/> characters) is updated on each streaming token.
+    /// Previous chunks are frozen — WPF never re-formats them. This avoids the O(n²)
+    /// text-layout cost that occurs when setting a very long string on a single TextBlock
+    /// on every streaming token.
+    /// </summary>
+    private sealed class ChunkedTextPresenter
+    {
+        /// <summary>Maximum characters per chunk. Keeps per-token WPF text-layout work bounded.</summary>
+        private const int DefaultChunkSize = 4000;
+
+        private readonly Panel _panel;
+        private readonly UIElement? _insertBeforeElement;
+        private readonly int _chunkSize;
+        private readonly Brush _foreground;
+        private readonly FontFamily _fontFamily;
+        private readonly double _fontSize;
+        private readonly List<TextBlock> _blocks = [];
+        private TextBlock? _currentBlock;
+
+        public ChunkedTextPresenter(
+            Panel panel,
+            Brush foreground,
+            FontFamily fontFamily,
+            double fontSize,
+            UIElement? insertBeforeElement = null,
+            int chunkSize = DefaultChunkSize)
+        {
+            _panel = panel;
+            _insertBeforeElement = insertBeforeElement;
+            _chunkSize = chunkSize;
+            _foreground = foreground;
+            _fontFamily = fontFamily;
+            _fontSize = fontSize;
+        }
+
+        /// <summary>
+        /// Appends text to the current chunk. If the current chunk exceeds <see cref="_chunkSize"/>,
+        /// a new TextBlock is created and added to the panel. Only the latest TextBlock is ever
+        /// updated — previous chunks are frozen.
+        /// </summary>
+        public void Append(string text)
+        {
+            if (string.IsNullOrEmpty(text))
+            {
+                return;
+            }
+
+            EnsureChunk();
+            _currentBlock!.Text += text;
+            ApproximateLength += text.Length;
+        }
+
+        /// <summary>
+        /// Replaces all content with properly-sized chunks. Used after streaming completes
+        /// to present the final content efficiently. Only the last chunk may be partial.
+        /// </summary>
+        public void ReplaceAll(string content)
+        {
+            Clear();
+            if (string.IsNullOrEmpty(content))
+            {
+                return;
+            }
+
+            for (int offset = 0; offset < content.Length; offset += _chunkSize)
+            {
+                int length = Math.Min(_chunkSize, content.Length - offset);
+                var block = CreateBlock(content.Substring(offset, length));
+                _blocks.Add(block);
+                InsertBlock(block);
+            }
+
+            ApproximateLength = content.Length;
+        }
+
+        /// <summary>
+        /// Total characters across all chunks. Used to compute the delta between
+        /// the full accumulated argumentsJson and what has been rendered so far.
+        /// </summary>
+        public int ApproximateLength { get; private set; }
+
+        /// <summary>Removes all managed TextBlocks from the panel.</summary>
+        public void Clear()
+        {
+            foreach (var block in _blocks)
+            {
+                _panel.Children.Remove(block);
+            }
+
+            _blocks.Clear();
+            _currentBlock = null;
+            ApproximateLength = 0;
+        }
+
+        /// <summary>Returns true if no content has been added.</summary>
+        public bool IsEmpty => _blocks.Count == 0;
+
+        private void EnsureChunk()
+        {
+            if (_currentBlock is not null && _currentBlock.Text.Length < _chunkSize)
+            {
+                return;
+            }
+
+            _currentBlock = CreateBlock(string.Empty);
+            _blocks.Add(_currentBlock);
+            InsertBlock(_currentBlock);
+        }
+
+        private TextBlock CreateBlock(string text)
+        {
+            return new TextBlock
+            {
+                Text = text,
+                TextWrapping = TextWrapping.Wrap,
+                Foreground = _foreground,
+                FontSize = _fontSize,
+                FontFamily = _fontFamily,
+                Margin = new Thickness(0, 0, 0, 2)
+            };
+        }
+
+        private void InsertBlock(TextBlock block)
+        {
+            if (_insertBeforeElement is not null && _insertBeforeElement is UIElement anchor)
+            {
+                int index = _panel.Children.IndexOf(anchor);
+                if (index >= 0)
+                {
+                    /* Insert before the anchor element (e.g. the result block).
+                     * Each new chunk goes right before the anchor, after any
+                     * previously inserted chunks. */
+                    _panel.Children.Insert(index, block);
+                    return;
+                }
+            }
+
+            _panel.Children.Add(block);
+        }
     }
 
     public AiChatPanel()
@@ -1274,9 +1430,8 @@ public partial class AiChatPanel : UserControl
 
                     if (!string.IsNullOrWhiteSpace(message.ThinkingContent))
                     {
-                        (StreamSectionVisual thinkingSection, TextBlock thinkingTextBlock) = CreateThinkingSection(lastAssistantContainer, lastAssistantBlock);
-                        thinkingTextBlock.Text = FormatDisplayedAssistantContent(message.ThinkingContent, ShouldRemoveVerticalWhitespace());
-                        thinkingTextBlock.Visibility = Visibility.Visible;
+                        (StreamSectionVisual thinkingSection, ChunkedTextPresenter thinkingPresenter) = CreateThinkingSection(lastAssistantContainer, lastAssistantBlock);
+                        thinkingPresenter.ReplaceAll(FormatDisplayedAssistantContent(message.ThinkingContent, ShouldRemoveVerticalWhitespace()));
                         SetInlineSectionHeader(thinkingSection, "Thought");
                     }
 
@@ -1642,7 +1797,7 @@ public partial class AiChatPanel : UserControl
                 System.Text.StringBuilder responseBuilder = new();
                 System.Text.StringBuilder reasoningBuilder = new();
                 StreamSectionVisual? thinkingSection = null;
-                TextBlock? thinkingTextBlock = null;
+                ChunkedTextPresenter? thinkingPresenter = null;
                 TextBlock? rawThinkingBlock = null;
                 Dictionary<int, AiStreamToolCall> streamedToolCalls = new();
                 Dictionary<int, ToolCallSectionVisual> toolCallBlocks = new();
@@ -1703,22 +1858,16 @@ public partial class AiChatPanel : UserControl
 
                             if (rawTextMode)
                             {
-                                string rawToolCallText = FormatRawTranscriptEntry(
-                                    $"Tool Call ({toolCall.FunctionName})",
-                                    FormatToolArgs(toolCall.FunctionName, toolCall.ArgumentsJson));
-
                                 if (!rawToolCallBlocks.TryGetValue(toolCall.Index, out TextBlock? rawBlock))
                                 {
+                                    /* First creation: show a placeholder. The full formatted
+                                     * arguments are set once after streaming completes. */
                                     rawBlock = AppendRawTranscriptEntry(
                                         $"Tool Call ({toolCall.FunctionName})",
-                                        FormatToolArgs(toolCall.FunctionName, toolCall.ArgumentsJson),
+                                        "Receiving arguments...",
                                         FindBrush(ThemeResourceKeys.AiChatToolCallForeground),
                                         assistantContainer);
                                     rawToolCallBlocks[toolCall.Index] = rawBlock;
-                                }
-                                else
-                                {
-                                    rawBlock.Text = rawToolCallText;
                                 }
 
                                 if (shouldStickToBottom)
@@ -1794,18 +1943,14 @@ public partial class AiChatPanel : UserControl
 
                             if (thinkingSection is null)
                             {
-                                (thinkingSection, thinkingTextBlock) = CreateThinkingSection(assistantContainer, assistantBlock);
+                                (thinkingSection, thinkingPresenter) = CreateThinkingSection(assistantContainer, assistantBlock);
                             }
 
-                            thinkingTextBlock!.Text = FormatDisplayedAssistantContent(
-                                displayedReasoningContent,
-                                ShouldRemoveVerticalWhitespace());
-                            thinkingTextBlock.Visibility = string.IsNullOrWhiteSpace(thinkingTextBlock.Text)
-                                ? Visibility.Collapsed
-                                : Visibility.Visible;
+                            /* Use the chunked presenter which only updates the latest small TextBlock.
+                             * The full StringBuilder in the background keeps the complete content. */
+                            thinkingPresenter!.Append(token.Text);
 
-                            SetInlineSectionHeader(thinkingSection, $"Thinking ({reasoningTokenCount:N0} tokens)...");
-                            UpdatePinnedSectionHeaders();
+                            SetInlineSectionHeaderNoPinnedUpdate(thinkingSection, $"Thinking ({reasoningTokenCount:N0} tokens)...");
 
                             UpdateStatsBar(reasoningTokenCount + contentTokenCount, streamStopwatch);
 
@@ -1834,7 +1979,7 @@ public partial class AiChatPanel : UserControl
                             if (thinkingSection is not null &&
                                 thinkingSection.HeaderText.Text.EndsWith("...", StringComparison.Ordinal))
                             {
-                                SetInlineSectionHeader(thinkingSection, $"Thought for {reasoningTokenCount:N0} tokens");
+                                SetInlineSectionHeaderNoPinnedUpdate(thinkingSection, $"Thought for {reasoningTokenCount:N0} tokens");
                             }
 
                             RenderAssistantContent(assistantBlock, displayedResponseContent);
@@ -1881,12 +2026,11 @@ public partial class AiChatPanel : UserControl
                         {
                             if (!string.IsNullOrWhiteSpace(displayedReasoningContent))
                             {
-                                (thinkingSection, thinkingTextBlock) = CreateThinkingSection(assistantContainer, assistantBlock);
-                                thinkingTextBlock.Text = FormatDisplayedAssistantContent(
+                                (thinkingSection, thinkingPresenter) = CreateThinkingSection(assistantContainer, assistantBlock);
+                                thinkingPresenter.ReplaceAll(FormatDisplayedAssistantContent(
                                     displayedReasoningContent,
-                                    ShouldRemoveVerticalWhitespace());
-                                thinkingTextBlock.Visibility = Visibility.Visible;
-                                SetInlineSectionHeader(
+                                    ShouldRemoveVerticalWhitespace()));
+                                SetInlineSectionHeaderNoPinnedUpdate(
                                     thinkingSection,
                                     reasoningTokenCount > 0
                                         ? $"Thought for {reasoningTokenCount:N0} tokens"
@@ -1912,7 +2056,7 @@ public partial class AiChatPanel : UserControl
                     {
                         if (thinkingSection.HeaderText.Text.EndsWith("...", StringComparison.Ordinal))
                         {
-                            SetInlineSectionHeader(
+                            SetInlineSectionHeaderNoPinnedUpdate(
                                 thinkingSection,
                                 reasoningTokenCount > 0
                                     ? $"Thought for {reasoningTokenCount:N0} tokens"
@@ -1994,14 +2138,22 @@ public partial class AiChatPanel : UserControl
                         {
                             if (rawTextMode)
                             {
+                                /* Update the existing placeholder or create a new entry with properly formatted arguments.
+                                 * The FormatToolArgs call here is safe — streaming has completed, so this is a single
+                                 * JSON parse (not per-token). */
+                                string formattedArgs = FormatToolArgs(toolCall.FunctionName, toolCall.ArgumentsJson);
                                 if (!rawToolCallBlocks.TryGetValue(toolCall.Index, out TextBlock? rawBlock))
                                 {
                                     rawBlock = AppendRawTranscriptEntry(
                                         $"Tool Call ({toolCall.FunctionName})",
-                                        FormatToolArgs(toolCall.FunctionName, toolCall.ArgumentsJson),
+                                        formattedArgs,
                                         FindBrush(ThemeResourceKeys.AiChatToolCallForeground),
                                         assistantContainer);
                                     rawToolCallBlocks[toolCall.Index] = rawBlock;
+                                }
+                                else
+                                {
+                                    rawBlock.Text = FormatRawTranscriptEntry($"Tool Call ({toolCall.FunctionName})", formattedArgs);
                                 }
 
                                 return;
@@ -2018,6 +2170,8 @@ public partial class AiChatPanel : UserControl
                             }
                             else
                             {
+                                /* Update the header only — arguments text is set once in
+                                 * FinalizeToolCallBlock to avoid O(n²) WPF text-layout work. */
                                 UpdateToolCallBlock(block, toolCall.FunctionName, toolCall.ArgumentsJson);
                             }
 
@@ -2545,8 +2699,10 @@ public partial class AiChatPanel : UserControl
 
     /// <summary>
     /// Creates a subtle collapsible section for streamed thinking content.
+    /// Uses a <see cref="ChunkedTextPresenter"/> so that only a small, bounded
+    /// TextBlock is updated on each streaming token.
     /// </summary>
-    private (StreamSectionVisual section, TextBlock textBlock) CreateThinkingSection(Panel hostPanel, UIElement insertBefore)
+    private (StreamSectionVisual section, ChunkedTextPresenter presenter) CreateThinkingSection(Panel hostPanel, UIElement insertBefore)
     {
         Brush thinkingBackground = FindBrush("AiChatThinkingBackground");
         Brush thinkingForeground = FindBrush("AiChatThinkingForeground");
@@ -2560,18 +2716,14 @@ public partial class AiChatPanel : UserControl
             hostPanel,
             insertBefore);
 
-        TextBlock textBlock = new()
-        {
-            TextWrapping = TextWrapping.Wrap,
-            Foreground = thinkingForeground,
-            FontSize = 12,
-            FontFamily = new FontFamily("Segoe UI"),
-            Visibility = Visibility.Collapsed
-        };
+        var presenter = new ChunkedTextPresenter(
+            section.ContentPanel,
+            thinkingForeground,
+            new FontFamily("Segoe UI"),
+            12);
 
-        section.ContentPanel.Children.Add(textBlock);
         SetInlineSectionExpanded(section, isExpanded: ShouldAutoExpandThinkingSections());
-        return (section, textBlock);
+        return (section, presenter);
     }
 
     private StreamSectionVisual CreateInlineSection(
@@ -2721,10 +2873,28 @@ public partial class AiChatPanel : UserControl
 
     private void SetInlineSectionHeader(StreamSectionVisual section, string header)
     {
+        SetInlineSectionHeaderCore(section, header, updatePinnedSections: true);
+    }
+
+    /// <summary>
+    /// Sets the section header without triggering a pinned-section layout pass.
+    /// Use during rapid streaming updates where pinned headers will be refreshed
+    /// in a batching call after the streaming burst.
+    /// </summary>
+    private void SetInlineSectionHeaderNoPinnedUpdate(StreamSectionVisual section, string header)
+    {
+        SetInlineSectionHeaderCore(section, header, updatePinnedSections: false);
+    }
+
+    private void SetInlineSectionHeaderCore(StreamSectionVisual section, string header, bool updatePinnedSections)
+    {
         ArgumentNullException.ThrowIfNull(section);
         ArgumentException.ThrowIfNullOrWhiteSpace(header);
         section.HeaderText.Text = header;
-        UpdatePinnedSectionHeaders();
+        if (updatePinnedSections)
+        {
+            UpdatePinnedSectionHeaders();
+        }
     }
 
     private void SetInlineSectionForeground(StreamSectionVisual section, Brush foreground)
@@ -2807,7 +2977,9 @@ public partial class AiChatPanel : UserControl
     }
 
     /// <summary>
-    /// Creates a collapsible tool-call block with a tool-title header, streamed call content, and result content.
+    /// Creates a collapsible tool-call block with a tool-title header, chunked arguments
+    /// content, and result content. Uses <see cref="ChunkedTextPresenter"/> so that only
+    /// a small, bounded TextBlock is updated on each streaming token.
     /// </summary>
     private ToolCallSectionVisual CreateToolCallBlock(
         string toolName,
@@ -2818,8 +2990,10 @@ public partial class AiChatPanel : UserControl
         Brush toolBackground = FindBrush(ThemeResourceKeys.AiChatToolCallBackground);
         Brush toolForeground = FindBrush(ThemeResourceKeys.AiChatToolCallForeground);
         Brush toolBorder = FindBrush(ThemeResourceKeys.AiChatToolCallBorder);
+        var monoFont = new FontFamily("Cascadia Code, Consolas, Courier New");
+
         StreamSectionVisual section = CreateInlineSection(
-            FormatToolCallHeader(toolName, argumentsJson),
+            toolName,
             toolBackground,
             toolBackground,
             toolForeground,
@@ -2827,26 +3001,26 @@ public partial class AiChatPanel : UserControl
             hostPanel,
             insertBefore);
 
-        TextBlock argumentsBlock = new()
-        {
-            TextWrapping = TextWrapping.Wrap,
-            Foreground = toolForeground,
-            FontSize = 11,
-            FontFamily = new FontFamily("Cascadia Code, Consolas, Courier New")
-        };
-
+        /* The result block goes after the argument chunks. Track the index so the
+         * ChunkedTextPresenter inserts argument blocks before it. */
         TextBlock resultBlock = new()
         {
-            Text = "Running tool...",
+            Text = "Receiving arguments...",
             TextWrapping = TextWrapping.Wrap,
             Foreground = toolForeground,
             FontSize = 11,
-            FontFamily = new FontFamily("Cascadia Code, Consolas, Courier New")
+            FontFamily = monoFont
         };
 
-        UpdateToolCallArgumentsContent(argumentsBlock, resultBlock, toolName, argumentsJson);
-        section.ContentPanel.Children.Add(argumentsBlock);
         section.ContentPanel.Children.Add(resultBlock);
+
+        var argumentsPresenter = new ChunkedTextPresenter(
+            section.ContentPanel,
+            toolForeground,
+            monoFont,
+            11,
+            insertBeforeElement: resultBlock /* Insert argument chunks before the result block */);
+
         SetInlineSectionExpanded(section, isExpanded: ShouldAutoExpandToolSections());
 
         bool shouldStickToBottom = IsMessageScrollerNearBottom();
@@ -2855,25 +3029,54 @@ public partial class AiChatPanel : UserControl
             MessageScroller.ScrollToEnd();
         }
 
-        return new ToolCallSectionVisual(section, argumentsBlock, resultBlock);
+        return new ToolCallSectionVisual(section, argumentsPresenter, resultBlock, toolName, argumentsJson);
     }
 
     /// <summary>
     /// Updates a tool-call block while the call arguments are still streaming.
+    /// Appends only the delta (new characters not yet rendered) to the chunked
+    /// presenter, so only the current small TextBlock is updated.
     /// </summary>
     private void UpdateToolCallBlock(ToolCallSectionVisual block, string toolName, string argumentsJson)
     {
         ArgumentNullException.ThrowIfNull(block);
-        SetInlineSectionHeader(block.Section, FormatToolCallHeader(toolName, argumentsJson));
-        UpdateToolCallArgumentsContent(block.ArgumentsBlock, block.ResultBlock, toolName, argumentsJson);
+
+        block.Section.HeaderText.Text = toolName;
+
+        /* During streaming, each token carries the FULL accumulated argumentsJson.
+         * Compute the delta — only append characters not yet shown. */
+        int alreadyShown = block.ArgumentsPresenter.ApproximateLength;
+        if (alreadyShown < argumentsJson.Length)
+        {
+            block.ArgumentsPresenter.Append(argumentsJson[alreadyShown..]);
+        }
     }
 
     /// <summary>
-    /// Updates a tool-call block with the final result (success or error).
+    /// Finalizes a tool-call block with the execution result.
+    /// At this point streaming is complete, so we safely format the header
+    /// and arguments content once using proper JSON parsing, and set the
+    /// result output.
     /// </summary>
     private void FinalizeToolCallBlock(ToolCallSectionVisual block, ToolCallResult result)
     {
         ArgumentNullException.ThrowIfNull(block);
+
+        /* Now that streaming is complete, format the header nicely once */
+        SetInlineSectionHeader(block.Section, FormatToolCallHeader(block.ToolName, block.ArgumentsJson));
+
+        /* Replace the chunked streaming content with properly formatted final content.
+         * This is a single JSON parse and a single batch of TextBlock creations,
+         * regardless of how many streaming tokens were processed. */
+        string formattedArgs = FormatToolCallBody(block.ToolName, block.ArgumentsJson);
+        if (!string.IsNullOrWhiteSpace(formattedArgs))
+        {
+            block.ArgumentsPresenter.ReplaceAll(formattedArgs);
+        }
+        else
+        {
+            block.ArgumentsPresenter.Clear();
+        }
 
         if (result.Success)
         {
