@@ -2579,10 +2579,33 @@ public partial class AiChatPanel : UserControl
                         });
                     }
 
+                    // If this iteration generated no text content (only thinking/tool calls),
+                    // collapse the empty RichTextBox and remove container margins so
+                    // consecutive contentless iterations stack flush without gaps.
+                    if (string.IsNullOrWhiteSpace(sanitizedResponseContent))
+                    {
+                        await Dispatcher.InvokeAsync(() =>
+                        {
+                            assistantBlock.Visibility = Visibility.Collapsed;
+                            assistantContainer.Margin = new Thickness(0);
+                        });
+                    }
+
                     SavePersistedConversation();
 
                     // Continue the loop — the next iteration will re-send to the model
                     continue;
+                }
+
+                // If this iteration generated no text content, collapse the empty
+                // RichTextBox so it doesn't leave a gap in the message panel.
+                if (string.IsNullOrWhiteSpace(sanitizedResponseContent))
+                {
+                    await Dispatcher.InvokeAsync(() =>
+                    {
+                        assistantBlock.Visibility = Visibility.Collapsed;
+                        assistantContainer.Margin = new Thickness(0);
+                    });
                 }
 
                 // No tool calls — this is the final content response
@@ -3108,7 +3131,7 @@ public partial class AiChatPanel : UserControl
             HorizontalAlignment = HorizontalAlignment.Stretch,
             BorderBrush = borderBrush,
             BorderThickness = new Thickness(0, 1, 0, 1),
-            Margin = new Thickness(0, 4, 0, 0),
+            Margin = new Thickness(0),
             Child = sectionLayout
         };
 
