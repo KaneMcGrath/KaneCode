@@ -62,7 +62,58 @@ internal sealed class BuildService : IDisposable
     }
 
     /// <summary>
-    /// Cancels the currently running build/run process, if any.
+    /// Runs <c>dotnet test</c> with the specified options.
+    /// </summary>
+    /// <param name="projectOrSolutionPath">Path to the test project or solution.</param>
+    /// <param name="filter">Optional test filter expression (e.g. "FullyQualifiedName~MyTest").</param>
+    /// <param name="configuration">Optional configuration (Debug/Release).</param>
+    /// <param name="framework">Optional target framework moniker (e.g. "net8.0").</param>
+    /// <param name="verbosity">Optional verbosity level (quiet/minimal/normal/detailed/diagnostic).</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    public async Task TestAsync(
+        string projectOrSolutionPath,
+        string? filter = null,
+        string? configuration = null,
+        string? framework = null,
+        string? verbosity = null,
+        CancellationToken cancellationToken = default)
+    {
+        var directory = GetWorkingDirectory(projectOrSolutionPath);
+        var args = new System.Text.StringBuilder();
+        args.Append("test \"");
+        args.Append(projectOrSolutionPath);
+        args.Append('"');
+
+        if (!string.IsNullOrWhiteSpace(filter))
+        {
+            args.Append(" --filter \"");
+            args.Append(filter);
+            args.Append('"');
+        }
+
+        if (!string.IsNullOrWhiteSpace(configuration))
+        {
+            args.Append(" --configuration ");
+            args.Append(configuration);
+        }
+
+        if (!string.IsNullOrWhiteSpace(framework))
+        {
+            args.Append(" --framework ");
+            args.Append(framework);
+        }
+
+        if (!string.IsNullOrWhiteSpace(verbosity))
+        {
+            args.Append(" --verbosity ");
+            args.Append(verbosity);
+        }
+
+        await RunDotnetAsync(args.ToString(), directory, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Cancels the currently running build/run/test process, if any.
     /// </summary>
     public void Cancel()
     {

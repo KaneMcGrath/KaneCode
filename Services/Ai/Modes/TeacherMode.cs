@@ -13,7 +13,8 @@ internal sealed class TeacherMode : IAiChatMode
         "edit_file",
         "write_file",
         "get_diagnostics",
-        "run_build"
+        "run_build",
+        "run_test"
     };
 
     public string Id => "teacher";
