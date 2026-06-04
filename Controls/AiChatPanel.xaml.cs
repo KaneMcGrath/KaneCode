@@ -1456,6 +1456,41 @@ public partial class AiChatPanel : UserControl
         await SendMessageAsync();
     }
 
+    /// <summary>
+    /// Opens the expanded input popup window. While the popup is open, the inline
+    /// input box and send button are hidden. When the popup closes (either by sending
+    /// or dismissing), the inline controls are restored.
+    /// </summary>
+    private void ExpandButton_Click(object sender, RoutedEventArgs e)
+    {
+        var popup = new AiChatInputWindow(InputBox.Text, Window.GetWindow(this));
+
+        // Wire up the send event: populate the main input and trigger sending
+        popup.SendRequested += async text =>
+        {
+            InputBox.Text = text;
+            await SendMessageAsync();
+        };
+
+        // Hide the inline input controls while the popup is open
+        InputPanelContainer.Visibility = Visibility.Collapsed;
+
+        popup.Closed += (_, _) =>
+        {
+            // Restore the inline input controls when the popup is dismissed
+            InputPanelContainer.Visibility = Visibility.Visible;
+
+            // If the user closed without sending, sync any typed text back
+            if (popup.DialogResult != true && !string.IsNullOrWhiteSpace(popup.InputBox.Text))
+            {
+                InputBox.Text = popup.InputBox.Text;
+                InputBox.CaretIndex = InputBox.Text.Length;
+            }
+        };
+
+        popup.ShowDialog();
+    }
+
     private async void InputBox_PreviewKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
     {
         // Handle @ mention popup navigation

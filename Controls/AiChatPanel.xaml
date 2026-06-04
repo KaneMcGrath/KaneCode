@@ -352,12 +352,62 @@
         <!-- Input area -->
         <Border DockPanel.Dock="Bottom"
                 Background="{DynamicResource AiChatInputBackground}"
-                Padding="6"
+                Padding="6,6"
                 BorderThickness="0,1,0,0"
                 BorderBrush="{DynamicResource AiChatBorder}">
-            <DockPanel>
+            <Grid x:Name="InputPanelContainer">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
+
+                <!-- Textbox fills column 0 (spanning both rows so buttons sit flush to its right) -->
+                <TextBox x:Name="InputBox"
+                         Grid.Column="0"
+                         Grid.RowSpan="2"
+                         AcceptsReturn="True"
+                         TextWrapping="Wrap"
+                         Height="120"
+                         VerticalScrollBarVisibility="Auto"
+                         FontSize="13"
+                         FontFamily="Segoe UI, Consolas"
+                         Foreground="{DynamicResource AiChatForeground}"
+                         Background="{DynamicResource AiChatInputBackground}"
+                         CaretBrush="{DynamicResource AiChatForeground}"
+                         BorderThickness="1"
+                         BorderBrush="{DynamicResource AiChatBorder}"
+                         Padding="6,4"
+                         PreviewKeyDown="InputBox_PreviewKeyDown"
+                         TextChanged="InputBox_TextChanged" />
+
+                <!-- Expand button at top of column 1, left-aligned to sit against the textbox edge -->
+                <Button x:Name="ExpandButton"
+                        Grid.Column="1"
+                        Grid.Row="0"
+                        Content="⛶"
+                        Click="ExpandButton_Click"
+                        FontSize="12"
+                        Padding="1,0"
+                        Width="20"
+                        Height="18"
+                        Margin="4,0,0,0"
+                        HorizontalAlignment="Left"
+                        VerticalAlignment="Top"
+                        Foreground="{DynamicResource AiChatForeground}"
+                        Background="{DynamicResource AiChatInputBackground}"
+                        BorderThickness="1"
+                        BorderBrush="{DynamicResource AiChatBorder}"
+                        Cursor="Hand"
+                        ToolTip="Open expanded input window" />
+
+                <!-- Send button at bottom of column 1 -->
                 <Button x:Name="SendButton"
-                        DockPanel.Dock="Right"
+                        Grid.Column="1"
+                        Grid.Row="1"
                         Content="Send"
                         Click="SendButton_Click"
                         Padding="12,4"
@@ -368,21 +418,7 @@
                         Background="{DynamicResource AiChatSendButtonBackground}"
                         BorderThickness="0"
                         Cursor="Hand" />
-                <TextBox x:Name="InputBox"
-                         AcceptsReturn="True"
-                         TextWrapping="Wrap"
-                         MaxHeight="120"
-                         VerticalScrollBarVisibility="Auto"
-                         FontSize="13"
-                         FontFamily="Segoe UI, Consolas"
-                         Foreground="{DynamicResource AiChatForeground}"
-                         Background="{DynamicResource AiChatInputBackground}"
-                         CaretBrush="{DynamicResource AiChatForeground}"
-                         BorderThickness="1"
-                         BorderBrush="{DynamicResource AiChatBorder}"
-                         Padding="6,4"
-                         PreviewKeyDown="InputBox_PreviewKeyDown" TextChanged="InputBox_TextChanged" />
-            </DockPanel>
+            </Grid>
         </Border>
 
         <!-- Message area (scrollable) -->
