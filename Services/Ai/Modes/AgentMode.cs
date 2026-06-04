@@ -11,7 +11,6 @@ internal sealed class AgentMode : IAiChatMode
     private static readonly HashSet<string> BlockedTools = new(StringComparer.Ordinal)
     {
         "presentation_new",
-        "find_line",
         "presentation_add_slide",
         "get_diagnostics"
     };

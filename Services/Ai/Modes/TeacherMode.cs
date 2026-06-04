@@ -13,8 +13,7 @@ internal sealed class TeacherMode : IAiChatMode
         "edit_file",
         "write_file",
         "get_diagnostics",
-        "run_build",
-        "find_line"
+        "run_build"
     };
 
     public string Id => "teacher";
@@ -51,8 +50,7 @@ internal sealed class TeacherMode : IAiChatMode
 
             You have presentation tools to create interactive step-by-step walkthroughs:
             1. Call presentation_new with a title to start a new presentation.
-            2. Call find_line to locate an exact line in a file from a search string.
-            3. Call presentation_add_slide for each step, specifying the file, line number, and explanatory text.
+            2. Call presentation_add_slide for each step, specifying the file, line number, and explanatory text.
             The user can navigate between slides using Back and Next buttons.
             Use presentations when the user asks you to explain how code works or walk through a codebase.
             """;
