@@ -641,10 +641,13 @@ public partial class AiChatPanel : UserControl
             };
             groupCheckBox.Indeterminate += (s, e) =>
             {
-                // When group is indeterminate, enable all tools in the group
+                // When the group transitions from Checked to Indeterminate
+                // (three-state cycling: Unchecked → Checked → Indeterminate → Unchecked),
+                // the user intended to disable all tools, not keep them enabled.
+                // So we disable all tools in the group.
                 if (s is CheckBox cb && cb.Tag is string cat)
                 {
-                    ToggleGroupTools(cat, true);
+                    ToggleGroupTools(cat, false);
                 }
             };
 
@@ -739,6 +742,10 @@ public partial class AiChatPanel : UserControl
 
         TouchConversation(conversation);
         SavePersistedConversation();
+
+        // Refresh the checkbox panel so group-level checkboxes reflect
+        // the updated partial/checked/unchecked state.
+        RefreshToolsCheckboxPanel();
     }
 
     /// <summary>
