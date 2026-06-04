@@ -225,10 +225,17 @@ internal sealed class BuildService : IDisposable
     {
         if (Directory.Exists(projectOrSolutionPath))
         {
-            return projectOrSolutionPath;
+            return Path.GetFullPath(projectOrSolutionPath);
         }
 
-        return Path.GetDirectoryName(projectOrSolutionPath) ?? Directory.GetCurrentDirectory();
+        string? dir = Path.GetDirectoryName(projectOrSolutionPath);
+        if (string.IsNullOrEmpty(dir))
+        {
+            return Directory.GetCurrentDirectory();
+        }
+
+        // Resolve relative paths to absolute so the process working directory is always valid.
+        return Path.GetFullPath(dir);
     }
 
     public void Dispose()

@@ -229,7 +229,8 @@ public class ReadFileToolTests : IDisposable
         Assert.True(result.Success);
         Assert.Contains("Line 10", result.Output, StringComparison.Ordinal);
         Assert.Contains("Line 100", result.Output, StringComparison.Ordinal);
-        Assert.DoesNotContain("Line 9", result.Output, StringComparison.Ordinal);
+        string[] outputLines = result.Output.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
+        Assert.DoesNotContain("Line 9", outputLines, StringComparer.Ordinal);
     }
 
     [Fact]
@@ -251,7 +252,8 @@ public class ReadFileToolTests : IDisposable
         Assert.True(result.Success);
         Assert.Contains("Line 1", result.Output, StringComparison.Ordinal);
         Assert.Contains("Line 5", result.Output, StringComparison.Ordinal);
-        Assert.DoesNotContain("Line 6", result.Output, StringComparison.Ordinal);
+        string[] outputLines = result.Output.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
+        Assert.DoesNotContain("Line 6", outputLines, StringComparer.Ordinal);
     }
 
     [Fact]
@@ -273,8 +275,9 @@ public class ReadFileToolTests : IDisposable
         Assert.True(result.Success);
         Assert.Contains("Line 10", result.Output, StringComparison.Ordinal);
         Assert.Contains("Line 15", result.Output, StringComparison.Ordinal);
-        Assert.DoesNotContain("Line 9", result.Output, StringComparison.Ordinal);
-        Assert.DoesNotContain("Line 16", result.Output, StringComparison.Ordinal);
+        string[] outputLines = result.Output.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
+        Assert.DoesNotContain("Line 9", outputLines, StringComparer.Ordinal);
+        Assert.DoesNotContain("Line 16", outputLines, StringComparer.Ordinal);
     }
 
     [Fact]
@@ -381,8 +384,9 @@ public class ReadFileToolTests : IDisposable
         Assert.Contains("[File: second.txt]", result.Output, StringComparison.Ordinal);
         Assert.Contains("Line 5", result.Output, StringComparison.Ordinal);
         Assert.Contains("Line 10", result.Output, StringComparison.Ordinal);
-        Assert.DoesNotContain("Line 4", result.Output, StringComparison.Ordinal);
-        Assert.DoesNotContain("Line 11", result.Output, StringComparison.Ordinal);
+        string[] outputLines = result.Output.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
+        Assert.DoesNotContain("Line 4", outputLines, StringComparer.Ordinal);
+        Assert.DoesNotContain("Line 11", outputLines, StringComparer.Ordinal);
     }
 
     private static JsonElement BuildArgs(string filePath)

@@ -1,3 +1,4 @@
+using System.IO;
 using System.Text;
 using System.Text.Json;
 using KaneCode.Services;
@@ -82,6 +83,14 @@ internal sealed class RunTestTool : IAgentTool
         }
 
         projectPath ??= _projectPathProvider();
+
+        // Resolve relative project paths against the loaded solution/project directory
+        // so that the build service always receives an absolute path.
+        if (!string.IsNullOrWhiteSpace(projectPath) && !Path.IsPathRooted(projectPath))
+        {
+            string rootDir = AgentToolPathResolver.GetProjectRootDirectory(_projectPathProvider);
+            projectPath = Path.GetFullPath(Path.Combine(rootDir, projectPath));
+        }
 
         if (string.IsNullOrWhiteSpace(projectPath))
         {
