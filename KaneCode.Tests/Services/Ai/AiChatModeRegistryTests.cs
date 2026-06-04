@@ -7,9 +7,13 @@ public class AiChatModeRegistryTests
 {
     private sealed class FakeMode : IAiChatMode
     {
+        private static readonly HashSet<string> EmptyTools = [];
+
         public string Id { get; }
         public string DisplayName { get; }
         public bool ToolsEnabled => false;
+
+        public IReadOnlySet<string>? AllowedTools => EmptyTools;
 
         public FakeMode(string id, string displayName)
         {

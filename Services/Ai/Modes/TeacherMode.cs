@@ -8,13 +8,13 @@ namespace KaneCode.Services.Ai.Modes;
 /// </summary>
 internal sealed class TeacherMode : IAiChatMode
 {
-    private static readonly HashSet<string> BlockedTools = new(StringComparer.Ordinal)
+    private static readonly HashSet<string> AllowedToolsSet = new(StringComparer.Ordinal)
     {
-        "edit_file",
-        "write_file",
-        "get_diagnostics",
-        "run_build",
-        "run_test"
+        "list_files",
+        "read_file",
+        "search_files",
+        "presentation_new",
+        "presentation_add_slide",
     };
 
     public string Id => "teacher";
@@ -22,6 +22,9 @@ internal sealed class TeacherMode : IAiChatMode
     public string DisplayName => "Teacher";
 
     public bool ToolsEnabled => true;
+
+    /// <inheritdoc />
+    public IReadOnlySet<string>? AllowedTools => AllowedToolsSet;
 
     /// <inheritdoc />
     public JsonElement GetToolDefinitions(AgentToolRegistry registry)
@@ -33,11 +36,7 @@ internal sealed class TeacherMode : IAiChatMode
             return default;
         }
 
-        var allowedTools = registry.Tools
-            .Select(t => t.Name)
-            .Where(name => !BlockedTools.Contains(name));
-
-        return registry.SerializeToolDefinitions(allowedTools);
+        return registry.SerializeToolDefinitions(AllowedToolsSet);
     }
 
     /// <inheritdoc />
@@ -55,11 +54,5 @@ internal sealed class TeacherMode : IAiChatMode
             The user can navigate between slides using Back and Next buttons.
             Use presentations when the user asks you to explain how code works or walk through a codebase.
             """;
-    }
-
-    /// <inheritdoc />
-    public bool IsToolAllowed(string toolName)
-    {
-        return !BlockedTools.Contains(toolName);
     }
 }

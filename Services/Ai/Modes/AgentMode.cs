@@ -8,11 +8,19 @@ namespace KaneCode.Services.Ai.Modes;
 /// </summary>
 internal sealed class AgentMode : IAiChatMode
 {
-    private static readonly HashSet<string> BlockedTools = new(StringComparer.Ordinal)
+    private static readonly HashSet<string> AllowedToolsSet = new(StringComparer.Ordinal)
     {
-        "presentation_new",
-        "presentation_add_slide",
-        "get_diagnostics"
+        "create_directory",
+        "delete_directory",
+        "delete_file",
+        "edit_file",
+        "list_files",
+        "read_file",
+        "rename_path",
+        "run_build",
+        "run_test",
+        "search_files",
+        "write_file",
     };
 
     public string Id => "agent";
@@ -20,6 +28,9 @@ internal sealed class AgentMode : IAiChatMode
     public string DisplayName => "Agent";
 
     public bool ToolsEnabled => true;
+
+    /// <inheritdoc />
+    public IReadOnlySet<string>? AllowedTools => AllowedToolsSet;
 
     /// <inheritdoc />
     public JsonElement GetToolDefinitions(AgentToolRegistry registry)
@@ -31,17 +42,7 @@ internal sealed class AgentMode : IAiChatMode
             return default;
         }
 
-        var allowedTools = registry.Tools
-            .Select(t => t.Name)
-            .Where(name => !BlockedTools.Contains(name));
-
-        return registry.SerializeToolDefinitions(allowedTools);
-    }
-
-    /// <inheritdoc />
-    public bool IsToolAllowed(string toolName)
-    {
-        return !BlockedTools.Contains(toolName);
+        return registry.SerializeToolDefinitions(AllowedToolsSet);
     }
 
     /// <inheritdoc />

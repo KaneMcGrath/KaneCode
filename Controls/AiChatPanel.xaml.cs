@@ -848,7 +848,7 @@ public partial class AiChatPanel : UserControl
         // Legacy fallback: conversation hasn't been through a mode switch yet
         if (enabledTools is null)
         {
-            return _activeMode.IsToolAllowed(toolName);
+            return _activeMode.AllowedTools is null || _activeMode.AllowedTools.Contains(toolName);
         }
 
         return enabledTools.Contains(toolName);
@@ -1979,10 +1979,13 @@ public partial class AiChatPanel : UserControl
         }
         else
         {
-            conversation.EnabledTools = _toolRegistry.Tools
-                .Select(t => t.Name)
-                .Where(mode.IsToolAllowed)
-                .ToHashSet(StringComparer.Ordinal);
+            IReadOnlySet<string>? allowed = mode.AllowedTools;
+            conversation.EnabledTools = allowed is null
+                ? _toolRegistry.Tools.Select(t => t.Name).ToHashSet(StringComparer.Ordinal)
+                : _toolRegistry.Tools
+                    .Select(t => t.Name)
+                    .Where(allowed.Contains)
+                    .ToHashSet(StringComparer.Ordinal);
         }
 
         // Reset system prompt to mode default

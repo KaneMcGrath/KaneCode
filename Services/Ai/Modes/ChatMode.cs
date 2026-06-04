@@ -8,11 +8,16 @@ namespace KaneCode.Services.Ai.Modes;
 /// </summary>
 internal sealed class ChatMode : IAiChatMode
 {
+    private static readonly HashSet<string> EmptyTools = [];
+
     public string Id => "chat";
 
     public string DisplayName => "Chat";
 
     public bool ToolsEnabled => false;
+
+    /// <inheritdoc />
+    public IReadOnlySet<string>? AllowedTools => EmptyTools;
 
     /// <inheritdoc />
     public JsonElement GetToolDefinitions(AgentToolRegistry registry) => default;

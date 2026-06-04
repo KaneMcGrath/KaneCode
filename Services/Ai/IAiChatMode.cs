@@ -41,8 +41,16 @@ internal interface IAiChatMode
     string? BuildSystemPrompt(JsonElement toolsDef);
 
     /// <summary>
-    /// Returns true if the tool with the given name is allowed to execute in this mode.
-    /// Default is true.
+    /// The set of tool names that are allowed in this mode.
+    /// <c>null</c> means all tools in the registry are available (unrestricted).
+    /// An empty set means no tools are available.
     /// </summary>
-    bool IsToolAllowed(string toolName) => true;
+    IReadOnlySet<string>? AllowedTools { get; }
+
+    /// <summary>
+    /// Returns true if the tool with the given name is allowed to execute in this mode.
+    /// Default checks <see cref="AllowedTools"/>: returns true when <c>AllowedTools</c>
+    /// is null (unrestricted), or when the tool name is in the set.
+    /// </summary>
+    bool IsToolAllowed(string toolName) => AllowedTools is null || AllowedTools.Contains(toolName);
 }

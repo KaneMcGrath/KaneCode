@@ -16,11 +16,11 @@ internal sealed class CustomMode : IAiChatMode
     public bool ToolsEnabled => true;
 
     /// <inheritdoc />
+    public IReadOnlySet<string>? AllowedTools => null;
+
+    /// <inheritdoc />
     public JsonElement GetToolDefinitions(AgentToolRegistry registry) => default;
 
     /// <inheritdoc />
     public string? BuildSystemPrompt(JsonElement toolsDef) => null;
-
-    /// <inheritdoc />
-    public bool IsToolAllowed(string toolName) => true;
 }
