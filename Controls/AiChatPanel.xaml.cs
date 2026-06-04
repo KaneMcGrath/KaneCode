@@ -102,6 +102,7 @@ public partial class AiChatPanel : UserControl
         Loaded += AiChatPanel_Loaded;
         MessageScroller.ScrollChanged += MessageScroller_ScrollChanged;
         MessageScroller.SizeChanged += MessageScroller_SizeChanged;
+        SettingsOptionsButton.Checked += SettingsOptionsButton_Checked;
     }
 
     /// <summary>
@@ -216,6 +217,7 @@ public partial class AiChatPanel : UserControl
     internal void SetToolRegistry(AgentToolRegistry registry)
     {
         _toolRegistry = registry;
+        RefreshToolsCheckboxPanel();
     }
 
     internal void SetDebugLogService(AiDebugLogService debugLogService)
@@ -223,6 +225,198 @@ public partial class AiChatPanel : UserControl
         ArgumentNullException.ThrowIfNull(debugLogService);
 
         _debugLogService = debugLogService;
+    }
+
+    /// <summary>
+    /// Populates or refreshes the tool checkboxes in the wrench-button popup
+    /// based on the current tool registry and active conversation selection.
+    /// </summary>
+    private void RefreshToolsCheckboxPanel()
+    {
+        ToolsCheckboxPanel.Children.Clear();
+
+        TextBlock header = new()
+        {
+            Text = "Available Tools",
+            FontWeight = FontWeights.SemiBold,
+            FontSize = 11,
+            Margin = new Thickness(0, 0, 0, 4),
+            Foreground = FindBrush("AiChatForeground")
+        };
+        ToolsCheckboxPanel.Children.Add(header);
+
+        if (_toolRegistry is null || !_toolRegistry.HasTools)
+        {
+            TextBlock noTools = new()
+            {
+                Text = "(no tools registered)",
+                FontSize = 11,
+                Foreground = FindBrush("AiChatSecondaryForeground"),
+                Margin = new Thickness(0, 0, 0, 2)
+            };
+            ToolsCheckboxPanel.Children.Add(noTools);
+            return;
+        }
+
+        AiConversation conversation = EnsureActiveConversation();
+        HashSet<string>? enabledTools = conversation.EnabledTools;
+
+        foreach (IAgentTool tool in _toolRegistry.Tools.OrderBy(t => t.Name))
+        {
+            bool isChecked = enabledTools is null || enabledTools.Contains(tool.Name);
+
+            CheckBox checkBox = new()
+            {
+                Content = tool.Name,
+                IsChecked = isChecked,
+                Tag = tool.Name,
+                Margin = new Thickness(0, 0, 0, 2),
+                FontSize = 11,
+                FontFamily = new FontFamily("Cascadia Code, Consolas, Courier New"),
+                Foreground = FindBrush("AiChatForeground"),
+                ToolTip = tool.Description
+            };
+
+            checkBox.Checked += ToolCheckBox_Changed;
+            checkBox.Unchecked += ToolCheckBox_Changed;
+            ToolsCheckboxPanel.Children.Add(checkBox);
+        }
+    }
+
+    /// <summary>
+    /// Called when any tool checkbox is checked or unchecked.
+    /// Updates the active conversation's EnabledTools set accordingly.
+    /// </summary>
+    private void ToolCheckBox_Changed(object sender, RoutedEventArgs e)
+    {
+        if (sender is not CheckBox checkBox || checkBox.Tag is not string toolName)
+        {
+            return;
+        }
+
+        AiConversation conversation = EnsureActiveConversation();
+        HashSet<string> enabledTools = conversation.EnabledTools ??= new HashSet<string>(StringComparer.Ordinal);
+
+        if (checkBox.IsChecked == true)
+        {
+            enabledTools.Add(toolName);
+        }
+        else
+        {
+            enabledTools.Remove(toolName);
+        }
+
+        // Switching tools manually puts the conversation into Custom mode
+        SwitchToCustomMode();
+
+        TouchConversation(conversation);
+        SavePersistedConversation();
+    }
+
+    /// <summary>
+    /// Opens the system prompt editor dialog. If the user saves changes,
+    /// the conversation switches to Custom mode.
+    /// </summary>
+    private void SystemPromptButton_Click(object sender, RoutedEventArgs e)
+    {
+        AiConversation conversation = EnsureActiveConversation();
+        AiSystemPromptEditorDialog dialog = new(conversation.SystemPrompt, Window.GetWindow(this));
+
+        if (dialog.ShowDialog() == true)
+        {
+            conversation.SystemPrompt = dialog.EditedPrompt;
+            SwitchToCustomMode();
+            TouchConversation(conversation);
+            SavePersistedConversation();
+            AppendSystemMessage("System prompt updated.");
+        }
+    }
+
+    /// <summary>
+    /// Switches the active conversation to Custom mode in the UI.
+    /// </summary>
+    private void SwitchToCustomMode()
+    {
+        if (_activeMode?.Id == "custom")
+        {
+            return;
+        }
+
+        IAiChatMode? customMode = _modeRegistry?.Get("custom");
+        if (customMode is null)
+        {
+            return;
+        }
+
+        _activeMode = customMode;
+        ModeSelector.SelectedItem = customMode;
+    }
+
+    /// <summary>
+    /// Called when the wrench button (SettingsOptionsButton) is checked to open the popup.
+    /// Refreshes the tool checkbox list to reflect the current conversation's settings.
+    /// </summary>
+    private void SettingsOptionsButton_Checked(object sender, RoutedEventArgs e)
+    {
+        RefreshToolsCheckboxPanel();
+    }
+
+    /// <summary>
+    /// Returns the tool definitions for the current conversation, using the
+    /// per-conversation <see cref="AiConversation.EnabledTools"/> set (which
+    /// is initialized from the mode's allowed tools when the mode is switched).
+    /// Falls back to the mode's default tool definitions for legacy conversations
+    /// that don't have <see cref="AiConversation.EnabledTools"/> set.
+    /// </summary>
+    private JsonElement GetToolDefinitionsForConversation()
+    {
+        if (_activeMode is null || !_activeMode.ToolsEnabled || _toolRegistry is null || !_toolRegistry.HasTools)
+        {
+            return default;
+        }
+
+        AiConversation conversation = EnsureActiveConversation();
+        HashSet<string>? enabledTools = conversation.EnabledTools;
+
+        // Legacy fallback: conversation hasn't been through a mode switch yet
+        if (enabledTools is null)
+        {
+            return _activeMode.GetToolDefinitions(_toolRegistry);
+        }
+
+        if (enabledTools.Count == 0)
+        {
+            return default;
+        }
+
+        return _toolRegistry.SerializeToolDefinitions(enabledTools);
+    }
+
+    /// <summary>
+    /// Checks whether a tool is allowed in the current conversation, using
+    /// the per-conversation <see cref="AiConversation.EnabledTools"/> set.
+    /// Falls back to checking the active mode directly for legacy conversations
+    /// that don't have <see cref="AiConversation.EnabledTools"/> set.
+    /// </summary>
+    private bool IsConversationToolAllowed(string toolName)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(toolName);
+
+        if (_activeMode is null)
+        {
+            return false;
+        }
+
+        AiConversation conversation = EnsureActiveConversation();
+        HashSet<string>? enabledTools = conversation.EnabledTools;
+
+        // Legacy fallback: conversation hasn't been through a mode switch yet
+        if (enabledTools is null)
+        {
+            return _activeMode.IsToolAllowed(toolName);
+        }
+
+        return enabledTools.Contains(toolName);
     }
 
     internal void SetExternalContextDirectoryRegistry(ExternalContextDirectoryRegistry externalContextDirectoryRegistry)
@@ -800,6 +994,7 @@ public partial class AiChatPanel : UserControl
         RefreshConversationSelector();
         RenderActiveConversation();
         SavePersistedConversation();
+        RefreshToolsCheckboxPanel();
     }
 
     private void ConversationSelector_SelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -818,6 +1013,7 @@ public partial class AiChatPanel : UserControl
         _conversationState.ActiveConversationId = selectedConversation.Id;
         RenderActiveConversation();
         SavePersistedConversation();
+        RefreshToolsCheckboxPanel();
     }
 
     private async void SendButton_Click(object sender, RoutedEventArgs e)
@@ -1284,8 +1480,61 @@ public partial class AiChatPanel : UserControl
         }
 
         _activeMode = mode;
+
+        // When switching to a preset mode (not Custom), reset tools and
+        // system prompt to that mode's defaults.
+        if (mode.Id != "custom")
+        {
+            ApplyModePreset(mode);
+        }
+
         AppendSystemMessage($"Switched to {mode.DisplayName} mode.");
+        RefreshToolsCheckboxPanel();
         RefreshContextWindowDisplay();
+    }
+
+    /// <summary>
+    /// Applies a preset mode's default tools and system prompt to the active
+    /// conversation, and records it as the <see cref="AiConversation.BaseModeId"/>.
+    /// </summary>
+    private void ApplyModePreset(IAiChatMode mode)
+    {
+        ArgumentNullException.ThrowIfNull(mode);
+
+        AiConversation conversation = EnsureActiveConversation();
+
+        // Reset tools to mode defaults
+        if (!mode.ToolsEnabled || _toolRegistry is null || !_toolRegistry.HasTools)
+        {
+            conversation.EnabledTools = [];
+        }
+        else
+        {
+            conversation.EnabledTools = _toolRegistry.Tools
+                .Select(t => t.Name)
+                .Where(mode.IsToolAllowed)
+                .ToHashSet(StringComparer.Ordinal);
+        }
+
+        // Reset system prompt to mode default
+        JsonElement toolsDef = _toolRegistry is not null
+            ? _toolRegistry.SerializeToolDefinitions(conversation.EnabledTools)
+            : default;
+        conversation.SystemPrompt = mode.BuildSystemPrompt(toolsDef);
+
+        // Record this as the base preset
+        conversation.BaseModeId = mode.Id;
+    }
+
+    /// <summary>
+    /// Returns the effective system prompt for the active conversation.
+    /// Uses the conversation's stored prompt if set, otherwise falls back
+    /// to the active mode's <see cref="IAiChatMode.BuildSystemPrompt"/>.
+    /// </summary>
+    private string? GetEffectiveSystemPrompt(JsonElement toolsDef)
+    {
+        AiConversation conversation = EnsureActiveConversation();
+        return conversation.SystemPrompt ?? _activeMode?.BuildSystemPrompt(toolsDef);
     }
 
     private async Task SendMessageAsync()
@@ -1381,9 +1630,7 @@ public partial class AiChatPanel : UserControl
         try
         {
             string model = _model ?? _provider.AvailableModels.FirstOrDefault() ?? "default";
-            JsonElement toolsDef = _activeMode is not null && _activeMode.ToolsEnabled && _toolRegistry is not null
-                ? _activeMode.GetToolDefinitions(_toolRegistry)
-                : default;
+            JsonElement toolsDef = GetToolDefinitionsForConversation();
 
             int iteration = 0;
 
@@ -1777,7 +2024,7 @@ public partial class AiChatPanel : UserControl
                             toolCallBlock = block;
                         });
 
-                        IAgentTool? tool = _activeMode?.IsToolAllowed(toolCall.FunctionName) == true
+                        IAgentTool? tool = IsConversationToolAllowed(toolCall.FunctionName)
                             ? _toolRegistry.Get(toolCall.FunctionName)
                             : null;
                         ToolCallResult result;
@@ -1922,7 +2169,7 @@ public partial class AiChatPanel : UserControl
     {
         ArgumentNullException.ThrowIfNull(outboundWindow);
 
-        var modePrompt = _activeMode?.BuildSystemPrompt(toolsDef);
+        var modePrompt = GetEffectiveSystemPrompt(toolsDef);
 
         // Collect all leading system messages from the context window so we can
         // merge them with the mode prompt into a single system message.

@@ -118,7 +118,7 @@
                     </ComboBox>
                     <Grid Margin="0,0,6,0">
                         <primitives:ToggleButton x:Name="SettingsOptionsButton"
-                                                 Content="⚙ ▾"
+                                                 Content="🔧 ▾"
                                                  Width="34"
                                                  Height="22"
                                                  Padding="0"
@@ -128,7 +128,7 @@
                                                  BorderBrush="{DynamicResource AiChatBorder}"
                                                  BorderThickness="1"
                                                  Cursor="Hand"
-                                                 ToolTip="AI chat settings" />
+                                                 ToolTip="Enable/disable individual tools for this conversation" />
                         <Popup PlacementTarget="{Binding ElementName=SettingsOptionsButton}"
                                Placement="Bottom"
                                HorizontalOffset="0"
@@ -140,13 +140,33 @@
                                     BorderBrush="{DynamicResource AiChatBorder}"
                                     BorderThickness="1"
                                     Padding="8,6"
-                                    MinWidth="170">
-                                <StackPanel>
-                                    <CheckBox x:Name="DisableStreamingCheckBox"
-                                              Content="Disable Streaming"
-                                              Foreground="{DynamicResource AiChatForeground}"
-                                              ToolTip="Show model replies only after the full response is complete." />
-                                </StackPanel>
+                                    MinWidth="240"
+                                    MaxHeight="380">
+                                <DockPanel>
+                                    <Button x:Name="SystemPromptButton"
+                                            DockPanel.Dock="Top"
+                                            Content="📝 Edit System Prompt..."
+                                            Click="SystemPromptButton_Click"
+                                            Padding="6,4"
+                                            Margin="0,0,0,6"
+                                            FontSize="11"
+                                            HorizontalAlignment="Stretch"
+                                            Cursor="Hand"
+                                            Foreground="{DynamicResource AiChatForeground}"
+                                            Background="{DynamicResource AiChatHeaderBackground}"
+                                            BorderBrush="{DynamicResource AiChatBorder}"
+                                            BorderThickness="1"
+                                            ToolTip="Edit the system prompt sent to the model with each request." />
+                                    <ScrollViewer VerticalScrollBarVisibility="Auto">
+                                        <StackPanel x:Name="ToolsCheckboxPanel">
+                                            <TextBlock Text="Available Tools"
+                                                       FontWeight="SemiBold"
+                                                       FontSize="11"
+                                                       Margin="0,0,0,4"
+                                                       Foreground="{DynamicResource AiChatForeground}" />
+                                        </StackPanel>
+                                    </ScrollViewer>
+                                </DockPanel>
                             </Border>
                         </Popup>
                     </Grid>
@@ -196,6 +216,11 @@
                                               Content="Raw mode"
                                               Foreground="{DynamicResource AiChatForeground}"
                                               ToolTip="Show raw text sent to and received from the model, without markdown formatting." />
+                                    <CheckBox x:Name="DisableStreamingCheckBox"
+                                              Content="Disable Streaming"
+                                              Margin="0,4,0,0"
+                                              Foreground="{DynamicResource AiChatForeground}"
+                                              ToolTip="Show model replies only after the full response is complete." />
                                 </StackPanel>
                             </Border>
                         </Popup>
