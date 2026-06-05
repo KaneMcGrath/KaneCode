@@ -159,15 +159,17 @@ internal sealed class RunDotnetTool : IAgentTool
         {
             await _buildService.RunProjectAsync(projectPath, programArgs, configuration, effectiveToken).ConfigureAwait(false);
         }
-        catch (OperationCanceledException) when (timeoutCts?.IsCancellationRequested == true && !cancellationToken.IsCancellationRequested)
-        {
-            // Timeout triggered, not user cancellation
-            wasTimedOut = true;
-            lines.Add($"(process timed out after {timeoutSeconds} seconds and was killed)");
-            exitCodeTcs.TrySetResult(-1);
-        }
         finally
         {
+            // RunDotnetAsync swallows OperationCanceledException internally — it kills the
+            // process and fires ProcessExited(-1) on our behalf.  So we cannot detect the
+            // timeout via a catch block.  Instead, check the linked CTS after the call.
+            if (timeoutCts?.IsCancellationRequested == true && !cancellationToken.IsCancellationRequested)
+            {
+                wasTimedOut = true;
+                lines.Add($"(process timed out after {timeoutSeconds} seconds and was killed)");
+            }
+
             _buildService.OutputReceived -= OnOutput;
             _buildService.ProcessExited -= OnExited;
             timeoutCts?.Dispose();

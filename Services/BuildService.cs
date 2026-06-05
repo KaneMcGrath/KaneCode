@@ -232,6 +232,21 @@ internal sealed class BuildService : IDisposable
         }
         catch (OperationCanceledException)
         {
+            // Kill the process tree when cancellation occurs (timeout or user cancel).
+            // WaitForExitAsync threw, so the process is still running.
+            if (process is not null && !process.HasExited)
+            {
+                try
+                {
+                    process.Kill(entireProcessTree: true);
+                    process.WaitForExit(5000);
+                }
+                catch (InvalidOperationException)
+                {
+                    // Process already exited between the check and the kill call
+                }
+            }
+
             OutputReceived?.Invoke("Build/Run cancelled.");
             ProcessExited?.Invoke(-1);
         }
