@@ -175,15 +175,17 @@
     <SolidColorBrush x:Key="AiChatSendButtonBackground" Color="#BF3000" />
     <SolidColorBrush x:Key="AiChatSendButtonForeground" Color="#FFFFFF" />
     <SolidColorBrush x:Key="AiChatThinkingBackground" Color="#2A1005" />
+    <SolidColorBrush x:Key="AiChatThinkingContentBackground" Color="#1C0C06" />
     <SolidColorBrush x:Key="AiChatThinkingForeground" Color="#FFD4C2" />
     <SolidColorBrush x:Key="AiChatThinkingBorder" Color="#BF3000" />
     <SolidColorBrush x:Key="AiChatRefTagBackground" Color="#3D1A10" />
     <SolidColorBrush x:Key="AiChatRefTagForeground" Color="#FFB4A4" />
 
-    <!-- AI Chat tool-call blocks -->
-    <SolidColorBrush x:Key="AiChatToolCallBackground" Color="#2A1A16" />
-    <SolidColorBrush x:Key="AiChatToolCallBorder" Color="#5C3026" />
-    <SolidColorBrush x:Key="AiChatToolCallForeground" Color="#F2D8CF" />
+    <!-- AI Chat tool-call blocks (warm yellow tones) -->
+    <SolidColorBrush x:Key="AiChatToolCallBackground" Color="#3A3020" />
+    <SolidColorBrush x:Key="AiChatToolCallContentBackground" Color="#2A2218" />
+    <SolidColorBrush x:Key="AiChatToolCallBorder" Color="#5C4A30" />
+    <SolidColorBrush x:Key="AiChatToolCallForeground" Color="#F0E6D0" />
     <SolidColorBrush x:Key="AiChatToolCallSuccessForeground" Color="#4EC9B0" />
     <SolidColorBrush x:Key="AiChatToolCallErrorForeground" Color="#F14C4C" />
     <SolidColorBrush x:Key="AiChatStreamingContentForeground" Color="#6A9FB5" />

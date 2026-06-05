@@ -147,10 +147,14 @@ internal static class ThemeResourceKeys
 
     // AI Chat tool-call blocks
     public const string AiChatToolCallBackground = nameof(AiChatToolCallBackground);
+    public const string AiChatToolCallContentBackground = nameof(AiChatToolCallContentBackground);
     public const string AiChatToolCallBorder = nameof(AiChatToolCallBorder);
     public const string AiChatToolCallForeground = nameof(AiChatToolCallForeground);
     public const string AiChatToolCallSuccessForeground = nameof(AiChatToolCallSuccessForeground);
     public const string AiChatToolCallErrorForeground = nameof(AiChatToolCallErrorForeground);
+
+    // AI Chat thinking blocks
+    public const string AiChatThinkingContentBackground = nameof(AiChatThinkingContentBackground);
 
     // AI Chat streaming header preview
     public const string AiChatStreamingContentForeground = nameof(AiChatStreamingContentForeground);

@@ -3165,13 +3165,14 @@ public partial class AiChatPanel : UserControl
     private (StreamSectionVisual section, ChunkedTextPresenter presenter) CreateThinkingSection(Panel hostPanel, UIElement insertBefore)
     {
         Brush thinkingBackground = FindBrush("AiChatThinkingBackground");
+        Brush thinkingContentBackground = FindBrush("AiChatThinkingContentBackground");
         Brush thinkingForeground = FindBrush("AiChatThinkingForeground");
         Brush thinkingBorder = FindBrush("AiChatThinkingBorder");
         Brush streamForeground = FindBrush(ThemeResourceKeys.AiChatStreamingContentForeground);
         StreamSectionVisual section = CreateInlineSection(
             "Thinking...",
             thinkingBackground,
-            thinkingBackground,
+            thinkingContentBackground,
             thinkingForeground,
             thinkingBorder,
             hostPanel,
@@ -3516,6 +3517,7 @@ public partial class AiChatPanel : UserControl
         UIElement insertBefore)
     {
         Brush toolBackground = FindBrush(ThemeResourceKeys.AiChatToolCallBackground);
+        Brush toolContentBackground = FindBrush(ThemeResourceKeys.AiChatToolCallContentBackground);
         Brush toolForeground = FindBrush(ThemeResourceKeys.AiChatToolCallForeground);
         Brush toolBorder = FindBrush(ThemeResourceKeys.AiChatToolCallBorder);
         Brush streamForeground = FindBrush(ThemeResourceKeys.AiChatStreamingContentForeground);
@@ -3526,7 +3528,7 @@ public partial class AiChatPanel : UserControl
         StreamSectionVisual section = CreateInlineSection(
             headerText,
             toolBackground,
-            toolBackground,
+            toolContentBackground,
             toolForeground,
             toolBorder,
             hostPanel,
