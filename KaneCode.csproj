@@ -1,5 +1,4 @@
 <Project Sdk="Microsoft.NET.Sdk">
-
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
     <TargetFramework>net8.0-windows7.0</TargetFramework>
@@ -12,26 +11,21 @@
     <PlatformTarget>x64</PlatformTarget>
     <ApplicationIcon>Icons\KaneCode.ico</ApplicationIcon>
   </PropertyGroup>
-
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">
     <DebugType>embedded</DebugType>
   </PropertyGroup>
-
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|AnyCPU'">
     <DebugType>embedded</DebugType>
   </PropertyGroup>
-
   <ItemGroup>
     <None Remove="Icons\kanecode.ico" />
     <Compile Remove="KaneCode.Tests\**" />
     <None Remove="KaneCode.Tests\**" />
     <EmbeddedResource Remove="KaneCode.Tests\**" />
   </ItemGroup>
-
   <ItemGroup>
     <None Include=".github\copilot-instructions.md" />
   </ItemGroup>
-
   <ItemGroup>
     <PackageReference Include="AvalonEdit" Version="6.3.1.120" />
     <PackageReference Include="Markdig" Version="0.38.0" />
@@ -58,11 +52,9 @@
     <PackageReference Include="NuGet.Packaging" Version="6.13.2" />
     <PackageReference Include="NuGet.ProjectModel" Version="6.13.2" />
   </ItemGroup>
-
   <ItemGroup>
     <Resource Include="Icons\KaneCode.ico">
       <CopyToOutputDirectory>Never</CopyToOutputDirectory>
     </Resource>
   </ItemGroup>
-
 </Project>

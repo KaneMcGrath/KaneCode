@@ -170,6 +170,14 @@ public partial class MainWindow : Window
         {
             DockManager.ActiveContent = FindReferencesPanel;
         }
+
+        if (e.PropertyName == nameof(MainViewModel.ProjectRootPath)
+            && !string.IsNullOrWhiteSpace(_viewModel.ProjectRootPath))
+        {
+            // A project, solution, or folder was loaded — switch from Application mode to Agent mode
+            // so the AI can inspect files, gather diagnostics, and make edits.
+            AiChatPanel.SwitchToMode("agent");
+        }
     }
 
     private void ViewMenuPanel_Click(object? sender, RoutedEventArgs e)
@@ -242,9 +250,22 @@ public partial class MainWindow : Window
         AiDebugPanel.ToolFailures = _aiDebugLogService.ToolFailures;
         AiDebugPanel.SetDebugLogService(_aiDebugLogService);
     }
+
+    /// <summary>
+    /// Registers the available AI chat modes. Application mode is registered first
+    /// so it becomes the default mode when KaneCode launches. When a project is
+    /// subsequently loaded, the IDE automatically switches to agent mode.
     /// </summary>
     private void RegisterAiChatModes()
     {
+        // Providers for dynamic content in the Application mode system prompt
+        Func<IReadOnlyList<RecentProjectItem>> recentProjectsProvider = () =>
+            (IReadOnlyList<RecentProjectItem>)_viewModel.RecentProjects;
+
+        Func<string> defaultProjectFolderProvider = () =>
+            GeneralSettingsManager.LoadDefaultProjectFolder();
+
+        _aiChatModeRegistry.Register(new ApplicationMode(recentProjectsProvider, defaultProjectFolderProvider));
         _aiChatModeRegistry.Register(new AgentMode());
         _aiChatModeRegistry.Register(new ChatMode());
         _aiChatModeRegistry.Register(new TeacherMode());
@@ -261,15 +282,48 @@ public partial class MainWindow : Window
 
         Action<string> onFileChanged = _viewModel.NotifyFileChangedOnDisk;
 
-        _agentToolRegistry.Register(new ReadFileTool(projectRoot, _externalContextDirectoryRegistry));
+        // ── Application mode tools ─────────────────────────────────────
+        // These tools work without a loaded project and are used by the
+        // Application mode (the default mode when KaneCode launches).
+
+        // Async load delegate that returns Task for proper error propagation
+        Func<string, Task> loadProjectAsync = path => _viewModel.OpenProjectByPathAsync(path);
+        Func<string, Task> loadSolutionAsync = path => _viewModel.OpenSolutionByPathAsync(path);
+
+        // Folder load delegate — called from background via the dispatcher
+        Action<string> loadFolder = path =>
+        {
+            if (System.Windows.Application.Current?.Dispatcher is { } dispatcher)
+            {
+                dispatcher.Invoke(() => _viewModel.LoadProjectRoot(path));
+            }
+        };
+
+        // Default project folder provider
+        Func<string> defaultProjectFolderProvider = () =>
+            GeneralSettingsManager.LoadDefaultProjectFolder();
+
+        _agentToolRegistry.Register(new LoadProjectTool(
+            loadProjectAsync, loadSolutionAsync, loadFolder, defaultProjectFolderProvider));
+        _agentToolRegistry.Register(new NewProjectTool(
+            _templateEngine, loadProjectAsync, loadSolutionAsync, defaultProjectFolderProvider));
+
+        // ── Agent mode tools ───────────────────────────────────────────
+        // Read-only tools (read, list, search) use a fallback root: when no project is loaded
+        // they operate from the user's default project folder. This enables Application mode
+        // to browse/search files before a project is opened.
+        Func<string?> projectRootWithFallback = () =>
+            projectRoot() ?? defaultProjectFolderProvider();
+
+        _agentToolRegistry.Register(new ReadFileTool(projectRootWithFallback, _externalContextDirectoryRegistry));
         _agentToolRegistry.Register(new WriteFileTool(projectRoot, onFileChanged));
         _agentToolRegistry.Register(new EditFileTool(projectRoot, onFileChanged));
         _agentToolRegistry.Register(new DeleteFileTool(projectRoot));
         _agentToolRegistry.Register(new RenamePathTool(projectRoot));
         _agentToolRegistry.Register(new CreateDirectoryTool(projectRoot));
         _agentToolRegistry.Register(new DeleteDirectoryTool(projectRoot));
-        _agentToolRegistry.Register(new ListFilesTool(projectRoot, _externalContextDirectoryRegistry));
-        _agentToolRegistry.Register(new SearchFilesTool(projectRoot, _externalContextDirectoryRegistry));
+        _agentToolRegistry.Register(new ListFilesTool(projectRootWithFallback, _externalContextDirectoryRegistry));
+        _agentToolRegistry.Register(new SearchFilesTool(projectRootWithFallback, _externalContextDirectoryRegistry));
         _agentToolRegistry.Register(new RunBuildTool(_viewModel.BuildService, projectRoot));
         _agentToolRegistry.Register(new RunTestTool(_viewModel.BuildService, projectRoot));
         _agentToolRegistry.Register(new RunDotnetTool(_viewModel.BuildService, projectRoot));

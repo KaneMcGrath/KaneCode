@@ -882,6 +882,43 @@ public partial class AiChatPanel : UserControl
     }
 
     /// <summary>
+    /// Programmatically switches the active conversation to the mode with the given <paramref name="modeId"/>.
+    /// If the mode is found and is different from the current mode, it is applied as a preset.
+    /// </summary>
+    internal void SwitchToMode(string modeId)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(modeId);
+
+        if (_modeRegistry is null)
+        {
+            return;
+        }
+
+        IAiChatMode? mode = _modeRegistry.Get(modeId);
+        if (mode is null)
+        {
+            return;
+        }
+
+        if (string.Equals(_activeMode?.Id, modeId, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        _activeMode = mode;
+        ModeSelector.SelectedItem = mode;
+
+        if (mode.Id != "custom")
+        {
+            ApplyModePreset(mode);
+        }
+
+        AppendSystemMessage($"Switched to {mode.DisplayName} mode.");
+        RefreshToolsCheckboxPanel();
+        RefreshContextWindowDisplay();
+    }
+
+    /// <summary>
     /// Prepares one-shot context for "Ask AI about selection" using the current file,
     /// selected code, and matching diagnostics. Context is injected into the next message only.
     /// </summary>
