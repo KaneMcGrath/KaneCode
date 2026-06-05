@@ -80,6 +80,12 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
     private CancellationTokenSource? _loadingStatusClearCts;
     private string? _loadedProjectOrSolutionPath;
     private List<string> _loadedSolutionProjectPaths = [];
+
+    /// <summary>Exposes the loaded project or solution path for external tooling.</summary>
+    internal string? LoadedProjectOrSolutionPath => _loadedProjectOrSolutionPath;
+
+    /// <summary>Exposes the list of project paths when a solution is loaded.</summary>
+    internal IReadOnlyList<string> LoadedSolutionProjectPaths => _loadedSolutionProjectPaths;
     private BuildOperation _activeBuildOperation;
     private readonly RecentProjectsManager _recentProjectsManager = new();
 

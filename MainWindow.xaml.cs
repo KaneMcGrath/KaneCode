@@ -185,6 +185,26 @@ public partial class MainWindow : Window
         ShowLayoutAnchorable(anchorable);
     }
 
+    private void EditMenu_NuGetPackageManager_Click(object? sender, RoutedEventArgs e)
+    {
+        // Collect project paths from the loaded solution/project
+        var projectPaths = NuGetService.GetProjectPaths(
+            _viewModel.LoadedSolutionProjectPaths,
+            _viewModel.LoadedProjectOrSolutionPath);
+
+        if (projectPaths.Count == 0)
+        {
+            MessageBox.Show("Open a .NET project or solution first to manage NuGet packages.",
+                "NuGet Package Manager",
+                MessageBoxButton.OK,
+                MessageBoxImage.Information);
+            return;
+        }
+
+        var window = new NuGetPackageManagerWindow(projectPaths, this);
+        window.ShowDialog();
+    }
+
     private void ShowLayoutAnchorable(LayoutAnchorable anchorable)
     {
         if (!anchorable.IsVisible)

@@ -97,6 +97,8 @@ ResizeMode="CanResizeWithGrip">
                 <MenuItem Header="_Rename" Command="{Binding RenameCommand}" />
                 <MenuItem Header="_Extract Method" Command="{Binding ExtractMethodCommand}" />
                 <Separator />
+                <MenuItem Header="NuGet Package _Manager..." Click="EditMenu_NuGetPackageManager_Click" />
+                <Separator />
                 <MenuItem Header="Cu_t" Command="{Binding CutCommand}" />
                 <MenuItem Header="_Copy" Command="{Binding CopyCommand}" />
                 <MenuItem Header="_Paste" Command="{Binding PasteCommand}" />
