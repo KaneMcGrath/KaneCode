@@ -42,6 +42,7 @@ public partial class MainWindow : Window
     private readonly ExternalContextDirectoryRegistry _externalContextDirectoryRegistry = new();
     private readonly PresentationService _presentationService = new();
     private readonly PresentationLineHighlightRenderer _presentationLineHighlightRenderer = new();
+    private readonly NuGetService _nuGetService = new();
     private Popup? _quickInfoPopup;
     private bool _isQuickInfoPinned;
     private Popup? _renamePreviewPopup;
@@ -137,6 +138,7 @@ public partial class MainWindow : Window
         _viewModel.Dispose();
         _templateEngine.Dispose();
         _aiProviderRegistry.Dispose();
+        _nuGetService.Dispose();
     }
 
     /// <summary>
@@ -297,6 +299,13 @@ public partial class MainWindow : Window
         _agentToolRegistry.Register(new GitResolveConflictTool(gitService));
         _agentToolRegistry.Register(new GitInitTool(projectRoot, gitService, onRepositoryChanged));
         _agentToolRegistry.Register(new GitHeadFileTool(gitService));
+
+        // ── NuGet tools ──────────────────────────────────────────────
+        _agentToolRegistry.Register(new NuGetSearchTool(_nuGetService));
+        _agentToolRegistry.Register(new NuGetInfoTool(_nuGetService));
+        _agentToolRegistry.Register(new NuGetListInstalledTool(projectRoot));
+        _agentToolRegistry.Register(new NuGetInstallTool(projectRoot));
+        _agentToolRegistry.Register(new NuGetUninstallTool(projectRoot));
     }
 
     private AiContextDocumentSnapshot? GetCurrentDocumentSnapshot()
