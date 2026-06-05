@@ -152,6 +152,9 @@ internal static class ThemeResourceKeys
     public const string AiChatToolCallSuccessForeground = nameof(AiChatToolCallSuccessForeground);
     public const string AiChatToolCallErrorForeground = nameof(AiChatToolCallErrorForeground);
 
+    // AI Chat streaming header preview
+    public const string AiChatStreamingContentForeground = nameof(AiChatStreamingContentForeground);
+
     // Inline rename
     public const string RenameHighlightBackground = nameof(RenameHighlightBackground);
     public const string RenameHighlightBorder = nameof(RenameHighlightBorder);

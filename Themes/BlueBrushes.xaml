@@ -186,6 +186,7 @@
     <SolidColorBrush x:Key="AiChatToolCallForeground" Color="#5A382E" />
     <SolidColorBrush x:Key="AiChatToolCallSuccessForeground" Color="#16A085" />
     <SolidColorBrush x:Key="AiChatToolCallErrorForeground" Color="#C0392B" />
+    <SolidColorBrush x:Key="AiChatStreamingContentForeground" Color="#3A7B9E" />
 
     <!-- Inline rename -->
     <SolidColorBrush x:Key="RenameHighlightBackground" Color="#F6D4C6" />

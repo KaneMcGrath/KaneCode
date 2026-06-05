@@ -53,6 +53,7 @@ public partial class AiChatPanel : UserControl
         Border headerBar,
         TextBlock headerGlyph,
         TextBlock headerText,
+        TextBlock? headerStreamContent,
         Border contentBorder,
         StackPanel contentPanel,
         Brush headerBackground,
@@ -67,6 +68,9 @@ public partial class AiChatPanel : UserControl
         public TextBlock HeaderGlyph { get; } = headerGlyph;
 
         public TextBlock HeaderText { get; } = headerText;
+
+        /// <summary>Streaming content preview column in the header.</summary>
+        public TextBlock? HeaderStreamContent { get; } = headerStreamContent;
 
         public Border ContentBorder { get; } = contentBorder;
 
@@ -2336,6 +2340,7 @@ public partial class AiChatPanel : UserControl
                                 (thinkingSection, thinkingPresenter) = CreateThinkingSection(assistantContainer, assistantBlock);
                                 thinkingPresenter.Append(token.Text);
                                 SetInlineSectionHeaderNoPinnedUpdate(thinkingSection, $"Thinking ({reasoningTokenCount:N0} tokens)...");
+                                UpdateStreamingContentPreview(thinkingSection, reasoningBuilder.ToString());
                                 UpdateStatsBar(reasoningTokenCount + contentTokenCount, streamStopwatch);
 
                                 if (shouldStickToBottom)
@@ -2351,6 +2356,7 @@ public partial class AiChatPanel : UserControl
                             {
                                 thinkingPresenter!.Append(token.Text);
                                 SetInlineSectionHeaderNoPinnedUpdate(thinkingSection!, $"Thinking ({reasoningTokenCount:N0} tokens)...");
+                                UpdateStreamingContentPreview(thinkingSection!, reasoningBuilder.ToString());
                                 UpdateStatsBar(reasoningTokenCount + contentTokenCount, streamStopwatch);
 
                                 if (IsMessageScrollerNearBottom())
@@ -2727,6 +2733,33 @@ public partial class AiChatPanel : UserControl
         }
 
         return value[..maxLength] + "…";
+    }
+
+    /// <summary>
+    /// Returns the last <paramref name="maxLength"/> characters of <paramref name="fullText"/>,
+    /// prefixed with "…" if the text was truncated. Newlines are replaced with spaces so the
+    /// preview stays on a single line. This is used to show a real-time preview of streaming
+    /// content in the section header.
+    /// </summary>
+    private static string GetStreamingPreview(string? fullText, int maxLength = 200)
+    {
+        if (string.IsNullOrEmpty(fullText))
+        {
+            return string.Empty;
+        }
+
+        // Flatten newlines so the header stays as a single line
+        string flat = fullText
+            .Replace("\r\n", " ")
+            .Replace("\r", " ")
+            .Replace("\n", " ");
+
+        if (flat.Length <= maxLength)
+        {
+            return flat;
+        }
+
+        return "…" + flat[^maxLength..];
     }
 
     private async Task LogToolFailureAsync(string toolName, string toolCallId, string? argumentsJson, ToolCallResult result)
@@ -3134,6 +3167,7 @@ public partial class AiChatPanel : UserControl
         Brush thinkingBackground = FindBrush("AiChatThinkingBackground");
         Brush thinkingForeground = FindBrush("AiChatThinkingForeground");
         Brush thinkingBorder = FindBrush("AiChatThinkingBorder");
+        Brush streamForeground = FindBrush(ThemeResourceKeys.AiChatStreamingContentForeground);
         StreamSectionVisual section = CreateInlineSection(
             "Thinking...",
             thinkingBackground,
@@ -3141,7 +3175,8 @@ public partial class AiChatPanel : UserControl
             thinkingForeground,
             thinkingBorder,
             hostPanel,
-            insertBefore);
+            insertBefore,
+            streamingContentForeground: streamForeground);
 
         var presenter = new ChunkedTextPresenter(
             section.ContentPanel,
@@ -3160,7 +3195,8 @@ public partial class AiChatPanel : UserControl
         Brush foreground,
         Brush borderBrush,
         Panel hostPanel,
-        UIElement insertBefore)
+        UIElement insertBefore,
+        Brush? streamingContentForeground = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(header);
         ArgumentNullException.ThrowIfNull(headerBackground);
@@ -3172,7 +3208,16 @@ public partial class AiChatPanel : UserControl
 
         TextBlock glyphBlock;
         TextBlock headerTextBlock;
-        Border headerBar = CreateSectionHeaderBar(header, foreground, headerBackground, borderBrush, out glyphBlock, out headerTextBlock);
+        TextBlock? streamContentBlock;
+        Border headerBar = CreateSectionHeaderBar(
+            header, foreground, headerBackground, borderBrush,
+            out glyphBlock, out headerTextBlock, out streamContentBlock);
+
+        // Apply streaming content foreground if provided
+        if (streamContentBlock is not null && streamingContentForeground is not null)
+        {
+            streamContentBlock.Foreground = streamingContentForeground;
+        }
 
         StackPanel contentPanel = new();
         Border contentBorder = new()
@@ -3206,6 +3251,7 @@ public partial class AiChatPanel : UserControl
             headerBar,
             glyphBlock,
             headerTextBlock,
+            streamContentBlock,
             contentBorder,
             contentPanel,
             headerBackground,
@@ -3220,13 +3266,20 @@ public partial class AiChatPanel : UserControl
         return section;
     }
 
+    /// <summary>
+    /// Creates a section header bar with a 3-column layout:
+    ///   [glyph (Auto)] [title (Auto-sized)] [streaming content preview (*, right-aligned)]
+    ///
+    /// The streaming content column is always created but initially empty.
+    /// </summary>
     private static Border CreateSectionHeaderBar(
         string title,
         Brush foreground,
         Brush background,
         Brush borderBrush,
         out TextBlock glyphBlock,
-        out TextBlock titleBlock)
+        out TextBlock titleBlock,
+        out TextBlock? streamContentBlock)
     {
         glyphBlock = new TextBlock
         {
@@ -3246,15 +3299,48 @@ public partial class AiChatPanel : UserControl
             FontSize = 11,
             FontWeight = FontWeights.SemiBold,
             VerticalAlignment = VerticalAlignment.Center,
-            Foreground = foreground
+            Foreground = foreground,
+            Margin = new Thickness(0, 0, 16, 0)
         };
 
-        StackPanel headerContent = new()
+        // Streaming content preview column (right-aligned, fills remaining width).
+        // Wrapped in a Border with ClipToBounds so the text is anchored to the right
+        // and any overflow past the left edge is clipped.
+        streamContentBlock = new TextBlock
         {
-            Orientation = Orientation.Horizontal
+            Text = "",
+            TextWrapping = TextWrapping.NoWrap,
+            TextAlignment = TextAlignment.Right,
+            HorizontalAlignment = HorizontalAlignment.Right,
+            FontSize = 11,
+            FontFamily = new FontFamily("Cascadia Code, Consolas, Courier New"),
+            VerticalAlignment = VerticalAlignment.Center,
+            Foreground = foreground,
+            Opacity = 0.75
         };
-        headerContent.Children.Add(glyphBlock);
-        headerContent.Children.Add(titleBlock);
+
+        Border streamClipContainer = new()
+        {
+            ClipToBounds = true,
+            Child = streamContentBlock,
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            VerticalAlignment = VerticalAlignment.Stretch
+        };
+
+        // Build grid: [glyph (Auto)] [title (Auto)] [streaming (*)]
+        Grid headerGrid = new();
+        headerGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto }); // 0: glyph
+        headerGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto }); // 1: title
+        headerGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) }); // 2: streaming content
+
+        Grid.SetColumn(glyphBlock, 0);
+        headerGrid.Children.Add(glyphBlock);
+
+        Grid.SetColumn(titleBlock, 1);
+        headerGrid.Children.Add(titleBlock);
+
+        Grid.SetColumn(streamClipContainer, 2);
+        headerGrid.Children.Add(streamClipContainer);
 
         return new Border
         {
@@ -3264,7 +3350,7 @@ public partial class AiChatPanel : UserControl
             BorderThickness = new Thickness(0),
             Padding = new Thickness(8, 5, 8, 5),
             Cursor = Cursors.Hand,
-            Child = headerContent
+            Child = headerGrid
         };
     }
 
@@ -3333,6 +3419,21 @@ public partial class AiChatPanel : UserControl
         section.HeaderGlyph.Foreground = foreground;
         section.HeaderText.Foreground = foreground;
         UpdatePinnedSectionHeaders();
+    }
+
+    /// <summary>
+    /// Updates the streaming content preview in the section header, showing the last
+    /// ~200 characters of the currently streamed content. Only updates when the section
+    /// is collapsed; when expanded the body content is visible instead.
+    /// </summary>
+    private static void UpdateStreamingContentPreview(StreamSectionVisual section, string? fullContent)
+    {
+        if (section.HeaderStreamContent is null)
+        {
+            return;
+        }
+
+        section.HeaderStreamContent.Text = GetStreamingPreview(fullContent);
     }
 
     private static void UpdateInlineSectionState(StreamSectionVisual section)
@@ -3417,16 +3518,20 @@ public partial class AiChatPanel : UserControl
         Brush toolBackground = FindBrush(ThemeResourceKeys.AiChatToolCallBackground);
         Brush toolForeground = FindBrush(ThemeResourceKeys.AiChatToolCallForeground);
         Brush toolBorder = FindBrush(ThemeResourceKeys.AiChatToolCallBorder);
+        Brush streamForeground = FindBrush(ThemeResourceKeys.AiChatStreamingContentForeground);
         var monoFont = new FontFamily("Cascadia Code, Consolas, Courier New");
 
+        string headerText = FormatToolCallHeader(toolName, argumentsJson);
+
         StreamSectionVisual section = CreateInlineSection(
-            FormatToolCallHeader(toolName, argumentsJson),
+            headerText,
             toolBackground,
             toolBackground,
             toolForeground,
             toolBorder,
             hostPanel,
-            insertBefore);
+            insertBefore,
+            streamingContentForeground: streamForeground);
 
         /* The result block goes after the argument chunks. Track the index so the
          * ChunkedTextPresenter inserts argument blocks before it. */
@@ -3463,12 +3568,15 @@ public partial class AiChatPanel : UserControl
     /// Updates a tool-call block while the call arguments are still streaming.
     /// Appends only the delta (new characters not yet rendered) to the chunked
     /// presenter, so only the current small TextBlock is updated.
+    /// Also updates the header streaming content preview.
     /// </summary>
     private void UpdateToolCallBlock(ToolCallSectionVisual block, string toolName, string argumentsJson)
     {
         ArgumentNullException.ThrowIfNull(block);
 
         block.Section.HeaderText.Text = FormatToolCallHeader(toolName, argumentsJson);
+
+        UpdateStreamingContentPreview(block.Section, argumentsJson);
 
         /* During streaming, each token carries the FULL accumulated argumentsJson.
          * Compute the delta — only append characters not yet shown. */
@@ -3787,18 +3895,27 @@ public partial class AiChatPanel : UserControl
 
         TextBlock glyphBlock;
         TextBlock titleBlock;
+        TextBlock? streamContentBlock;
         Border pinnedHeader = CreateSectionHeaderBar(
             section.HeaderText.Text,
             section.Foreground,
             section.HeaderBackground,
             section.BorderBrush,
             out glyphBlock,
-            out titleBlock);
+            out titleBlock,
+            out streamContentBlock);
 
         pinnedHeader.Margin = new Thickness(0);
         pinnedHeader.HorizontalAlignment = HorizontalAlignment.Stretch;
         pinnedHeader.BorderThickness = new Thickness(0, 1, 0, 1);
         glyphBlock.Text = section.HeaderGlyph.Text;
+
+        // Copy streaming content from the original section (if present)
+        if (streamContentBlock is not null && section.HeaderStreamContent is not null)
+        {
+            streamContentBlock.Text = section.HeaderStreamContent.Text;
+        }
+
         pinnedHeader.MouseLeftButtonUp += (_, _) => ToggleInlineSection(section);
         return pinnedHeader;
     }
