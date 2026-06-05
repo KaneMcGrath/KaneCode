@@ -22,7 +22,7 @@ There are still many bugs and incomplete features.
   - delete_directory
   - list_files
   - search_files
-  - run_build
+  - build
   - get_diagnostics
 - Teacher mode with tools for navigating and presenting the code base
   - presentation_new

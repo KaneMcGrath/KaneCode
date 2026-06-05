@@ -17,8 +17,8 @@ internal sealed class AgentMode : IAiChatMode
         "list_files",
         "read_file",
         "rename_path",
-        "run_build",
-        "run_test",
+        "build",
+        "test",
         "search_files",
         "write_file",
     };

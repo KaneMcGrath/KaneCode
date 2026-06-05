@@ -62,6 +62,40 @@ internal sealed class BuildService : IDisposable
     }
 
     /// <summary>
+    /// Runs <c>dotnet run</c> with optional program arguments and build configuration.
+    /// </summary>
+    /// <param name="projectPath">Path to the project to run.</param>
+    /// <param name="programArguments">Optional command-line arguments to pass to the program.</param>
+    /// <param name="configuration">Optional build configuration (Debug/Release).</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    public async Task RunProjectAsync(
+        string projectPath,
+        string? programArguments = null,
+        string? configuration = null,
+        CancellationToken cancellationToken = default)
+    {
+        var directory = GetWorkingDirectory(projectPath);
+        var args = new System.Text.StringBuilder();
+        args.Append("run --project \"");
+        args.Append(projectPath);
+        args.Append('"');
+
+        if (!string.IsNullOrWhiteSpace(configuration))
+        {
+            args.Append(" --configuration ");
+            args.Append(configuration);
+        }
+
+        if (!string.IsNullOrWhiteSpace(programArguments))
+        {
+            args.Append(" -- ");
+            args.Append(programArguments);
+        }
+
+        await RunDotnetAsync(args.ToString(), directory, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
     /// Runs <c>dotnet test</c> with the specified options.
     /// </summary>
     /// <param name="projectOrSolutionPath">Path to the test project or solution.</param>

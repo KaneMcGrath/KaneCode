@@ -32,7 +32,7 @@ internal sealed class RunBuildTool : IAgentTool
         _projectPathProvider = projectPathProvider;
     }
 
-    public string Name => "run_build";
+    public string Name => "build";
 
     public string Category => "Dotnet";
 

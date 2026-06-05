@@ -57,7 +57,7 @@ internal sealed class RunTestTool : IAgentTool
         _projectPathProvider = projectPathProvider;
     }
 
-    public string Name => "run_test";
+    public string Name => "test";
 
     public string Category => "Dotnet";
 
