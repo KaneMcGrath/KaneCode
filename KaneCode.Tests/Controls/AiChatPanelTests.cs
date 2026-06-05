@@ -95,7 +95,7 @@ public class AiChatPanelTests
             "read",
             "{\"filePath\":\"Controls/AiChatPanel.xaml.cs\"}");
 
-        Assert.Equal("read - Controls/AiChatPanel.xaml.cs", result);
+        Assert.Equal("read - AiChatPanel.xaml.cs", result);
     }
 
     [Fact]

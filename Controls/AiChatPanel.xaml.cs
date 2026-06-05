@@ -3420,7 +3420,7 @@ public partial class AiChatPanel : UserControl
         var monoFont = new FontFamily("Cascadia Code, Consolas, Courier New");
 
         StreamSectionVisual section = CreateInlineSection(
-            toolName,
+            FormatToolCallHeader(toolName, argumentsJson),
             toolBackground,
             toolBackground,
             toolForeground,
@@ -3468,7 +3468,7 @@ public partial class AiChatPanel : UserControl
     {
         ArgumentNullException.ThrowIfNull(block);
 
-        block.Section.HeaderText.Text = toolName;
+        block.Section.HeaderText.Text = FormatToolCallHeader(toolName, argumentsJson);
 
         /* During streaming, each token carries the FULL accumulated argumentsJson.
          * Compute the delta — only append characters not yet shown. */
@@ -3489,8 +3489,9 @@ public partial class AiChatPanel : UserControl
     {
         ArgumentNullException.ThrowIfNull(block);
 
-        /* Now that streaming is complete, format the header nicely once */
-        SetInlineSectionHeader(block.Section, FormatToolCallHeader(block.ToolName, block.ArgumentsJson));
+        /* The header was already set correctly during streaming (or creation) via
+         * FormatToolCallHeader, which includes the file path when available. We keep it
+         * as-is — the only change at finalize time is the foreground color below. */
 
         /* Replace the chunked streaming content with properly formatted final content.
          * This is a single JSON parse and a single batch of TextBlock creations,
@@ -3629,12 +3630,12 @@ public partial class AiChatPanel : UserControl
             if (TryGetToolHeaderPathArgument(root, "sourcePath", out string? sourcePath) &&
                 TryGetToolHeaderPathArgument(root, "destinationPath", out string? destinationPath))
             {
-                return $"{sourcePath} -> {destinationPath}";
+                return $"{Path.GetFileName(sourcePath)} -> {Path.GetFileName(destinationPath)}";
             }
 
             if (TryGetToolHeaderPathArgument(root, "filePath", out string? filePath))
             {
-                return filePath;
+                return Path.GetFileName(filePath);
             }
 
             if (root.TryGetProperty("filePaths", out JsonElement filePathsElement) &&
@@ -3648,7 +3649,7 @@ public partial class AiChatPanel : UserControl
                     return null;
                 }
 
-                string firstPath = firstPathElement.GetString()!.Trim();
+                string firstPath = Path.GetFileName(firstPathElement.GetString()!.Trim());
                 int remainingFileCount = filePathsElement.GetArrayLength() - 1;
                 return remainingFileCount > 0
                     ? $"{firstPath} (+{remainingFileCount} more)"
