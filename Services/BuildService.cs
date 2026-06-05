@@ -44,10 +44,17 @@ internal sealed class BuildService : IDisposable
     /// <summary>
     /// Runs <c>dotnet build</c> in the given project/solution directory.
     /// </summary>
-    public async Task BuildAsync(string projectOrSolutionPath, CancellationToken cancellationToken = default)
+    /// <param name="projectOrSolutionPath">Path to the project or solution to build.</param>
+    /// <param name="configuration">Optional build configuration (Debug/Release).</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    public async Task BuildAsync(string projectOrSolutionPath, string? configuration = null, CancellationToken cancellationToken = default)
     {
         var directory = GetWorkingDirectory(projectOrSolutionPath);
         var arguments = $"build \"{projectOrSolutionPath}\"";
+        if (!string.IsNullOrWhiteSpace(configuration))
+        {
+            arguments += $" --configuration {configuration}";
+        }
         await RunDotnetAsync(arguments, directory, cancellationToken).ConfigureAwait(false);
     }
 

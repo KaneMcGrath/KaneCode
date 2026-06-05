@@ -16,7 +16,13 @@ internal sealed class RunBuildTool : IAgentTool
     private static readonly JsonElement Schema = JsonDocument.Parse("""
         {
             "type": "object",
-            "properties": {},
+            "properties": {
+                "configuration": {
+                    "type": "string",
+                    "description": "Optional build configuration: Debug or Release. Defaults to Debug if not specified.",
+                    "enum": ["Debug", "Release"]
+                }
+            },
             "required": []
         }
         """).RootElement.Clone();
@@ -50,6 +56,13 @@ internal sealed class RunBuildTool : IAgentTool
             return ToolCallResult.Fail("No project or solution is currently loaded.");
         }
 
+        string? configuration = null;
+        if (arguments.TryGetProperty("configuration", out JsonElement configElement) &&
+            configElement.ValueKind == JsonValueKind.String)
+        {
+            configuration = configElement.GetString()?.Trim();
+        }
+
         var lines = new List<string>();
         var exitCodeTcs = new TaskCompletionSource<int>(TaskCreationOptions.RunContinuationsAsynchronously);
 
@@ -61,7 +74,7 @@ internal sealed class RunBuildTool : IAgentTool
 
         try
         {
-            await _buildService.BuildAsync(projectPath, cancellationToken).ConfigureAwait(false);
+            await _buildService.BuildAsync(projectPath, configuration: configuration, cancellationToken: cancellationToken).ConfigureAwait(false);
         }
         finally
         {

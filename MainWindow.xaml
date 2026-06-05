@@ -107,6 +107,18 @@ ResizeMode="CanResizeWithGrip">
                 <MenuItem Header="_Options" Command="{Binding OpenOptionsCommand}" />
             </MenuItem>
             <MenuItem Header="_Build">
+                <MenuItem Header="_Build Target"
+                          ItemsSource="{Binding BuildTargets}"
+                          ToolTip="Select the project or solution to build">
+                    <MenuItem.ItemContainerStyle>
+                        <Style TargetType="MenuItem">
+                            <Setter Property="Header" Value="{Binding DisplayName}" />
+                            <Setter Property="Command" Value="{Binding DataContext.SelectBuildTargetCommand, RelativeSource={RelativeSource AncestorType=Window}}" />
+                            <Setter Property="CommandParameter" Value="{Binding}" />
+                        </Style>
+                    </MenuItem.ItemContainerStyle>
+                </MenuItem>
+                <Separator />
                 <MenuItem Header="{Binding BuildSelectedText}" Command="{Binding BuildCommand}" />
                 <MenuItem Header="{Binding RunCommandText}" Command="{Binding RunCommand}" />
                 <Separator />
@@ -141,10 +153,9 @@ ResizeMode="CanResizeWithGrip">
             <MenuItem>
                 <MenuItem.Header>
                     <StackPanel Orientation="Horizontal">
-                        <ComboBox ItemsSource="{Binding DataContext.BuildTargets, RelativeSource={RelativeSource AncestorType=Window}}"
-                                  SelectedItem="{Binding DataContext.SelectedBuildTarget, RelativeSource={RelativeSource AncestorType=Window}}"
-                                  DisplayMemberPath="DisplayName"
-                                  MinWidth="120"
+                        <ComboBox ItemsSource="{Binding DataContext.AvailableConfigurations, RelativeSource={RelativeSource AncestorType=Window}}"
+                                  SelectedItem="{Binding DataContext.SelectedConfiguration, RelativeSource={RelativeSource AncestorType=Window}}"
+                                  MinWidth="80"
                                   Height="22"
                                   FontSize="11"
                                   VerticalAlignment="Center"
@@ -153,7 +164,7 @@ ResizeMode="CanResizeWithGrip">
                                   BorderBrush="{DynamicResource ControlBorder}"
                                   BorderThickness="1"
                                   Padding="4,1"
-                                  ToolTip="Select build target (solution or project)" />
+                                  ToolTip="Select build configuration (Debug or Release)" />
                         <Button Content="🔨" Padding="6,2" Margin="4,0,0,0"
                                 Background="Transparent"
                                 Foreground="{DynamicResource MenuForeground}"

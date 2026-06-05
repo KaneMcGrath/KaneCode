@@ -83,6 +83,29 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
     private BuildOperation _activeBuildOperation;
 
     /// <summary>
+    /// Available build configurations (Debug, Release).
+    /// </summary>
+    public string[] AvailableConfigurations { get; } = ["Debug", "Release"];
+
+    private string _selectedConfiguration = "Debug";
+    /// <summary>
+    /// Gets or sets the selected build configuration (Debug or Release).
+    /// </summary>
+    public string SelectedConfiguration
+    {
+        get => _selectedConfiguration;
+        set
+        {
+            if (SetProperty(ref _selectedConfiguration, value))
+            {
+                OnPropertyChanged(nameof(BuildSelectedText));
+                OnPropertyChanged(nameof(RunCommandText));
+                CommandManager.InvalidateRequerySuggested();
+            }
+        }
+    }
+
+    /// <summary>
     /// Available build targets: the solution (if loaded) plus all .csproj files in the solution.
     /// When a single project is loaded, contains just that project.
     /// </summary>
@@ -100,7 +123,6 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
         {
             if (SetProperty(ref _selectedBuildTarget, value))
             {
-                OnPropertyChanged(nameof(SelectedBuildTargetDisplayName));
                 OnPropertyChanged(nameof(BuildSelectedText));
                 CommandManager.InvalidateRequerySuggested();
             }
@@ -108,19 +130,15 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
     }
 
     /// <summary>
-    /// Display name of the selected build target for the toolbar combo box.
-    /// </summary>
-    public string SelectedBuildTargetDisplayName => _selectedBuildTarget?.DisplayName ?? "(No target)";
-
-    /// <summary>
-    /// Menu text for the Build command showing the selected target name.
+    /// Menu text for the Build command showing the selected target name and configuration.
     /// </summary>
     public string BuildSelectedText
     {
         get
         {
             var name = _selectedBuildTarget?.DisplayName ?? "(No target)";
-            return $"Build _{name}";
+            var config = _selectedConfiguration;
+            return $"Build _{name} ({config})";
         }
     }
     private bool _isOperationCancellationRequested;
@@ -163,6 +181,7 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
         BuildCommand = new RelayCommand(_ => _ = BuildProjectAsync(), _ => CanBuild());
         RunCommand = new RelayCommand(_ => ExecuteRunCommand(), _ => CanRunProject());
         CancelBuildCommand = new RelayCommand(_ => CancelBuild(), _ => _buildService.IsRunning);
+        SelectBuildTargetCommand = new RelayCommand(param => SelectBuildTarget(param as BuildTargetItem));
         CodeActionsCommand = new RelayCommand(async _ => await ShowCodeActionsAsync(), _ => CanGoToDefinition());
         GenerateMissingMembersCommand = new RelayCommand(async _ => await GenerateMissingMembersAsync(), _ => CanGoToDefinition());
         RenameCommand = new RelayCommand(async _ => await RenameSymbolAsync(), _ => CanGoToDefinition());
@@ -219,6 +238,7 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
     public ICommand BuildCommand { get; }
     public ICommand RunCommand { get; }
     public ICommand CancelBuildCommand { get; }
+    public ICommand SelectBuildTargetCommand { get; }
     public ICommand CodeActionsCommand { get; }
     public ICommand GenerateMissingMembersCommand { get; }
     public ICommand RenameCommand { get; }
@@ -4206,6 +4226,17 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
 
     private bool CanRunProject() => SelectedBuildTarget is not null && (!_buildService.IsRunning || _isProjectRunInProgress);
 
+    /// <summary>
+    /// Selects the specified build target from the Build menu submenu.
+    /// </summary>
+    private void SelectBuildTarget(BuildTargetItem? target)
+    {
+        if (target is not null)
+        {
+            SelectedBuildTarget = target;
+        }
+    }
+
     private void ExecuteRunCommand()
     {
         if (_isProjectRunInProgress)
@@ -4218,7 +4249,7 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
     }
 
     /// <summary>
-    /// Builds the currently selected build target (solution or project).
+    /// Builds the currently selected build target (solution or project) using the selected configuration.
     /// </summary>
     private async Task BuildProjectAsync()
     {
@@ -4230,15 +4261,15 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
 
         BeginBuildOperation(BuildOperation.Build, null);
         BuildOutputLines.Clear();
-        BuildSummary = "Building...";
-        BuildOutputLines.Add($"> dotnet build \"{target.FullPath}\"");
+        BuildSummary = $"Building ({_selectedConfiguration})...";
+        BuildOutputLines.Add($"> dotnet build \"{target.FullPath}\" --configuration {_selectedConfiguration}");
         BuildOutputLines.Add(string.Empty);
 
-        await _buildService.BuildAsync(target.FullPath).ConfigureAwait(false);
+        await _buildService.BuildAsync(target.FullPath, _selectedConfiguration).ConfigureAwait(false);
     }
 
     /// <summary>
-    /// Runs the currently selected build target (must be a .csproj).
+    /// Runs the currently selected build target (must be a .csproj) using the selected configuration.
     /// </summary>
     private async Task RunProjectAsync()
     {
@@ -4260,11 +4291,11 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
         }
 
         BeginBuildOperation(BuildOperation.Run, runnableProjectPath);
-        BuildSummary = "Running...";
-        BuildOutputLines.Add($"> dotnet run --project \"{runnableProjectPath}\"");
+        BuildSummary = $"Running ({_selectedConfiguration})...";
+        BuildOutputLines.Add($"> dotnet run --project \"{runnableProjectPath}\" --configuration {_selectedConfiguration}");
         BuildOutputLines.Add(string.Empty);
 
-        await _buildService.RunAsync(runnableProjectPath).ConfigureAwait(false);
+        await _buildService.RunProjectAsync(runnableProjectPath, configuration: _selectedConfiguration).ConfigureAwait(false);
     }
 
     private string? ResolveRunnableProjectPath()
