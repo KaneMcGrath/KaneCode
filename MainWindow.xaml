@@ -53,6 +53,32 @@ ResizeMode="CanResizeWithGrip">
                 <MenuItem Header="Open _Folder" Command="{Binding OpenFolderCommand}" />
                 <MenuItem Header="Open _Project or Solution..." Command="{Binding OpenProjectOrSolutionCommand}" />
                 <Separator />
+                <MenuItem Header="_Recent Projects"
+                          ItemsSource="{Binding RecentProjects}"
+                          DisplayMemberPath="DisplayName">
+                    <MenuItem.ItemContainerStyle>
+                        <Style TargetType="MenuItem">
+                            <Setter Property="Command" Value="{Binding DataContext.OpenRecentProjectCommand, RelativeSource={RelativeSource AncestorType=Window}}" />
+                            <Setter Property="CommandParameter" Value="{Binding}" />
+                            <Setter Property="ToolTip" Value="{Binding ToolTip}" />
+                            <Setter Property="Foreground" Value="{DynamicResource MenuForeground}" />
+                            <Setter Property="Background" Value="Transparent" />
+                            <Setter Property="ContextMenu">
+                                <Setter.Value>
+                                    <ContextMenu>
+                                        <MenuItem Header="_Remove from Recent"
+                                                  Command="{Binding DataContext.RemoveRecentProjectCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                  CommandParameter="{Binding}" />
+                                    </ContextMenu>
+                                </Setter.Value>
+                            </Setter>
+                        </Style>
+                    </MenuItem.ItemContainerStyle>
+                </MenuItem>
+                <MenuItem Header="_Clear Recent Projects"
+                          Command="{Binding ClearRecentProjectsCommand}"
+                          Foreground="{DynamicResource MenuForeground}" />
+                <Separator />
                 <MenuItem Header="_Save" Command="{Binding SaveCommand}" />
                 <MenuItem Header="Save _As..." Command="{Binding SaveAsCommand}" />
                 <Separator />

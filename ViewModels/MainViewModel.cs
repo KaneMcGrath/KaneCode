@@ -81,6 +81,7 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
     private string? _loadedProjectOrSolutionPath;
     private List<string> _loadedSolutionProjectPaths = [];
     private BuildOperation _activeBuildOperation;
+    private readonly RecentProjectsManager _recentProjectsManager = new();
 
     /// <summary>
     /// Available build configurations (Debug, Release).
@@ -208,6 +209,11 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
         FetchCommand = new RelayCommand(async _ => await FetchAsync(), _ => _gitService.IsRepositoryOpen);
         PullCommand = new RelayCommand(async _ => await PullAsync(), _ => _gitService.IsRepositoryOpen);
         PushCommand = new RelayCommand(async _ => await PushAsync(), _ => _gitService.IsRepositoryOpen);
+        OpenRecentProjectCommand = new RelayCommand(param => OpenRecentProject(param as RecentProjectItem));
+        RemoveRecentProjectCommand = new RelayCommand(param => RemoveRecentProject(param as RecentProjectItem));
+        ClearRecentProjectsCommand = new RelayCommand(_ => ClearRecentProjects());
+
+        _recentProjectsManager.PopulateCollection(RecentProjects);
 
         _buildService.OutputReceived += OnBuildOutputReceived;
         _buildService.ProcessExited += OnBuildProcessExited;
@@ -263,6 +269,14 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
     public ICommand FetchCommand { get; }
     public ICommand PullCommand { get; }
     public ICommand PushCommand { get; }
+    public ICommand OpenRecentProjectCommand { get; }
+    public ICommand RemoveRecentProjectCommand { get; }
+    public ICommand ClearRecentProjectsCommand { get; }
+
+    /// <summary>
+    /// Recently opened projects, solutions, and folders, ordered by most recent first.
+    /// </summary>
+    public ObservableCollection<RecentProjectItem> RecentProjects { get; } = [];
 
     private ObservableCollection<ProjectItem> _projectItems = [];
     public ObservableCollection<ProjectItem> ProjectItems
@@ -1277,6 +1291,7 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
             });
             SelectedBuildTarget = BuildTargets.FirstOrDefault();
 
+            TrackRecentProject(projectPath);
             LoadingStatus = $"Loaded: {result.Name} ({result.TargetFramework}) � {result.SourceFiles.Length} file(s)";
             ScheduleLoadingStatusClear();
         }
@@ -1357,6 +1372,7 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
             }
             SelectedBuildTarget = BuildTargets.FirstOrDefault();
 
+            TrackRecentProject(solutionPath);
             var totalFiles = result.Projects.Sum(p => p.SourceFiles.Length);
             var projectNames = string.Join(", ", result.Projects.Select(p => p.Name));
             LoadingStatus = $"Loaded: {result.Name} � {result.Projects.Length} project(s), {totalFiles} file(s) [{projectNames}]";
@@ -1379,6 +1395,83 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
                 _isLoadingProject = false;
             }
         }
+    }
+
+    // ── Recent projects ──────────────────────────────────────────────
+
+    /// <summary>
+    /// Records an opened project, solution, or folder in the recent projects list.
+    /// </summary>
+    private void TrackRecentProject(string path)
+    {
+        var itemType = RecentProjectsManager.DetermineItemType(path);
+        _recentProjectsManager.TrackOpen(path, itemType);
+        _recentProjectsManager.PopulateCollection(RecentProjects);
+    }
+
+    /// <summary>
+    /// Opens a recent project, solution, or folder from the recent list.
+    /// </summary>
+    private void OpenRecentProject(RecentProjectItem? item)
+    {
+        if (item is null)
+        {
+            return;
+        }
+
+        // Re-determine type in case the file was deleted or changed
+        if (!File.Exists(item.FullPath) && !Directory.Exists(item.FullPath))
+        {
+            var result = MessageBox.Show(
+                $"The path no longer exists:\n{item.FullPath}\n\nRemove it from the recent list?",
+                "Not Found",
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Question);
+
+            if (result == MessageBoxResult.Yes)
+            {
+                _recentProjectsManager.RemoveEntry(item.FullPath);
+                _recentProjectsManager.PopulateCollection(RecentProjects);
+            }
+
+            return;
+        }
+
+        switch (item.ItemType)
+        {
+            case RecentItemType.Solution:
+                _ = LoadSolutionFileAsync(item.FullPath);
+                break;
+            case RecentItemType.Project:
+                _ = LoadProjectFileAsync(item.FullPath);
+                break;
+            case RecentItemType.Folder:
+                LoadProjectRoot(item.FullPath);
+                break;
+        }
+    }
+
+    /// <summary>
+    /// Removes a specific entry from the recent projects list.
+    /// </summary>
+    private void RemoveRecentProject(RecentProjectItem? item)
+    {
+        if (item is null)
+        {
+            return;
+        }
+
+        _recentProjectsManager.RemoveEntry(item.FullPath);
+        _recentProjectsManager.PopulateCollection(RecentProjects);
+    }
+
+    /// <summary>
+    /// Clears all recent projects entries.
+    /// </summary>
+    private void ClearRecentProjects()
+    {
+        _recentProjectsManager.ClearAll();
+        _recentProjectsManager.PopulateCollection(RecentProjects);
     }
 
     public void OpenFileByPath(string filePath)
@@ -1525,6 +1618,8 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
         // Clear build targets since there's no project/solution to build
         BuildTargets.Clear();
         SelectedBuildTarget = null;
+
+        TrackRecentProject(rootPath);
     }
 
     private void Save()
