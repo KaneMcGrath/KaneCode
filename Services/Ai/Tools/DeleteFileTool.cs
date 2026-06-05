@@ -30,7 +30,7 @@ internal sealed class DeleteFileTool : IAgentTool
         _projectRootProvider = projectRootProvider;
     }
 
-    public string Name => "delete_file";
+    public string Name => "delete";
 
     public string Category => "Write Files";
 

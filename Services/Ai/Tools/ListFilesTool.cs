@@ -45,7 +45,7 @@ internal sealed class ListFilesTool : IAgentTool
         _externalContextDirectoryRegistry = externalContextDirectoryRegistry;
     }
 
-    public string Name => "list_files";
+    public string Name => "list";
 
     public string Category => "Read Files";
 

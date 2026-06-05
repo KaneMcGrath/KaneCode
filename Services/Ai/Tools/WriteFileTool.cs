@@ -36,7 +36,7 @@ internal sealed class WriteFileTool : IAgentTool
         _onFileChanged = onFileChanged;
     }
 
-    public string Name => "write_file";
+    public string Name => "write";
 
     public string Category => "Write Files";
 

@@ -11,7 +11,7 @@ public class MalformedToolCallRecoveryTests
         string reasoning = """
             Thinking...
             <tool_call>
-            <function=read_file>
+            <function=read>
             <parameter=filePath>
             README.md
             """;
@@ -19,7 +19,7 @@ public class MalformedToolCallRecoveryTests
         IReadOnlyList<StreamingMalformedToolCall> result = MalformedToolCallRecovery.DetectStreaming(reasoning, string.Empty);
 
         StreamingMalformedToolCall detectedToolCall = Assert.Single(result);
-        Assert.Equal("read_file", detectedToolCall.FunctionName);
+        Assert.Equal("read", detectedToolCall.FunctionName);
         Assert.False(detectedToolCall.IsComplete);
         Assert.Contains("<tool_call>", detectedToolCall.RawText, StringComparison.Ordinal);
     }
@@ -29,7 +29,7 @@ public class MalformedToolCallRecoveryTests
     {
         string reasoning = """
             <tool_call>
-            <function=read_file>
+            <function=read>
             <parameter=filePath>
             README.md
             </parameter>
@@ -40,7 +40,7 @@ public class MalformedToolCallRecoveryTests
         IReadOnlyList<RecoveredMalformedToolCall> result = MalformedToolCallRecovery.Recover(reasoning, string.Empty);
 
         RecoveredMalformedToolCall recoveredToolCall = Assert.Single(result);
-        Assert.Equal("read_file", recoveredToolCall.FunctionName);
+        Assert.Equal("read", recoveredToolCall.FunctionName);
 
         using JsonDocument argsDocument = JsonDocument.Parse(recoveredToolCall.ArgumentsJson);
         Assert.Equal("README.md", argsDocument.RootElement.GetProperty("filePath").GetString());
@@ -52,7 +52,7 @@ public class MalformedToolCallRecoveryTests
         string response = """
             I will inspect the file.
             <tool_call>
-            <function=read_file>
+            <function=read>
             <parameter=filePath>
             README.md
             </parameter>
@@ -84,7 +84,7 @@ public class MalformedToolCallRecoveryTests
     {
         string response = """
             <tool_call>
-            <function=read_file>
+            <function=read>
             <parameter=filePath>
             README.md
             </parameter>
@@ -101,7 +101,7 @@ public class MalformedToolCallRecoveryTests
     {
         string reasoning = """
             <tool_call>
-            <function=read_file>
+            <function=read>
             <parameter=filePath>
             README.md
             </parameter>

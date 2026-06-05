@@ -46,10 +46,10 @@ public class AgentToolRegistryTests
     public void WhenToolRegisteredThenGetReturnsTool()
     {
         AgentToolRegistry registry = new AgentToolRegistry();
-        FakeTool tool = new FakeTool("read_file");
+        FakeTool tool = new FakeTool("read");
         registry.Register(tool);
 
-        IAgentTool? result = registry.Get("read_file");
+        IAgentTool? result = registry.Get("read");
 
         Assert.Same(tool, result);
     }
@@ -112,7 +112,7 @@ public class AgentToolRegistryTests
     public void WhenSerializeToolDefinitionsCalledThenReturnsValidJsonArray()
     {
         AgentToolRegistry registry = new AgentToolRegistry();
-        registry.Register(new FakeTool("read_file", "Reads a file"));
+        registry.Register(new FakeTool("read", "Reads a file"));
 
         JsonElement result = registry.SerializeToolDefinitions();
 
@@ -121,7 +121,7 @@ public class AgentToolRegistryTests
 
         JsonElement toolEntry = result[0];
         Assert.Equal("function", toolEntry.GetProperty("type").GetString());
-        Assert.Equal("read_file", toolEntry.GetProperty("function").GetProperty("name").GetString());
+        Assert.Equal("read", toolEntry.GetProperty("function").GetProperty("name").GetString());
         Assert.Equal("Reads a file", toolEntry.GetProperty("function").GetProperty("description").GetString());
     }
 

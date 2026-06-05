@@ -56,7 +56,7 @@ internal sealed class SearchFilesTool : IAgentTool
         _externalContextDirectoryRegistry = externalContextDirectoryRegistry;
     }
 
-    public string Name => "search_files";
+    public string Name => "search";
 
     public string Category => "Read Files";
 

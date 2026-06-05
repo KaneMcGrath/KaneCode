@@ -9,7 +9,7 @@ namespace KaneCode.Services.Ai;
 /// </summary>
 internal static class AgentToolArgumentsParser
 {
-    private const string ReadFileToolName = "read_file";
+    private const string ReadFileToolName = "read";
 
     public static JsonDocument Parse(string toolName, string argumentsJson)
     {

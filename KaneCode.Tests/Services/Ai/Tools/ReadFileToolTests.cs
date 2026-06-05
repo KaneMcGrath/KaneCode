@@ -26,7 +26,7 @@ public class ReadFileToolTests : IDisposable
     {
         ReadFileTool tool = new ReadFileTool(() => _tempDir);
 
-        Assert.Equal("read_file", tool.Name);
+        Assert.Equal("read", tool.Name);
         Assert.False(string.IsNullOrWhiteSpace(tool.Description));
         Assert.NotEqual(JsonValueKind.Undefined, tool.ParametersSchema.ValueKind);
     }

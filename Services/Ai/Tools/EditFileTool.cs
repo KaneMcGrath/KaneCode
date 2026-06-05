@@ -63,7 +63,7 @@ internal sealed class EditFileTool : IAgentTool
         _onFileChanged = onFileChanged;
     }
 
-    public string Name => "edit_file";
+    public string Name => "edit";
 
     public string Category => "Write Files";
 

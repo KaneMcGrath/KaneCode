@@ -9,7 +9,7 @@ public class AgentToolArgumentsParserTests
     public void WhenReadFileArgumentsContainConsecutiveObjectsThenParserNormalizesToFilePathsArray()
     {
         using JsonDocument document = AgentToolArgumentsParser.Parse(
-            "read_file",
+            "read",
             "{\"filePath\":\"MainWindow.xaml\"}{\"filePath\":\"MainWindow.xaml.cs\"}");
 
         JsonElement filePaths = document.RootElement.GetProperty("filePaths");
@@ -22,7 +22,7 @@ public class AgentToolArgumentsParserTests
     public void WhenNonReadFileArgumentsContainConsecutiveObjectsThenParserThrowsJsonException()
     {
         Assert.ThrowsAny<JsonException>(() => AgentToolArgumentsParser.Parse(
-            "search_files",
+            "search",
             "{\"query\":\"first\"}{\"query\":\"second\"}"));
     }
 }

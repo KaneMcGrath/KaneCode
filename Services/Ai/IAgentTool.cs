@@ -10,7 +10,7 @@ namespace KaneCode.Services.Ai;
 internal interface IAgentTool
 {
     /// <summary>
-    /// Unique name used by the model to reference this tool (e.g. "read_file").
+    /// Unique name used by the model to reference this tool (e.g. "read").
     /// Must match the OpenAI function-calling convention: lowercase with underscores.
     /// </summary>
     string Name { get; }

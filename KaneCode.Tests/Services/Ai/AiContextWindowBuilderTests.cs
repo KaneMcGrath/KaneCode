@@ -48,7 +48,7 @@ public class AiContextWindowBuilderTests
         {
             ToolCalls =
             [
-                new AiToolCallRequest("tool-1", "read_file", "{}")
+                new AiToolCallRequest("tool-1", "read", "{}")
             ]
         };
 

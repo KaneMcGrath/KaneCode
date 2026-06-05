@@ -57,7 +57,7 @@ internal sealed class ReadFileTool : IAgentTool
         _externalContextDirectoryRegistry = externalContextDirectoryRegistry;
     }
 
-    public string Name => "read_file";
+    public string Name => "read";
 
     public string Description => "Read the contents of a file by path. Returns the file text or an error if the file is not found or exceeds the maximum line count. Supports files inside the loaded project and request-scoped external context folders. Optionally accepts startLine and endLine (1-based, inclusive) to read a specific range of lines.";
 

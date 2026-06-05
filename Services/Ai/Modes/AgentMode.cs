@@ -12,15 +12,15 @@ internal sealed class AgentMode : IAiChatMode
     {
         "create_directory",
         "delete_directory",
-        "delete_file",
-        "edit_file",
-        "list_files",
-        "read_file",
+        "delete",
+        "edit",
+        "list",
+        "read",
         "rename_path",
         "build",
         "test",
-        "search_files",
-        "write_file",
+        "search",
+        "write",
     };
 
     public string Id => "agent";

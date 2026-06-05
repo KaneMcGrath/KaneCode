@@ -83,29 +83,29 @@ public class AiChatPanelTests
     [Fact]
     public void WhenFormattingToolCallHeaderThenOnlyToolNameIsShown()
     {
-        string result = AiChatPanel.FormatToolCallHeader("search_files");
+        string result = AiChatPanel.FormatToolCallHeader("search");
 
-        Assert.Equal("search_files", result);
+        Assert.Equal("search", result);
     }
 
     [Fact]
     public void WhenFormattingToolCallHeaderForFileToolThenAffectedFileIsIncluded()
     {
         string result = AiChatPanel.FormatToolCallHeader(
-            "read_file",
+            "read",
             "{\"filePath\":\"Controls/AiChatPanel.xaml.cs\"}");
 
-        Assert.Equal("read_file - Controls/AiChatPanel.xaml.cs", result);
+        Assert.Equal("read - Controls/AiChatPanel.xaml.cs", result);
     }
 
     [Fact]
     public void WhenFormattingToolCallHeaderForConsecutiveReadFileArgumentsThenFirstFileAndCountAreIncluded()
     {
         string result = AiChatPanel.FormatToolCallHeader(
-            "read_file",
+            "read",
             "{\"filePath\":\"MainWindow.xaml\"}{\"filePath\":\"MainWindow.xaml.cs\"}");
 
-        Assert.Equal("read_file - MainWindow.xaml (+1 more)", result);
+        Assert.Equal("read - MainWindow.xaml (+1 more)", result);
     }
 
     [Fact]
@@ -121,9 +121,9 @@ public class AiChatPanelTests
     [Fact]
     public void WhenFormattingToolCallHeaderWithInvalidArgumentsThenOnlyToolNameIsShown()
     {
-        string result = AiChatPanel.FormatToolCallHeader("read_file", "not json");
+        string result = AiChatPanel.FormatToolCallHeader("read", "not json");
 
-        Assert.Equal("read_file", result);
+        Assert.Equal("read", result);
     }
 
     [Fact]
@@ -145,7 +145,7 @@ public class AiChatPanelTests
     [Fact]
     public void WhenFormattingToolCallBodyThenArgumentsRemainMultiLine()
     {
-        string result = AiChatPanel.FormatToolCallBody("search_files", "{\"query\":\"hotkey\",\"limit\":5}");
+        string result = AiChatPanel.FormatToolCallBody("search", "{\"query\":\"hotkey\",\"limit\":5}");
 
         Assert.Equal("query: hotkey\nlimit: 5", result);
     }
@@ -154,7 +154,7 @@ public class AiChatPanelTests
     public void WhenFormattingToolCallBodyForConsecutiveReadFileArgumentsThenNormalizedFilePathsAreShown()
     {
         string result = AiChatPanel.FormatToolCallBody(
-            "read_file",
+            "read",
             "{\"filePath\":\"MainWindow.xaml\"}{\"filePath\":\"MainWindow.xaml.cs\"}");
 
         Assert.Equal("filePaths: [\"MainWindow.xaml\",\"MainWindow.xaml.cs\"]", result);
@@ -166,7 +166,7 @@ public class AiChatPanelTests
         string content = """
             I will inspect the file.
             <tool_call>
-            <function=read_file>
+            <function=read>
             <parameter=filePath>
             README.md
             </parameter>

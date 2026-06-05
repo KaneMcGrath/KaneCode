@@ -10,9 +10,9 @@ internal sealed class TeacherMode : IAiChatMode
 {
     private static readonly HashSet<string> AllowedToolsSet = new(StringComparer.Ordinal)
     {
-        "list_files",
-        "read_file",
-        "search_files",
+        "list",
+        "read",
+        "search",
         "presentation_new",
         "presentation_add_slide",
     };
