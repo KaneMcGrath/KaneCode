@@ -17,6 +17,9 @@ public partial class AiReferencePickerDialog : Window
     private readonly List<DefaultContextOption> _defaultOptions = [];
     private readonly List<AiContextClassSnapshot> _allClasses = [];
     private readonly ObservableCollection<AiChatReference> _externalReferences = [];
+    private readonly IReadOnlyList<ProjectItem> _projectItems;
+    private readonly List<ProjectItem> _allFlatFiles = [];
+    private readonly HashSet<string> _checkedFilePaths = [];
 
     /// <summary>
     /// The references selected by the user, populated after the dialog closes with OK.
@@ -34,6 +37,8 @@ public partial class AiReferencePickerDialog : Window
         ArgumentNullException.ThrowIfNull(projectItems);
         ArgumentNullException.ThrowIfNull(openDocuments);
 
+        _projectItems = projectItems;
+
         BuildDefaultOptions(currentDocument, openDocuments, buildOutput);
         _allClasses.AddRange(AiContextReferenceFactory.DiscoverClasses(projectItems));
 
@@ -41,6 +46,10 @@ public partial class AiReferencePickerDialog : Window
         ExternalContextList.ItemsSource = _externalReferences;
         ApplyClassFilter(string.Empty);
         ClassSearchBox.Focus();
+
+        FlattenFiles(projectItems, _allFlatFiles);
+        FileTree.ItemsSource = projectItems;
+        FileSearchBox.Focus();
     }
 
     private void BuildDefaultOptions(
@@ -175,6 +184,68 @@ public partial class AiReferencePickerDialog : Window
         _externalReferences.Add(reference);
     }
 
+    private void FileTree_MouseDoubleClick(object sender, MouseButtonEventArgs e)
+    {
+        if (FileTree.SelectedItem is ProjectItem { ItemType: ProjectItemType.File } fileItem)
+        {
+            AddSelectedReference(AiContextReferenceFactory.CreateFileReference(fileItem.FullPath));
+            DialogResult = true;
+            Close();
+        }
+    }
+
+    private void FileSearchBox_TextChanged(object sender, TextChangedEventArgs e)
+    {
+        string filter = FileSearchBox.Text;
+
+        if (string.IsNullOrWhiteSpace(filter))
+        {
+            // Restore the full tree
+            FileTree.ItemsSource = _projectItems;
+            return;
+        }
+
+        // Flat list of matching files
+        List<ProjectItem> filteredFiles = _allFlatFiles
+            .Where(item => item.Name.Contains(filter, StringComparison.OrdinalIgnoreCase)
+                || item.FullPath.Contains(filter, StringComparison.OrdinalIgnoreCase))
+            .ToList();
+
+        FileTree.ItemsSource = filteredFiles;
+    }
+
+    private static void FlattenFiles(IReadOnlyList<ProjectItem> items, List<ProjectItem> results)
+    {
+        foreach (ProjectItem item in items)
+        {
+            if (item.ItemType == ProjectItemType.File)
+            {
+                results.Add(item);
+            }
+
+            if (item.Children.Count > 0)
+            {
+                FlattenFiles(item.Children, results);
+            }
+        }
+    }
+
+    private void FileCheckBox_Checked(object sender, RoutedEventArgs e)
+    {
+        if (sender is CheckBox { Tag: string filePath } && !string.IsNullOrWhiteSpace(filePath))
+        {
+            _checkedFilePaths.Add(filePath);
+        }
+    }
+
+    private void FileCheckBox_Unchecked(object sender, RoutedEventArgs e)
+    {
+        if (sender is CheckBox { Tag: string filePath })
+        {
+            _checkedFilePaths.Remove(filePath);
+        }
+    }
+
     private void AddSelectedAndClose()
     {
         SelectedReferences.Clear();
@@ -186,6 +257,12 @@ public partial class AiReferencePickerDialog : Window
             {
                 AddSelectedReference(reference);
             }
+        }
+
+        // Add all checked files from the Files tab
+        foreach (string filePath in _checkedFilePaths)
+        {
+            AddSelectedReference(AiContextReferenceFactory.CreateFileReference(filePath));
         }
 
         foreach (AiContextClassSnapshot classSnapshot in ClassList.SelectedItems.OfType<AiContextClassSnapshot>())
