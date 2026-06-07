@@ -1,7 +1,9 @@
 using KaneCode.Services;
+using KaneCode.Services.Ai;
 using KaneCode.Theming;
 using KaneCode.ViewModels;
 using Microsoft.Win32;
+using System.Collections.ObjectModel;
 using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
@@ -10,10 +12,11 @@ using System.Windows.Input;
 namespace KaneCode;
 
 /// <summary>
-/// Options dialog with categorized settings pages (General, Appearance, Hotkeys, AI Providers).
+/// Options dialog with categorized settings pages (General, Appearance, Hotkeys, Provider Settings, AI Settings).
 /// </summary>
 public partial class OptionsWindow : Window
 {
+    internal const string ProviderSettingsCategoryName = "Provider Settings";
     internal const string AiSettingsCategoryName = "AI Settings";
 
     private bool _isInitializing = true;
@@ -21,6 +24,7 @@ public partial class OptionsWindow : Window
     private readonly AiSettingsViewModel _aiSettingsViewModel = new();
     private readonly string? _initialCategory;
     private readonly ThemeManager _themeManager;
+    private readonly ObservableCollection<string> _autoContextRules = [];
 
     public OptionsWindow(ThemeManager themeManager, string? initialCategory = null)
     {
@@ -39,6 +43,9 @@ public partial class OptionsWindow : Window
         {
             GeneralSettingsManager.SaveDefaultProjectFolder(newFolder);
         }
+
+        // Save auto-context rules
+        AutoContextSettingsManager.Save(_autoContextRules);
     }
 
     private void OnLoaded(object sender, RoutedEventArgs e)
@@ -68,6 +75,13 @@ public partial class OptionsWindow : Window
         // Initialize the default project folder field
         DefaultProjectFolderTextBox.Text = GeneralSettingsManager.LoadDefaultProjectFolder();
 
+        // Load auto-context rules
+        foreach (string rule in AutoContextSettingsManager.Load())
+        {
+            _autoContextRules.Add(rule);
+        }
+        AutoContextRulesList.ItemsSource = _autoContextRules;
+
         _isInitializing = false;
 
         if (!string.IsNullOrWhiteSpace(_initialCategory))
@@ -91,6 +105,7 @@ public partial class OptionsWindow : Window
         AppearancePageBorder.Visibility = Visibility.Collapsed;
         HotkeysPageBorder.Visibility = Visibility.Collapsed;
         AiProvidersPageBorder.Visibility = Visibility.Collapsed;
+        AiSettingsPageBorder.Visibility = Visibility.Collapsed;
 
         // Show selected page
         switch (category)
@@ -104,8 +119,11 @@ public partial class OptionsWindow : Window
             case "Hotkeys":
                 HotkeysPageBorder.Visibility = Visibility.Visible;
                 break;
-            case AiSettingsCategoryName:
+            case ProviderSettingsCategoryName:
                 AiProvidersPageBorder.Visibility = Visibility.Visible;
+                break;
+            case AiSettingsCategoryName:
+                AiSettingsPageBorder.Visibility = Visibility.Visible;
                 break;
         }
     }
@@ -119,6 +137,41 @@ public partial class OptionsWindow : Window
         if (item is not null)
         {
             CategoryList.SelectedItem = item;
+        }
+    }
+
+    private void AddAutoContextRuleButton_Click(object sender, RoutedEventArgs e)
+    {
+        string rule = AutoContextRuleInput.Text.Trim();
+        if (string.IsNullOrWhiteSpace(rule))
+        {
+            return;
+        }
+
+        if (!_autoContextRules.Contains(rule))
+        {
+            _autoContextRules.Add(rule);
+        }
+
+        AutoContextRuleInput.Clear();
+        AutoContextRuleInput.Focus();
+    }
+
+    private void RemoveAutoContextRuleButton_Click(object sender, RoutedEventArgs e)
+    {
+        var selectedRules = AutoContextRulesList.SelectedItems.OfType<string>().ToList();
+        foreach (string rule in selectedRules)
+        {
+            _autoContextRules.Remove(rule);
+        }
+    }
+
+    private void AutoContextRuleInput_KeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Enter)
+        {
+            AddAutoContextRuleButton_Click(sender, e);
+            e.Handled = true;
         }
     }
 

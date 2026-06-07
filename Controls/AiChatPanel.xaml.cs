@@ -1353,6 +1353,135 @@ public partial class AiChatPanel : UserControl
         };
     }
 
+    /// <summary>
+    /// Resolves auto-context rules from settings and adds matching files to the conversation.
+    /// Bare filenames (e.g. "agents.md") search recursively from the project root.
+    /// Relative paths (e.g. "docs/notes.md") resolve to an exact location.
+    /// </summary>
+    private void ApplyAutoContextRules(AiConversation conversation)
+    {
+        ArgumentNullException.ThrowIfNull(conversation);
+
+        string? projectKey = _projectConversationKeyProvider?.Invoke();
+        if (string.IsNullOrWhiteSpace(projectKey))
+        {
+            return;
+        }
+
+        string projectRoot;
+        try
+        {
+            projectRoot = Services.Ai.Tools.AgentToolPathResolver.GetProjectRootDirectory(() => projectKey);
+        }
+        catch (InvalidOperationException)
+        {
+            return;
+        }
+
+        if (!Directory.Exists(projectRoot))
+        {
+            return;
+        }
+
+        IReadOnlyList<string> rules = Services.Ai.AutoContextSettingsManager.Load();
+        if (rules.Count == 0)
+        {
+            return;
+        }
+
+        HashSet<string> skippedDirectories = new(StringComparer.OrdinalIgnoreCase)
+        {
+            ".git", ".vs", ".idea",
+            "bin", "obj",
+            "node_modules", ".npm",
+            "packages", ".nuget",
+            "__pycache__", ".venv", "venv",
+        };
+
+        foreach (string rule in rules)
+        {
+            string trimmedRule = rule.Trim();
+            if (string.IsNullOrWhiteSpace(trimmedRule))
+            {
+                continue;
+            }
+
+            bool containsSeparator = trimmedRule.Contains(Path.DirectorySeparatorChar)
+                || trimmedRule.Contains(Path.AltDirectorySeparatorChar);
+
+            if (containsSeparator || Path.IsPathRooted(trimmedRule))
+            {
+                // Relative or absolute path — resolve exact location
+                string fullPath = Path.IsPathRooted(trimmedRule)
+                    ? Path.GetFullPath(trimmedRule)
+                    : Path.GetFullPath(Path.Combine(projectRoot, trimmedRule));
+
+                if (File.Exists(fullPath))
+                {
+                    AddFileReferenceToConversation(conversation, fullPath);
+                }
+            }
+            else
+            {
+                // Bare filename — search recursively from project root
+                try
+                {
+                    foreach (string path in Directory.EnumerateFiles(projectRoot, trimmedRule, SearchOption.AllDirectories))
+                    {
+                        if (IsInSkippedDirectory(path, skippedDirectories))
+                        {
+                            continue;
+                        }
+
+                        AddFileReferenceToConversation(conversation, path);
+                    }
+                }
+                catch (IOException)
+                {
+                    // Skip directories we can't enumerate
+                }
+                catch (UnauthorizedAccessException)
+                {
+                    // Skip directories we can't access
+                }
+            }
+        }
+    }
+
+    private static void AddFileReferenceToConversation(AiConversation conversation, string filePath)
+    {
+        if (conversation.References.Any(r => string.Equals(r.FullPath, filePath, StringComparison.OrdinalIgnoreCase)))
+        {
+            return;
+        }
+
+        try
+        {
+            AiChatReference reference = AiContextReferenceFactory.CreateFileReference(filePath);
+            conversation.References.Add(reference);
+        }
+        catch (IOException)
+        {
+        }
+        catch (UnauthorizedAccessException)
+        {
+        }
+    }
+
+    private static bool IsInSkippedDirectory(string path, HashSet<string> skippedDirectories)
+    {
+        string[] parts = path.Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        foreach (string part in parts)
+        {
+            if (skippedDirectories.Contains(part))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     private void RefreshConversationSelector()
     {
         AiConversation activeConversation = EnsureActiveConversation();
@@ -1467,6 +1596,7 @@ public partial class AiChatPanel : UserControl
         _conversationState.Conversations.Insert(0, conversation);
         _conversationState.ActiveConversationId = conversation.Id;
         _activeConversation = conversation;
+        ApplyAutoContextRules(conversation);
         RefreshConversationSelector();
         RenderActiveConversation();
         SavePersistedConversation();
