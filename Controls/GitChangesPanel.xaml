@@ -8,24 +8,6 @@
                 Background="{DynamicResource ErrorListHeaderBackground}"
                 Padding="8,4">
             <DockPanel>
-                <StackPanel x:Name="BranchSelectorPanel"
-                            DockPanel.Dock="Right"
-                            Orientation="Horizontal"
-                            VerticalAlignment="Center"
-                            Margin="8,0,0,0">
-                    <TextBlock Text="Branch:"
-                               Margin="0,0,6,0"
-                               Foreground="{DynamicResource ErrorListHeaderForeground}"
-                               VerticalAlignment="Center" />
-                    <ComboBox x:Name="BranchCombo"
-                              Width="180"
-                              Height="22"
-                              SelectionChanged="BranchCombo_SelectionChanged"
-                              VerticalAlignment="Center"
-                              IsEditable="False"
-                              Background="{DynamicResource PanelSecondaryBackground}"
-                              Foreground="{DynamicResource ErrorListHeaderForeground}" />
-                </StackPanel>
                 <Button x:Name="RefreshButton"
                         DockPanel.Dock="Right"
                         Content="⟳ Refresh"
@@ -37,6 +19,24 @@
                         BorderThickness="0"
                         Cursor="Hand"
                         VerticalAlignment="Center" />
+                <StackPanel x:Name="BranchSelectorPanel"
+                            DockPanel.Dock="Right"
+                            Orientation="Horizontal"
+                            VerticalAlignment="Center"
+                            Margin="8,0,0,0">
+                    <TextBlock Text="Branch:"
+                               Margin="0,0,6,0"
+                               Foreground="{DynamicResource ErrorListHeaderForeground}"
+                               VerticalAlignment="Center" />
+                    <ComboBox x:Name="BranchCombo"
+                              Width="150"
+                              Height="22"
+                              SelectionChanged="BranchCombo_SelectionChanged"
+                              VerticalAlignment="Center"
+                              IsEditable="False"
+                              Background="{DynamicResource PanelSecondaryBackground}"
+                              Foreground="{DynamicResource ErrorListHeaderForeground}" />
+                </StackPanel>
             </DockPanel>
         </Border>
 
