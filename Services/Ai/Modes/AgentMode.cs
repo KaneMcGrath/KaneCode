@@ -10,6 +10,7 @@ internal sealed class AgentMode : IAiChatMode
 {
     private static readonly HashSet<string> AllowedToolsSet = new(StringComparer.Ordinal)
     {
+        // File system
         "create_directory",
         "delete_directory",
         "delete",
@@ -17,10 +18,39 @@ internal sealed class AgentMode : IAiChatMode
         "list",
         "read",
         "rename_path",
-        "build",
-        "test",
         "search",
         "write",
+
+        // Build & test
+        "build",
+        "test",
+
+        // Git
+        "git_branches",
+        "git_checkout",
+        "git_commit",
+        "git_conflicts",
+        "git_create_branch",
+        "git_delete_branch",
+        "git_diff",
+        "git_discard",
+        "git_fetch",
+        "git_head_file",
+        "git_init",
+        "git_log",
+        "git_pull",
+        "git_push",
+        "git_resolve_conflict",
+        "git_stage",
+        "git_status",
+        "git_unstage",
+
+        // NuGet
+        "nuget_info",
+        "nuget_install",
+        "nuget_list_installed",
+        "nuget_search",
+        "nuget_uninstall",
     };
 
     public string Id => "agent";
@@ -53,6 +83,9 @@ internal sealed class AgentMode : IAiChatMode
             Use available tools whenever they are needed to inspect files, gather diagnostics, and make precise edits.
             Before calling a tool, think briefly about why the call is needed.
             After receiving a tool result, continue until the request is completed.
+
+            Only invoke git tools when the user explicitly asks for version control operations
+            or when the project's documentation indicates they are necessary.
             """;
     }
 }
