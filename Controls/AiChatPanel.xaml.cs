@@ -3586,7 +3586,7 @@ public partial class AiChatPanel : UserControl
             TextWrapping = TextWrapping.NoWrap,
             TextAlignment = TextAlignment.Right,
             HorizontalAlignment = HorizontalAlignment.Right,
-            FontSize = 11,
+            FontSize = 8,
             FontFamily = new FontFamily("Cascadia Code, Consolas, Courier New"),
             VerticalAlignment = VerticalAlignment.Center,
             Foreground = foreground,
