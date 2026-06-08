@@ -79,154 +79,172 @@
                         BorderBrush="{DynamicResource AiChatBorder}"
                         BorderThickness="1"
                         Cursor="Hand" />
-                <StackPanel Grid.Row="1"
-                            Grid.ColumnSpan="2"
-                            Orientation="Horizontal"
-                            Margin="0,4,0,0">
-                    <ComboBox x:Name="ModeSelector"
-                              SelectionChanged="ModeSelector_SelectionChanged"
-                              DisplayMemberPath="DisplayName"
-                              FontSize="11"
-                              MinWidth="80"
-                              VerticalAlignment="Center"
-                              Margin="0,0,6,0"
-                              Foreground="{DynamicResource AiChatForeground}"
-                              Background="{DynamicResource AiChatInputBackground}"
-                              BorderBrush="{DynamicResource AiChatBorder}"
-                              BorderThickness="1"
-                              ToolTip="AI chat mode">
-                        <ComboBox.Resources>
-                            <SolidColorBrush x:Key="{x:Static SystemColors.WindowBrushKey}"
-                                             Color="{Binding Color, Source={DynamicResource AiChatInputBackground}}" />
-                            <SolidColorBrush x:Key="{x:Static SystemColors.ControlBrushKey}"
-                                             Color="{Binding Color, Source={DynamicResource AiChatInputBackground}}" />
-                            <Style TargetType="ComboBoxItem">
-                                <Setter Property="Background" Value="{DynamicResource AiChatInputBackground}" />
-                                <Setter Property="Foreground" Value="{DynamicResource AiChatForeground}" />
-                                <Style.Triggers>
-                                    <Trigger Property="IsHighlighted" Value="True">
-                                        <Setter Property="Background" Value="{DynamicResource ButtonMouseOverBackground}" />
-                                        <Setter Property="Foreground" Value="{DynamicResource AiChatSendButtonForeground}" />
-                                    </Trigger>
-                                    <Trigger Property="IsSelected" Value="True">
-                                        <Setter Property="Background" Value="{DynamicResource ButtonPressedBackground}" />
-                                        <Setter Property="Foreground" Value="{DynamicResource AiChatSendButtonForeground}" />
-                                    </Trigger>
-                                </Style.Triggers>
-                            </Style>
-                        </ComboBox.Resources>
-                    </ComboBox>
-                    <Grid Margin="0,0,6,0">
-                        <primitives:ToggleButton x:Name="SettingsOptionsButton"
-                                                 Content="🔧 ▾"
-                                                 Width="34"
-                                                 Height="22"
-                                                 Padding="0"
-                                                 FontSize="11"
-                                                 Foreground="{DynamicResource AiChatForeground}"
-                                                 Background="{DynamicResource AiChatInputBackground}"
-                                                 BorderBrush="{DynamicResource AiChatBorder}"
-                                                 BorderThickness="1"
-                                                 Cursor="Hand"
-                                                 ToolTip="Enable/disable individual tools for this conversation" />
-                        <Popup PlacementTarget="{Binding ElementName=SettingsOptionsButton}"
-                               Placement="Bottom"
-                               HorizontalOffset="0"
-                               VerticalOffset="2"
-                               IsOpen="{Binding IsChecked, ElementName=SettingsOptionsButton}"
-                               StaysOpen="False"
-                               AllowsTransparency="True">
-                            <Border Background="{DynamicResource AiChatInputBackground}"
-                                    BorderBrush="{DynamicResource AiChatBorder}"
-                                    BorderThickness="1"
-                                    Padding="8,6"
-                                    MinWidth="280"
-                                    MaxHeight="480">
-                                <DockPanel>
-                                    <Button x:Name="SystemPromptButton"
-                                            DockPanel.Dock="Top"
-                                            Content="📝 Edit System Prompt..."
-                                            Click="SystemPromptButton_Click"
-                                            Padding="6,4"
-                                            Margin="0,0,0,6"
-                                            FontSize="11"
-                                            HorizontalAlignment="Stretch"
-                                            Cursor="Hand"
-                                            Foreground="{DynamicResource AiChatForeground}"
-                                            Background="{DynamicResource AiChatHeaderBackground}"
-                                            BorderBrush="{DynamicResource AiChatBorder}"
-                                            BorderThickness="1"
-                                            ToolTip="Edit the system prompt sent to the model with each request." />
-                                    <ScrollViewer VerticalScrollBarVisibility="Auto">
-                                        <StackPanel x:Name="ToolsCheckboxPanel">
-                                            <TextBlock Text="Available Tools"
-                                                       FontWeight="SemiBold"
-                                                       FontSize="11"
-                                                       Margin="0,0,0,4"
-                                                       Foreground="{DynamicResource AiChatForeground}" />
-                                        </StackPanel>
-                                    </ScrollViewer>
-                                </DockPanel>
-                            </Border>
-                        </Popup>
-                    </Grid>
-                    <Grid>
-                        <primitives:ToggleButton x:Name="FormattingOptionsButton"
-                                                 Content="🧾 ▾"
-                                                 Width="34"
-                                                 Height="22"
-                                                 Padding="0"
-                                                 FontSize="11"
-                                                 Foreground="{DynamicResource AiChatForeground}"
-                                                 Background="{DynamicResource AiChatInputBackground}"
-                                                 BorderBrush="{DynamicResource AiChatBorder}"
-                                                 BorderThickness="1"
-                                                 Cursor="Hand"
-                                                 ToolTip="Formatting options" />
-                        <Popup PlacementTarget="{Binding ElementName=FormattingOptionsButton}"
-                               Placement="Bottom"
-                               HorizontalOffset="0"
-                               VerticalOffset="2"
-                               IsOpen="{Binding IsChecked, ElementName=FormattingOptionsButton}"
-                               StaysOpen="False"
-                               AllowsTransparency="True">
-                            <Border Background="{DynamicResource AiChatInputBackground}"
-                                    BorderBrush="{DynamicResource AiChatBorder}"
-                                    BorderThickness="1"
-                                    Padding="8,6"
-                                    MinWidth="190">
-                                <StackPanel>
-                                    <CheckBox x:Name="AutoExpandThinkingCheckBox"
-                                              Content="Auto expand thinking"
-                                              Margin="0,0,0,4"
-                                              Foreground="{DynamicResource AiChatForeground}"
-                                              ToolTip="Expand thinking sections by default when they are shown." />
-                                    <CheckBox x:Name="AutoExpandToolsCheckBox"
-                                              Content="Auto expand tools"
-                                              Margin="0,0,0,4"
-                                              Foreground="{DynamicResource AiChatForeground}"
-                                              ToolTip="Expand tool call sections by default when they are shown." />
-                                    <CheckBox x:Name="RemoveVerticalWhitespaceCheckBox"
-                                              Content="Remove vertical whitespace"
-                                              IsChecked="True"
-                                              Margin="0,0,0,4"
-                                              Foreground="{DynamicResource AiChatForeground}"
-                                              ToolTip="Remove empty lines from rendered assistant output to make responses more compact." />
-                                    <Separator Margin="0,2,0,6" />
-                                    <CheckBox x:Name="RawTextCheckBox"
-                                              Content="Raw mode"
-                                              Foreground="{DynamicResource AiChatForeground}"
-                                              ToolTip="Show raw text sent to and received from the model, without markdown formatting." />
-                                    <CheckBox x:Name="DisableStreamingCheckBox"
-                                              Content="Disable Streaming"
-                                              Margin="0,4,0,0"
-                                              Foreground="{DynamicResource AiChatForeground}"
-                                              ToolTip="Show model replies only after the full response is complete." />
-                                </StackPanel>
-                            </Border>
-                        </Popup>
-                    </Grid>
-                </StackPanel>
+                <DockPanel Grid.Row="1"
+                           Grid.ColumnSpan="2"
+                           Margin="0,4,0,0">
+                    <StackPanel DockPanel.Dock="Left"
+                                Orientation="Horizontal">
+                        <ComboBox x:Name="ModeSelector"
+                                  SelectionChanged="ModeSelector_SelectionChanged"
+                                  DisplayMemberPath="DisplayName"
+                                  FontSize="11"
+                                  MinWidth="80"
+                                  VerticalAlignment="Center"
+                                  Margin="0,0,6,0"
+                                  Foreground="{DynamicResource AiChatForeground}"
+                                  Background="{DynamicResource AiChatInputBackground}"
+                                  BorderBrush="{DynamicResource AiChatBorder}"
+                                  BorderThickness="1"
+                                  ToolTip="AI chat mode">
+                            <ComboBox.Resources>
+                                <SolidColorBrush x:Key="{x:Static SystemColors.WindowBrushKey}"
+                                                 Color="{Binding Color, Source={DynamicResource AiChatInputBackground}}" />
+                                <SolidColorBrush x:Key="{x:Static SystemColors.ControlBrushKey}"
+                                                 Color="{Binding Color, Source={DynamicResource AiChatInputBackground}}" />
+                                <Style TargetType="ComboBoxItem">
+                                    <Setter Property="Background" Value="{DynamicResource AiChatInputBackground}" />
+                                    <Setter Property="Foreground" Value="{DynamicResource AiChatForeground}" />
+                                    <Style.Triggers>
+                                        <Trigger Property="IsHighlighted" Value="True">
+                                            <Setter Property="Background" Value="{DynamicResource ButtonMouseOverBackground}" />
+                                            <Setter Property="Foreground" Value="{DynamicResource AiChatSendButtonForeground}" />
+                                        </Trigger>
+                                        <Trigger Property="IsSelected" Value="True">
+                                            <Setter Property="Background" Value="{DynamicResource ButtonPressedBackground}" />
+                                            <Setter Property="Foreground" Value="{DynamicResource AiChatSendButtonForeground}" />
+                                        </Trigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </ComboBox.Resources>
+                        </ComboBox>
+                        <Grid Margin="0,0,6,0">
+                            <primitives:ToggleButton x:Name="SettingsOptionsButton"
+                                                     Content="🔧 ▾"
+                                                     Width="34"
+                                                     Height="22"
+                                                     Padding="0"
+                                                     FontSize="11"
+                                                     Foreground="{DynamicResource AiChatForeground}"
+                                                     Background="{DynamicResource AiChatInputBackground}"
+                                                     BorderBrush="{DynamicResource AiChatBorder}"
+                                                     BorderThickness="1"
+                                                     Cursor="Hand"
+                                                     ToolTip="Enable/disable individual tools for this conversation" />
+                            <Popup PlacementTarget="{Binding ElementName=SettingsOptionsButton}"
+                                   Placement="Bottom"
+                                   HorizontalOffset="0"
+                                   VerticalOffset="2"
+                                   IsOpen="{Binding IsChecked, ElementName=SettingsOptionsButton}"
+                                   StaysOpen="False"
+                                   AllowsTransparency="True">
+                                <Border Background="{DynamicResource AiChatInputBackground}"
+                                        BorderBrush="{DynamicResource AiChatBorder}"
+                                        BorderThickness="1"
+                                        Padding="8,6"
+                                        MinWidth="280"
+                                        MaxHeight="480">
+                                    <DockPanel>
+                                        <Button x:Name="SystemPromptButton"
+                                                DockPanel.Dock="Top"
+                                                Content="📝 Edit System Prompt..."
+                                                Click="SystemPromptButton_Click"
+                                                Padding="6,4"
+                                                Margin="0,0,0,6"
+                                                FontSize="11"
+                                                HorizontalAlignment="Stretch"
+                                                Cursor="Hand"
+                                                Foreground="{DynamicResource AiChatForeground}"
+                                                Background="{DynamicResource AiChatHeaderBackground}"
+                                                BorderBrush="{DynamicResource AiChatBorder}"
+                                                BorderThickness="1"
+                                                ToolTip="Edit the system prompt sent to the model with each request." />
+                                        <ScrollViewer VerticalScrollBarVisibility="Auto">
+                                            <StackPanel x:Name="ToolsCheckboxPanel">
+                                                <TextBlock Text="Available Tools"
+                                                           FontWeight="SemiBold"
+                                                           FontSize="11"
+                                                           Margin="0,0,0,4"
+                                                           Foreground="{DynamicResource AiChatForeground}" />
+                                            </StackPanel>
+                                        </ScrollViewer>
+                                    </DockPanel>
+                                </Border>
+                            </Popup>
+                        </Grid>
+                        <Grid>
+                            <primitives:ToggleButton x:Name="FormattingOptionsButton"
+                                                     Content="🧾 ▾"
+                                                     Width="34"
+                                                     Height="22"
+                                                     Padding="0"
+                                                     FontSize="11"
+                                                     Foreground="{DynamicResource AiChatForeground}"
+                                                     Background="{DynamicResource AiChatInputBackground}"
+                                                     BorderBrush="{DynamicResource AiChatBorder}"
+                                                     BorderThickness="1"
+                                                     Cursor="Hand"
+                                                     ToolTip="Formatting options" />
+                            <Popup PlacementTarget="{Binding ElementName=FormattingOptionsButton}"
+                                   Placement="Bottom"
+                                   HorizontalOffset="0"
+                                   VerticalOffset="2"
+                                   IsOpen="{Binding IsChecked, ElementName=FormattingOptionsButton}"
+                                   StaysOpen="False"
+                                   AllowsTransparency="True">
+                                <Border Background="{DynamicResource AiChatInputBackground}"
+                                        BorderBrush="{DynamicResource AiChatBorder}"
+                                        BorderThickness="1"
+                                        Padding="8,6"
+                                        MinWidth="190">
+                                    <StackPanel>
+                                        <CheckBox x:Name="AutoExpandThinkingCheckBox"
+                                                  Content="Auto expand thinking"
+                                                  Margin="0,0,0,4"
+                                                  Foreground="{DynamicResource AiChatForeground}"
+                                                  ToolTip="Expand thinking sections by default when they are shown." />
+                                        <CheckBox x:Name="AutoExpandToolsCheckBox"
+                                                  Content="Auto expand tools"
+                                                  Margin="0,0,0,4"
+                                                  Foreground="{DynamicResource AiChatForeground}"
+                                                  ToolTip="Expand tool call sections by default when they are shown." />
+                                        <CheckBox x:Name="RemoveVerticalWhitespaceCheckBox"
+                                                  Content="Remove vertical whitespace"
+                                                  IsChecked="True"
+                                                  Margin="0,0,0,4"
+                                                  Foreground="{DynamicResource AiChatForeground}"
+                                                  ToolTip="Remove empty lines from rendered assistant output to make responses more compact." />
+                                        <Separator Margin="0,2,0,6" />
+                                        <CheckBox x:Name="RawTextCheckBox"
+                                                  Content="Raw mode"
+                                                  Foreground="{DynamicResource AiChatForeground}"
+                                                  ToolTip="Show raw text sent to and received from the model, without markdown formatting." />
+                                        <CheckBox x:Name="DisableStreamingCheckBox"
+                                                  Content="Disable Streaming"
+                                                  Margin="0,4,0,0"
+                                                  Foreground="{DynamicResource AiChatForeground}"
+                                                  ToolTip="Show model replies only after the full response is complete." />
+                                    </StackPanel>
+                                </Border>
+                            </Popup>
+                        </Grid>
+                    </StackPanel>
+                    <primitives:ToggleButton DockPanel.Dock="Right"
+                                             x:Name="ModelPickerButton"
+                                             Padding="6,2"
+                                             MinWidth="120"
+                                             MaxWidth="260"
+                                             Margin="8,0,0,0"
+                                             FontSize="11"
+                                             VerticalAlignment="Center"
+                                             Foreground="{DynamicResource AiChatForeground}"
+                                             Background="{DynamicResource AiChatInputBackground}"
+                                             BorderBrush="{DynamicResource AiChatBorder}"
+                                             BorderThickness="1"
+                                             Cursor="Hand"
+                                             ToolTip="Select provider and model"
+                                             IsChecked="False"
+                                             Click="ModelPickerButton_Click" />
+                </DockPanel>
             </Grid>
         </Border>
 
@@ -236,94 +254,17 @@
                 Padding="8,2"
                 BorderThickness="0,1,0,0"
                 BorderBrush="{DynamicResource AiChatBorder}">
-            <Grid>
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="Auto" />
-                </Grid.ColumnDefinitions>
-                <StackPanel Grid.Column="0"
-                            Orientation="Vertical"
-                            Margin="0,0,8,0">
-                    <TextBlock x:Name="StatsBar"
-                               Text=""
-                               FontSize="11"
-                               Foreground="{DynamicResource AiChatSecondaryForeground}" />
-                    <TextBlock x:Name="ContextWindowBar"
-                               Text="window: 0 msgs  •  est: 0/12,000 tok"
-                               FontSize="10"
-                               Foreground="{DynamicResource AiChatSecondaryForeground}"
-                               Margin="0,1,0,0" />
-                </StackPanel>
-                <StackPanel Grid.Column="1"
-                            Orientation="Horizontal"
-                            HorizontalAlignment="Right"
-                            VerticalAlignment="Center">
-                    <ComboBox x:Name="ProviderSelector"
-                               VerticalAlignment="Top"
-                               FontSize="11"
-                               MinWidth="100"
-                               DisplayMemberPath="DisplayName"
-                               SelectionChanged="ProviderSelector_SelectionChanged"
-                               Foreground="{DynamicResource AiChatForeground}"
-                               Background="{DynamicResource AiChatInputBackground}"
-                               BorderBrush="{DynamicResource AiChatBorder}"
-                               BorderThickness="1"
-                               Margin="0,0,6,0"
-                               ToolTip="Select AI provider">
-                        <ComboBox.Resources>
-                            <SolidColorBrush x:Key="{x:Static SystemColors.WindowBrushKey}"
-                                             Color="{Binding Color, Source={DynamicResource AiChatInputBackground}}" />
-                            <SolidColorBrush x:Key="{x:Static SystemColors.ControlBrushKey}"
-                                             Color="{Binding Color, Source={DynamicResource AiChatInputBackground}}" />
-                            <Style TargetType="ComboBoxItem">
-                                <Setter Property="Background" Value="{DynamicResource AiChatInputBackground}" />
-                                <Setter Property="Foreground" Value="{DynamicResource AiChatForeground}" />
-                                <Style.Triggers>
-                                    <Trigger Property="IsHighlighted" Value="True">
-                                        <Setter Property="Background" Value="{DynamicResource ButtonMouseOverBackground}" />
-                                        <Setter Property="Foreground" Value="{DynamicResource AiChatSendButtonForeground}" />
-                                    </Trigger>
-                                    <Trigger Property="IsSelected" Value="True">
-                                        <Setter Property="Background" Value="{DynamicResource ButtonPressedBackground}" />
-                                        <Setter Property="Foreground" Value="{DynamicResource AiChatSendButtonForeground}" />
-                                    </Trigger>
-                                </Style.Triggers>
-                            </Style>
-                        </ComboBox.Resources>
-                    </ComboBox>
-                    <ComboBox x:Name="ModelSelector"
-                              VerticalAlignment="Top"
-                              FontSize="11"
-                              MinWidth="180"
-                              SelectionChanged="ModelSelector_SelectionChanged"
-                              Foreground="{DynamicResource AiChatForeground}"
-                              Background="{DynamicResource AiChatInputBackground}"
-                              BorderBrush="{DynamicResource AiChatBorder}"
-                              BorderThickness="1"
-                              ToolTip="Select a model for the active provider">
-                        <ComboBox.Resources>
-                            <SolidColorBrush x:Key="{x:Static SystemColors.WindowBrushKey}"
-                                             Color="{Binding Color, Source={DynamicResource AiChatInputBackground}}" />
-                            <SolidColorBrush x:Key="{x:Static SystemColors.ControlBrushKey}"
-                                             Color="{Binding Color, Source={DynamicResource AiChatInputBackground}}" />
-                            <Style TargetType="ComboBoxItem">
-                                <Setter Property="Background" Value="{DynamicResource AiChatInputBackground}" />
-                                <Setter Property="Foreground" Value="{DynamicResource AiChatForeground}" />
-                                <Style.Triggers>
-                                    <Trigger Property="IsHighlighted" Value="True">
-                                        <Setter Property="Background" Value="{DynamicResource ButtonMouseOverBackground}" />
-                                        <Setter Property="Foreground" Value="{DynamicResource AiChatSendButtonForeground}" />
-                                    </Trigger>
-                                    <Trigger Property="IsSelected" Value="True">
-                                        <Setter Property="Background" Value="{DynamicResource ButtonPressedBackground}" />
-                                        <Setter Property="Foreground" Value="{DynamicResource AiChatSendButtonForeground}" />
-                                    </Trigger>
-                                </Style.Triggers>
-                            </Style>
-                        </ComboBox.Resources>
-                    </ComboBox>
-                </StackPanel>
-            </Grid>
+            <StackPanel Orientation="Vertical">
+                <TextBlock x:Name="StatsBar"
+                           Text=""
+                           FontSize="11"
+                           Foreground="{DynamicResource AiChatSecondaryForeground}" />
+                <TextBlock x:Name="ContextWindowBar"
+                           Text="window: 0 msgs  •  est: 0/12,000 tok"
+                           FontSize="10"
+                           Foreground="{DynamicResource AiChatSecondaryForeground}"
+                           Margin="0,1,0,0" />
+            </StackPanel>
         </Border>
 
         <!-- Reference bar -->
@@ -446,6 +387,116 @@
                         Margin="0"
                         Panel.ZIndex="1"
                         Visibility="Collapsed" />
+
+            <!-- Model/Provider picker overlay -->
+            <Border x:Name="ModelPickerOverlay"
+                    VerticalAlignment="Top"
+                    HorizontalAlignment="Stretch"
+                    Height="280"
+                    Panel.ZIndex="2"
+                    Visibility="Collapsed"
+                    Background="{DynamicResource AiChatInputBackground}"
+                    BorderBrush="{DynamicResource AiChatBorder}"
+                    BorderThickness="0,0,0,1"
+                    Padding="0"
+                    MouseDown="ModelPickerOverlay_MouseDown">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="1*" />
+                        <ColumnDefinition Width="2*" />
+                    </Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+                    <TextBlock Grid.Row="0"
+                               Grid.Column="0"
+                               Text="Provider"
+                               FontSize="11"
+                               FontWeight="SemiBold"
+                               Foreground="{DynamicResource AiChatSecondaryForeground}"
+                               Padding="8,6,4,4" />
+                    <TextBlock Grid.Row="0"
+                               Grid.Column="1"
+                               Text="Model"
+                               FontSize="11"
+                               FontWeight="SemiBold"
+                               Foreground="{DynamicResource AiChatSecondaryForeground}"
+                               Padding="4,6,8,4" />
+                    <ListBox x:Name="ProviderListBox"
+                             Grid.Row="1"
+                             Grid.Column="0"
+                             DisplayMemberPath="DisplayName"
+                             FontSize="11"
+                             Foreground="{DynamicResource AiChatForeground}"
+                             Background="Transparent"
+                             BorderThickness="0,0,1,0"
+                             BorderBrush="{DynamicResource AiChatBorder}"
+                             SelectionChanged="ProviderListBox_SelectionChanged"
+                             Padding="4,0"
+                             ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                        <ListBox.Resources>
+                            <Style TargetType="ListBoxItem">
+                                <Setter Property="Padding" Value="8,4" />
+                                <Setter Property="Cursor" Value="Hand" />
+                                <Setter Property="Background" Value="Transparent" />
+                                <Style.Triggers>
+                                    <Trigger Property="IsMouseOver" Value="True">
+                                        <Setter Property="Background" Value="{DynamicResource ButtonMouseOverBackground}" />
+                                    </Trigger>
+                                    <Trigger Property="IsSelected" Value="True">
+                                        <Setter Property="Background" Value="{DynamicResource ButtonPressedBackground}" />
+                                        <Setter Property="Foreground" Value="{DynamicResource AiChatSendButtonForeground}" />
+                                    </Trigger>
+                                </Style.Triggers>
+                            </Style>
+                        </ListBox.Resources>
+                    </ListBox>
+                    <ListBox x:Name="ModelListBox"
+                             Grid.Row="1"
+                             Grid.Column="1"
+                             FontSize="11"
+                             Foreground="{DynamicResource AiChatForeground}"
+                             Background="Transparent"
+                             BorderThickness="0"
+                             SelectionChanged="ModelListBox_SelectionChanged"
+                             Padding="4,0"
+                             ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                        <ListBox.Resources>
+                            <Style TargetType="ListBoxItem">
+                                <Setter Property="Padding" Value="8,4" />
+                                <Setter Property="Cursor" Value="Hand" />
+                                <Setter Property="Background" Value="Transparent" />
+                                <Style.Triggers>
+                                    <Trigger Property="IsMouseOver" Value="True">
+                                        <Setter Property="Background" Value="{DynamicResource ButtonMouseOverBackground}" />
+                                    </Trigger>
+                                    <Trigger Property="IsSelected" Value="True">
+                                        <Setter Property="Background" Value="{DynamicResource ButtonPressedBackground}" />
+                                        <Setter Property="Foreground" Value="{DynamicResource AiChatSendButtonForeground}" />
+                                    </Trigger>
+                                </Style.Triggers>
+                            </Style>
+                        </ListBox.Resources>
+                    </ListBox>
+                    <!-- Close button at bottom right -->
+                    <Button Grid.Row="2"
+                            Grid.Column="1"
+                            x:Name="ModelPickerCloseButton"
+                            Content="✕ Close"
+                            Click="ModelPickerCloseButton_Click"
+                            Padding="8,3"
+                            Margin="0,4,6,4"
+                            FontSize="11"
+                            HorizontalAlignment="Right"
+                            Cursor="Hand"
+                            Foreground="{DynamicResource AiChatForeground}"
+                            Background="{DynamicResource AiChatInputBackground}"
+                            BorderBrush="{DynamicResource AiChatBorder}"
+                            BorderThickness="1" />
+                </Grid>
+            </Border>
         </Grid>
     </DockPanel>
 </UserControl>

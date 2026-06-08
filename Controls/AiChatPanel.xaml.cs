@@ -29,7 +29,6 @@ public partial class AiChatPanel : UserControl
     private CancellationTokenSource? _modelDiscoveryCts;
     private CancellationTokenSource? _streamCts;
     private bool _isStreaming;
-    private bool _isUpdatingModelListSelection;
     private AiUsageStats? _aggregatedUsageStats;
     private Func<IReadOnlyList<ProjectItem>>? _projectItemsProvider;
     private Func<string?>? _projectConversationKeyProvider;
@@ -2038,28 +2037,122 @@ public partial class AiChatPanel : UserControl
         SavePersistedConversation();
     }
 
-    private async void ProviderSelector_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    /// <summary>
+    /// Called when the model picker toggle button is clicked.
+    /// Toggles the visibility of the provider/model overlay panel.
+    /// </summary>
+    private void ModelPickerButton_Click(object sender, RoutedEventArgs e)
     {
-        if (ProviderSelector.SelectedItem is not IAiProvider selected)
+        if (ModelPickerOverlay.Visibility == Visibility.Visible)
+        {
+            CloseModelPickerOverlay();
+        }
+        else
+        {
+            OpenModelPickerOverlay();
+        }
+    }
+
+    /// <summary>
+    /// Opens the overlay panel and populates the provider and model lists.
+    /// </summary>
+    private void OpenModelPickerOverlay()
+    {
+        PopulateProviderList();
+
+        // Select the active provider and its current model
+        if (_provider is not null && ProviderListBox.Items.Count > 0)
+        {
+            ProviderListBox.SelectedItem = _provider;
+        }
+
+        RefreshModelListBox();
+
+        ModelPickerOverlay.Visibility = Visibility.Visible;
+    }
+
+    private void CloseModelPickerOverlay()
+    {
+        ModelPickerOverlay.Visibility = Visibility.Collapsed;
+        ModelPickerButton.IsChecked = false;
+    }
+
+    /// <summary>
+    /// Populates the provider list from the registry.
+    /// </summary>
+    private void PopulateProviderList()
+    {
+        if (_providerRegistry is null || _providerRegistry.Providers.Count == 0)
+        {
+            ProviderListBox.ItemsSource = null;
+            return;
+        }
+
+        ProviderListBox.ItemsSource = _providerRegistry.Providers;
+    }
+
+    /// <summary>
+    /// Called when the selected provider in the overlay list changes.
+    /// Updates the active provider and refreshes the model list.
+    /// </summary>
+    private async void ProviderListBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (ProviderListBox.SelectedItem is not IAiProvider selected)
         {
             return;
         }
 
         _providerRegistry?.SetActiveProvider(selected);
+        Configure(selected, null);
 
-        AiProviderSettings? matchingSettings = _providerRegistry?.GetSettings(selected);
-        Configure(selected, matchingSettings?.SelectedModel);
-        await RefreshModelListAsync(selected, matchingSettings?.SelectedModel);
+        await RefreshOverlayModelListAsync(selected);
     }
 
-    private void ModelSelector_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    /// <summary>
+    /// Called when the selected model in the overlay list changes.
+    /// Updates the active model but keeps the overlay open so the user
+    /// can browse other providers/models before dismissing.
+    /// </summary>
+    private void ModelListBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (_isUpdatingModelListSelection || ModelSelector.SelectedItem is not string selectedModel)
+        if (ModelListBox.SelectedItem is not string selectedModel)
         {
             return;
         }
 
         _model = selectedModel;
+        UpdateModelPickerButtonText();
+    }
+
+    /// <summary>
+    /// Called when the close button in the overlay is clicked.
+    /// Dismisses the model/provider picker overlay.
+    /// </summary>
+    private void ModelPickerCloseButton_Click(object sender, RoutedEventArgs e)
+    {
+        CloseModelPickerOverlay();
+    }
+
+    /// <summary>
+    /// Dismisses the overlay when clicking on the background border
+    /// (but not on the list items inside it).
+    /// </summary>
+    private void ModelPickerOverlay_MouseDown(object sender, MouseButtonEventArgs e)
+    {
+        // Only close if the click is directly on the Border background,
+        // not on a child element.
+        if (e.OriginalSource == sender)
+        {
+            CloseModelPickerOverlay();
+        }
+    }
+
+    /// <summary>
+    /// Updates the <see cref="ModelPickerButton"/> content to show the current model name.
+    /// </summary>
+    private void UpdateModelPickerButtonText()
+    {
+        ModelPickerButton.Content = _model ?? "Select model...";
     }
 
     /// <summary>
@@ -2072,33 +2165,26 @@ public partial class AiChatPanel : UserControl
             return;
         }
 
-        ProviderSelector.SelectionChanged -= ProviderSelector_SelectionChanged;
-        ProviderSelector.ItemsSource = _providerRegistry.Providers;
-
         IAiProvider? active = _providerRegistry.ActiveProvider;
         if (active is not null)
         {
             AiProviderSettings? activeSettings = _providerRegistry.GetSettings(active);
-            ProviderSelector.SelectedItem = active;
             Configure(active, activeSettings?.SelectedModel);
-            await RefreshModelListAsync(active, activeSettings?.SelectedModel);
+            await RefreshOverlayModelListAsync(active, activeSettings?.SelectedModel);
         }
         else if (_providerRegistry.Providers.Count > 0)
         {
             IAiProvider firstProvider = _providerRegistry.Providers[0];
             AiProviderSettings? firstProviderSettings = _providerRegistry.GetSettings(firstProvider);
-            ProviderSelector.SelectedIndex = 0;
             Configure(firstProvider, firstProviderSettings?.SelectedModel);
-            await RefreshModelListAsync(firstProvider, firstProviderSettings?.SelectedModel);
+            await RefreshOverlayModelListAsync(firstProvider, firstProviderSettings?.SelectedModel);
         }
         else
         {
-            ProviderSelector.SelectedItem = null;
             Configure(null);
-            await RefreshModelListAsync(null, null);
+            ModelListBox.ItemsSource = null;
+            UpdateModelPickerButtonText();
         }
-
-        ProviderSelector.SelectionChanged += ProviderSelector_SelectionChanged;
     }
 
     private void ProviderRegistry_ProvidersChanged(object? sender, EventArgs e)
@@ -2112,19 +2198,27 @@ public partial class AiChatPanel : UserControl
         RefreshProviderSelector();
     }
 
-    private async Task RefreshModelListAsync(IAiProvider? provider, string? preferredModel)
+    /// <summary>
+    /// Refreshes the model list in the overlay for the given provider.
+    /// Attempts async model discovery but falls back to <see cref="IAiProvider.AvailableModels"/>.
+    /// </summary>
+    private async Task RefreshOverlayModelListAsync(IAiProvider? provider, string? preferredModel = null)
     {
         CancelModelDiscovery();
 
         if (provider is null)
         {
-            ApplyModelList([], null);
+            ModelListBox.ItemsSource = null;
+            UpdateModelPickerButtonText();
             return;
         }
 
-        IReadOnlyList<string> fallbackModels = BuildSelectableModelList(provider.AvailableModels, preferredModel ?? _model);
-        ApplyModelList(fallbackModels, preferredModel ?? _model);
+        // Populate with currently known models immediately
+        string effectivePreferred = preferredModel ?? _model;
+        IReadOnlyList<string> fallbackModels = BuildSelectableModelList(provider.AvailableModels, effectivePreferred);
+        ApplyOverlayModelList(fallbackModels, effectivePreferred);
 
+        // Then attempt async discovery
         CancellationTokenSource modelDiscoveryCts = new();
         _modelDiscoveryCts = modelDiscoveryCts;
 
@@ -2143,27 +2237,39 @@ public partial class AiChatPanel : UserControl
             return;
         }
 
-        IReadOnlyList<string> selectableModels = BuildSelectableModelList(discoveredModels, preferredModel ?? _model);
-        ApplyModelList(selectableModels, preferredModel ?? _model);
+        IReadOnlyList<string> selectableModels = BuildSelectableModelList(discoveredModels, effectivePreferred);
+        ApplyOverlayModelList(selectableModels, effectivePreferred);
     }
 
-    private void ApplyModelList(IReadOnlyList<string> models, string? preferredModel)
+    /// <summary>
+    /// Applies a list of model strings to the overlay model list box
+    /// and selects the best matching model.
+    /// </summary>
+    private void ApplyOverlayModelList(IReadOnlyList<string> models, string? preferredModel)
     {
-        ArgumentNullException.ThrowIfNull(models);
+        ModelListBox.ItemsSource = models;
 
-        _isUpdatingModelListSelection = true;
-        try
+        string? selectedModel = SelectInitialModel(models, preferredModel);
+        ModelListBox.SelectedItem = selectedModel;
+        _model = selectedModel;
+        UpdateModelPickerButtonText();
+    }
+
+    /// <summary>
+    /// Refreshes the model list in the overlay to match the currently selected provider
+    /// without changing the provider.
+    /// </summary>
+    private void RefreshModelListBox()
+    {
+        if (_provider is null)
         {
-            ModelSelector.ItemsSource = models;
-            ModelSelector.IsEnabled = models.Count > 0;
-            string? selectedModel = SelectInitialModel(models, preferredModel);
-            ModelSelector.SelectedItem = selectedModel;
-            _model = selectedModel;
+            ModelListBox.ItemsSource = null;
+            return;
         }
-        finally
-        {
-            _isUpdatingModelListSelection = false;
-        }
+
+        IReadOnlyList<string> models = BuildSelectableModelList(_provider.AvailableModels, _model);
+        ModelListBox.ItemsSource = models;
+        ModelListBox.SelectedItem = _model;
     }
 
     private void CancelModelDiscovery()
@@ -4435,9 +4541,9 @@ public partial class AiChatPanel : UserControl
             sb.AppendLine("═══════════════════════════════════════════════════════════════");
             sb.AppendLine();
 
-            if (ProviderSelector.SelectedItem is IAiProvider selectedProvider)
+            if (_provider is not null)
             {
-                sb.AppendLine($"Provider: {selectedProvider.DisplayName}");
+                sb.AppendLine($"Provider: {_provider.DisplayName}");
                 sb.AppendLine();
             }
 
