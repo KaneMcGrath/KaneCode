@@ -84,6 +84,7 @@ public partial class MainWindow : Window
         _viewModel.PropertyChanged += OnViewModelPropertyChanged;
         _viewModel.CodeActionsReady += OnCodeActionsReady;
         _viewModel.InlineRenameRequested += OnInlineRenameRequested;
+        _viewModel.NuGetPackageHighlightRequested += OnNuGetPackageHighlightRequested;
 
         // Ctrl+Click triggers Go to Definition
         CodeEditor.PreviewMouseLeftButtonUp += CodeEditor_PreviewMouseLeftButtonUp;
@@ -117,6 +118,7 @@ public partial class MainWindow : Window
         _viewModel.PropertyChanged -= OnViewModelPropertyChanged;
         _viewModel.CodeActionsReady -= OnCodeActionsReady;
         _viewModel.InlineRenameRequested -= OnInlineRenameRequested;
+        _viewModel.NuGetPackageHighlightRequested -= OnNuGetPackageHighlightRequested;
         CloseRenamePreviewPopup();
         HotkeyManager.BindingsChanged -= ApplyHotkeyBindings;
         _themeManager.ThemeChanged -= _viewModel.OnThemeChanged;
@@ -212,6 +214,29 @@ public partial class MainWindow : Window
         }
 
         var window = new NuGetPackageManagerWindow(projectPaths, this);
+        window.ShowDialog();
+    }
+
+    /// <summary>
+    /// Opens the NuGet Package Manager and highlights the specified package.
+    /// Called when a Package node is double-clicked in the explorer tree.
+    /// </summary>
+    private void OnNuGetPackageHighlightRequested(string packageId)
+    {
+        var projectPaths = NuGetService.GetProjectPaths(
+            _viewModel.LoadedSolutionProjectPaths,
+            _viewModel.LoadedProjectOrSolutionPath);
+
+        if (projectPaths.Count == 0)
+        {
+            MessageBox.Show("Open a .NET project or solution first to manage NuGet packages.",
+                "NuGet Package Manager",
+                MessageBoxButton.OK,
+                MessageBoxImage.Information);
+            return;
+        }
+
+        var window = new NuGetPackageManagerWindow(projectPaths, this, highlightPackageId: packageId);
         window.ShowDialog();
     }
 

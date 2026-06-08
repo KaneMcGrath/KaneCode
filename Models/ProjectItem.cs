@@ -12,7 +12,13 @@ public enum ProjectItemType
     File,
     Folder,
     Project,
-    Solution
+    Solution,
+    /// <summary>A virtual "Dependencies" container node under a project.</summary>
+    Dependencies,
+    /// <summary>Represents a target framework entry (e.g., net8.0-windows7.0).</summary>
+    Framework,
+    /// <summary>Represents a NuGet package dependency.</summary>
+    Package
 }
 
 /// <summary>
@@ -26,25 +32,35 @@ public sealed class ProjectItem : ObservableObject
     }
 
     public ProjectItem(string fullPath, ProjectItemType itemType)
+        : this(fullPath, itemType, displayName: null)
+    {
+    }
+
+    /// <summary>
+    /// Creates a <see cref="ProjectItem"/> with an explicit display name.
+    /// When <paramref name="displayName"/> is null, the name is derived from <paramref name="fullPath"/>.
+    /// </summary>
+    public ProjectItem(string fullPath, ProjectItemType itemType, string? displayName)
     {
         FullPath = fullPath;
-        Name = Path.GetFileName(fullPath);
+        Name = displayName ?? Path.GetFileName(fullPath);
         ItemType = itemType;
     }
 
-    /// <summary>Absolute path to the file or directory.</summary>
+    /// <summary>Absolute path to the file or directory. For virtual nodes this may be a synthetic path.</summary>
     public string FullPath { get; }
 
-    /// <summary>Display name (file/folder name only).</summary>
+    /// <summary>Display name shown in the explorer tree.</summary>
     public string Name { get; }
 
-    /// <summary>The kind of node (Solution, Project, Folder, File).</summary>
+    /// <summary>The kind of node (Solution, Project, Folder, File, Dependencies, Framework, Package).</summary>
     public ProjectItemType ItemType { get; }
 
-    /// <summary>True when this node represents a directory, project, or solution.</summary>
+    /// <summary>True when this node can contain children.</summary>
     public bool IsDirectory => ItemType is ProjectItemType.Folder
                             or ProjectItemType.Project
-                            or ProjectItemType.Solution;
+                            or ProjectItemType.Solution
+                            or ProjectItemType.Dependencies;
 
     /// <summary>Child items (populated for directories).</summary>
     public ObservableCollection<ProjectItem> Children { get; } = [];
@@ -94,6 +110,9 @@ public sealed class ProjectItem : ObservableObject
         ProjectItemType.Solution => "🗂️",
         ProjectItemType.Project => "📦",
         ProjectItemType.Folder => "📁",
+        ProjectItemType.Dependencies => "🔌",
+        ProjectItemType.Framework => "⚙️",
+        ProjectItemType.Package => "📦",
         ProjectItemType.File => GetFileIcon(),
         _ => "📄"
     };

@@ -591,6 +591,14 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
             return;
         }
 
+        // Virtual dependency nodes are not real filesystem folders
+        if (selectedItem?.ItemType is ProjectItemType.Dependencies or ProjectItemType.Framework or ProjectItemType.Package)
+        {
+            MessageBox.Show("Cannot create a file under a dependency node.",
+                "New File", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
         var targetFolder = ResolveTemplateTargetFolder(selectedItem, ProjectRootPath);
         var suggestedFileName = $"New{SanitizeTemplateName(templateName)}.cs";
         var fileName = PromptForFileName(suggestedFileName);
@@ -1880,12 +1888,39 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
         ActivateTab(tab);
     }
 
+    /// <summary>
+    /// Raised when a NuGet package node is double-clicked in the explorer tree.
+    /// The argument is the package ID to highlight in the NuGet Package Manager.
+    /// </summary>
+    internal event Action<string>? NuGetPackageHighlightRequested;
+
     public void OnProjectItemSelected(ProjectItem item)
     {
         ArgumentNullException.ThrowIfNull(item);
 
         // Double-clicking a project/solution node toggles expansion
         if (item.ItemType is ProjectItemType.Project or ProjectItemType.Solution)
+        {
+            item.IsExpanded = !item.IsExpanded;
+            return;
+        }
+
+        // Double-clicking a NuGet package node opens the package manager to highlight it
+        if (item.ItemType is ProjectItemType.Package)
+        {
+            // Extract the package ID from the display name: "AvalonDock v4.72.1" -> "AvalonDock"
+            string displayName = item.Name;
+            int spaceIndex = displayName.LastIndexOf(" v", StringComparison.Ordinal);
+            string packageId = spaceIndex > 0
+                ? displayName[..spaceIndex]
+                : displayName;
+
+            NuGetPackageHighlightRequested?.Invoke(packageId);
+            return;
+        }
+
+        // Virtual dependency/framework nodes toggle expansion
+        if (item.ItemType is ProjectItemType.Dependencies or ProjectItemType.Framework)
         {
             item.IsExpanded = !item.IsExpanded;
             return;
@@ -1912,6 +1947,14 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
         if (item.ItemType is ProjectItemType.Project or ProjectItemType.Solution)
         {
             MessageBox.Show("Cannot delete a project or solution node from the explorer.",
+                "Delete", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        // Don't allow deleting virtual dependency nodes
+        if (item.ItemType is ProjectItemType.Dependencies or ProjectItemType.Framework or ProjectItemType.Package)
+        {
+            MessageBox.Show("Cannot delete a dependency node from the explorer.",
                 "Delete", MessageBoxButton.OK, MessageBoxImage.Information);
             return;
         }
@@ -1994,6 +2037,14 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
             return;
         }
 
+        // Don't allow renaming virtual dependency nodes
+        if (item.ItemType is ProjectItemType.Dependencies or ProjectItemType.Framework or ProjectItemType.Package)
+        {
+            MessageBox.Show("Cannot rename a dependency node from the explorer.",
+                "Rename", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
         var newName = PromptForInput("Rename", "New name:", item.Name);
         if (string.IsNullOrWhiteSpace(newName) || newName == item.Name)
         {
@@ -2070,6 +2121,14 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
         {
             MessageBox.Show("Load a project or folder first.", "New Folder",
                 MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        // Virtual dependency nodes are not real filesystem folders
+        if (selectedItem?.ItemType is ProjectItemType.Dependencies or ProjectItemType.Framework or ProjectItemType.Package)
+        {
+            MessageBox.Show("Cannot create a folder under a dependency node.",
+                "New Folder", MessageBoxButton.OK, MessageBoxImage.Information);
             return;
         }
 

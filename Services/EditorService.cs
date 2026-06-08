@@ -4,6 +4,7 @@ using KaneCode.Theming;
 using System.IO;
 using System.Windows;
 using System.Windows.Media;
+using System.Xml.Linq;
 
 namespace KaneCode.Services;
 
@@ -153,7 +154,8 @@ internal static class EditorService
 
     /// <summary>
     /// Builds a tree rooted at a .csproj file. The project file becomes the root node
-    /// with its directory contents as children.
+    /// with its directory contents as children, plus a Dependencies virtual folder
+    /// listing the target framework and NuGet packages.
     /// </summary>
     public static ProjectItem BuildProjectTree(string projectPath)
     {
@@ -162,6 +164,7 @@ internal static class EditorService
         var projectDir = Path.GetDirectoryName(projectPath)!;
         var root = new ProjectItem(projectPath, ProjectItemType.Project) { IsExpanded = true };
         PopulateChildren(root, new DirectoryInfo(projectDir));
+        AttachDependenciesNode(root, projectPath);
         return root;
     }
 
@@ -193,6 +196,7 @@ internal static class EditorService
                 IsExpanded = string.Equals(projectDir, solutionDir, StringComparison.OrdinalIgnoreCase)
             };
             PopulateChildren(projectNode, new DirectoryInfo(projectDir));
+            AttachDependenciesNode(projectNode, projectPath);
             root.Children.Add(projectNode);
         }
 
@@ -290,6 +294,107 @@ internal static class EditorService
         catch (UnauthorizedAccessException)
         {
             // Skip directories we can't access
+        }
+    }
+
+    // ── Dependencies tree helpers ─────────────────────────────────────
+
+    /// <summary>
+    /// Reads the .csproj at <paramref name="projectPath"/> and attaches a "Dependencies"
+    /// virtual folder to <paramref name="projectNode"/> containing framework and NuGet package info.
+    /// </summary>
+    internal static void AttachDependenciesNode(ProjectItem projectNode, string projectPath)
+    {
+        if (!File.Exists(projectPath) ||
+            !projectPath.EndsWith(".csproj", StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        try
+        {
+            var doc = XDocument.Load(projectPath);
+            var ns = doc.Root?.GetDefaultNamespace() ?? XNamespace.None;
+
+            // ── Frameworks ──────────────────────────────────────────
+            var frameworks = new List<string>();
+
+            // Read TargetFramework (single) or TargetFrameworks (semicolon-separated)
+            var firstPropertyGroup = doc.Descendants(ns + "PropertyGroup").FirstOrDefault();
+            if (firstPropertyGroup is not null)
+            {
+                string? single = (string?)firstPropertyGroup.Element(ns + "TargetFramework");
+                if (!string.IsNullOrWhiteSpace(single))
+                {
+                    frameworks.Add(single);
+                }
+                else
+                {
+                    string? multi = (string?)firstPropertyGroup.Element(ns + "TargetFrameworks");
+                    if (!string.IsNullOrWhiteSpace(multi))
+                    {
+                        foreach (var tfm in multi.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+                        {
+                            frameworks.Add(tfm);
+                        }
+                    }
+                }
+            }
+
+            // ── Packages ────────────────────────────────────────────
+            var packages = new List<(string id, string version)>();
+            foreach (var pr in doc.Descendants(ns + "PackageReference"))
+            {
+                var id = (string?)pr.Attribute("Include");
+                var version = (string?)pr.Attribute("Version");
+                if (!string.IsNullOrWhiteSpace(id) && !string.IsNullOrWhiteSpace(version))
+                {
+                    packages.Add((id, version));
+                }
+            }
+
+            if (frameworks.Count == 0 && packages.Count == 0)
+            {
+                return; // Nothing to show
+            }
+
+            // Build the Dependencies node (auto-expanded so frameworks/packages are visible)
+            var depsNode = new ProjectItem(
+                Path.Combine(projectPath, ".dependencies"),
+                ProjectItemType.Dependencies,
+                displayName: "Dependencies")
+            {
+                IsExpanded = true
+            };
+
+            // Add framework(s)
+            foreach (var tfm in frameworks)
+            {
+                var frameworkPath = Path.Combine(projectPath, ".dependencies", tfm);
+                depsNode.Children.Add(new ProjectItem(
+                    frameworkPath,
+                    ProjectItemType.Framework,
+                    displayName: tfm));
+            }
+
+            // Add package(s) sorted by name
+            foreach (var (id, version) in packages.OrderBy(p => p.id, StringComparer.OrdinalIgnoreCase))
+            {
+                var packagePath = Path.Combine(projectPath, ".dependencies", id);
+                // Display as "PackageId vVersion"
+                depsNode.Children.Add(new ProjectItem(
+                    packagePath,
+                    ProjectItemType.Package,
+                    displayName: $"{id} v{version}"));
+            }
+
+            projectNode.Children.Insert(0, depsNode);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.Xml.XmlException)
+        {
+            // If we can't read the project file, skip dependency nodes
+            System.Diagnostics.Debug.WriteLine(
+                $"Failed to read dependencies from {projectPath}: {ex.Message}");
         }
     }
 }

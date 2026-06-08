@@ -24,18 +24,26 @@ public partial class NuGetPackageManagerWindow : Window
     private string? _selectedPackageId;
     private IReadOnlyList<NuGetVersion>? _availableVersions;
     private bool _isConnected;
+    private readonly string? _highlightPackageId;
 
     /// <summary>
     /// Creates a new NuGet Package Manager window.
     /// </summary>
     /// <param name="projectPaths">List of .csproj file paths to manage packages for.</param>
     /// <param name="owner">Owner window.</param>
-    public NuGetPackageManagerWindow(IReadOnlyList<string> projectPaths, Window owner)
+    /// <summary>
+    /// Creates a new NuGet Package Manager window.
+    /// </summary>
+    /// <param name="projectPaths">List of .csproj file paths to manage packages for.</param>
+    /// <param name="owner">Owner window.</param>
+    /// <param name="highlightPackageId">Optional package ID to search for and highlight when the window opens.</param>
+    public NuGetPackageManagerWindow(IReadOnlyList<string> projectPaths, Window owner, string? highlightPackageId = null)
     {
         InitializeComponent();
         Owner = owner;
 
         _projectPaths = projectPaths.ToList();
+        _highlightPackageId = highlightPackageId;
 
         // Populate project selector
         foreach (var path in _projectPaths)
@@ -70,11 +78,56 @@ public partial class NuGetPackageManagerWindow : Window
         {
             RefreshPackageCount();
         }
+
+        // If a highlight package was requested, search and select it
+        if (!string.IsNullOrWhiteSpace(_highlightPackageId))
+        {
+            await HighlightPackageAsync(_highlightPackageId);
+        }
     }
 
     private void OnClosed(object? sender, EventArgs e)
     {
         _nuGetService.Dispose();
+    }
+
+    /// <summary>
+    /// Switches to the Installed tab and selects the specified package in the list.
+    /// Loads installed packages asynchronously, then highlights the matching result.
+    /// </summary>
+    internal async Task HighlightPackageAsync(string packageId)
+    {
+        if (string.IsNullOrWhiteSpace(packageId))
+        {
+            return;
+        }
+
+        // Switch to Installed tab (index 1)
+        if (MainTabControl.SelectedIndex != 1)
+        {
+            MainTabControl.SelectedIndex = 1;
+        }
+
+        // Load installed packages and wait for the list to populate
+        await ShowInstalledPackagesAsync();
+
+        // Find the matching package (by exact ID, case-insensitive)
+        var match = _packageItems.FirstOrDefault(p =>
+            string.Equals(p.Id, packageId, StringComparison.OrdinalIgnoreCase));
+
+        if (match is not null)
+        {
+            // Select and scroll to the matching item
+            PackageListBox.SelectedItem = match;
+            PackageListBox.ScrollIntoView(match);
+        }
+        else if (_packageItems.Count > 0)
+        {
+            // If no exact match, select the first installed package
+            PackageListBox.SelectedIndex = 0;
+        }
+
+        UpdateStatus($"Showing installed package '{packageId}'.");
     }
 
     private void SelectProject()
@@ -206,7 +259,7 @@ public partial class NuGetPackageManagerWindow : Window
         }
     }
 
-    private async Task PerformSearchAsync()
+    internal async Task PerformSearchAsync()
     {
         var query = SearchTextBox.Text.Trim();
         if (string.IsNullOrWhiteSpace(query))
@@ -273,7 +326,7 @@ public partial class NuGetPackageManagerWindow : Window
 
     // ── Installed / Updates tabs ────────────────────────────────────────
 
-    private async Task ShowInstalledPackagesAsync()
+    internal async Task ShowInstalledPackagesAsync()
     {
         if (string.IsNullOrWhiteSpace(_selectedProjectPath))
         {
