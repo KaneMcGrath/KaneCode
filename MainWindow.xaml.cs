@@ -111,6 +111,118 @@ public partial class MainWindow : Window
         // Initialize AI provider registry and configure the chat panel
         _aiProviderRegistry.Reload();
         ConfigureAiChatPanel();
+
+        // Process command-line arguments for opening files/projects/folders
+        ProcessCommandLineArgs();
+    }
+
+    /// <summary>
+    /// Processes command-line arguments passed to the application.
+    /// Supports opening files, projects (.csproj), solutions (.sln, .slnx), and folders.
+    /// When multiple paths are provided, the first project/solution/folder is loaded first,
+    /// then individual files are opened within it.
+    /// </summary>
+    private void ProcessCommandLineArgs()
+    {
+        string[] args = App.CommandLineArgs;
+
+        if (args.Length == 0)
+        {
+            return;
+        }
+
+        // Separate arguments into categories
+        var projectPaths = new List<string>();
+        var folderPaths = new List<string>();
+        var filePaths = new List<string>();
+
+        foreach (string arg in args)
+        {
+            string fullPath;
+            try
+            {
+                fullPath = Path.GetFullPath(arg);
+            }
+            catch (Exception)
+            {
+                // Skip invalid paths
+                continue;
+            }
+
+            if (!File.Exists(fullPath) && !Directory.Exists(fullPath))
+            {
+                // Path doesn't exist — skip it
+                continue;
+            }
+
+            string ext = Path.GetExtension(fullPath);
+            bool isSolution = ext.Equals(".sln", StringComparison.OrdinalIgnoreCase)
+                           || ext.Equals(".slnx", StringComparison.OrdinalIgnoreCase);
+
+            if (isSolution || ext.Equals(".csproj", StringComparison.OrdinalIgnoreCase))
+            {
+                projectPaths.Add(fullPath);
+            }
+            else if (Directory.Exists(fullPath))
+            {
+                folderPaths.Add(fullPath);
+            }
+            else
+            {
+                filePaths.Add(fullPath);
+            }
+        }
+
+        // Load the first project/solution if provided
+        Task? loadTask = null;
+
+        if (projectPaths.Count > 0)
+        {
+            string firstProject = projectPaths[0];
+            string ext = Path.GetExtension(firstProject);
+            bool isSolution = ext.Equals(".sln", StringComparison.OrdinalIgnoreCase)
+                           || ext.Equals(".slnx", StringComparison.OrdinalIgnoreCase);
+
+            if (isSolution)
+            {
+                loadTask = _viewModel.OpenSolutionByPathAsync(firstProject);
+            }
+            else
+            {
+                loadTask = _viewModel.OpenProjectByPathAsync(firstProject);
+            }
+        }
+        else if (folderPaths.Count > 0)
+        {
+            _viewModel.LoadProjectRoot(folderPaths[0]);
+        }
+
+        // Open individual file paths. If a project/solution was loaded, we need to
+        // wait for it to finish before opening files so they land in the correct context.
+        if (filePaths.Count > 0)
+        {
+            if (loadTask is not null)
+            {
+                // Chain file opens after the project load completes
+                _ = loadTask.ContinueWith(_ =>
+                {
+                    Application.Current.Dispatcher.BeginInvoke(() =>
+                    {
+                        foreach (string filePath in filePaths)
+                        {
+                            _viewModel.OpenFileByPath(filePath);
+                        }
+                    });
+                }, TaskContinuationOptions.ExecuteSynchronously);
+            }
+            else
+            {
+                foreach (string filePath in filePaths)
+                {
+                    _viewModel.OpenFileByPath(filePath);
+                }
+            }
+        }
     }
 
     private void OnClosed(object? sender, EventArgs e)
