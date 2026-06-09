@@ -5,6 +5,8 @@ using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Threading;
+using System.Text;
+using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Windows;
@@ -3546,7 +3548,7 @@ public partial class AiChatPanel : UserControl
             TextBlock block = new()
             {
                 Text = FormatRawTranscriptEntry(label, content),
-                TextWrapping = TextWrapping.Wrap,
+                TextWrapping = TextWrapping.NoWrap,
                 Foreground = FindBrush("AiChatSecondaryForeground"),
                 FontSize = 12,
                 FontFamily = new FontFamily("Cascadia Code, Consolas, Courier New"),
@@ -3558,57 +3560,68 @@ public partial class AiChatPanel : UserControl
     }
 
     /// <summary>
-    /// Renders a single captured raw request payload as a formatted text block.
+    /// Pretty-prints a compact JSON string with indentation so lines stay short
+    /// and the content is readable without expensive text wrapping.
+    /// Returns the original text if it is not valid JSON.
+    /// </summary>
+    private static string PrettyPrintJson(string json)
+    {
+        if (string.IsNullOrWhiteSpace(json))
+        {
+            return json;
+        }
+
+        try
+        {
+            using JsonDocument doc = JsonDocument.Parse(json);
+            using MemoryStream stream = new();
+            using (Utf8JsonWriter writer = new(stream, new JsonWriterOptions
+            {
+                Indented = true,
+                Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping
+            }))
+            {
+                doc.WriteTo(writer);
+            }
+
+            return Encoding.UTF8.GetString(stream.ToArray());
+        }
+        catch (JsonException)
+        {
+            return json;
+        }
+    }
+
+    /// <summary>
+    /// Renders a single captured raw request payload as a single monospace
+    /// <see cref="TextBlock"/> with pretty-printed JSON and no text wrapping,
+    /// avoiding the expensive re-measure passes that wrapping large JSON blobs
+    /// triggers on every layout change.
     /// </summary>
     private void RenderRawRequestPayload(RawRequestPayload payload, int sequenceNumber)
     {
-        // Header: endpoint and model
-        TextBlock headerBlock = new()
-        {
-            Text = $"Request #{sequenceNumber + 1} — {payload.EndpointUrl}",
-            TextWrapping = TextWrapping.Wrap,
-            Foreground = FindBrush("AiChatSecondaryForeground"),
-            FontSize = 10,
-            FontFamily = new FontFamily("Cascadia Code, Consolas, Courier New"),
-            FontWeight = FontWeights.Bold,
-            Margin = new Thickness(8, 10, 8, 2)
-        };
-        MessagePanel.Children.Add(headerBlock);
+        // Combine header, model, and pretty-printed JSON into a single string
+        // so we only create one TextBlock per payload instead of 3-4.
+        string prettyJson = PrettyPrintJson(payload.RequestJson);
+        string header = string.IsNullOrWhiteSpace(payload.Model)
+            ? $"Request #{sequenceNumber + 1} — {payload.EndpointUrl}"
+            : $"Request #{sequenceNumber + 1} — {payload.EndpointUrl}  (model: {payload.Model})";
 
-        // Model line
-        if (!string.IsNullOrWhiteSpace(payload.Model))
-        {
-            TextBlock modelBlock = new()
-            {
-                Text = $"model: {payload.Model}",
-                TextWrapping = TextWrapping.Wrap,
-                Foreground = FindBrush("AiChatSecondaryForeground"),
-                FontSize = 10,
-                FontFamily = new FontFamily("Cascadia Code, Consolas, Courier New"),
-                Margin = new Thickness(8, 0, 8, 4)
-            };
-            MessagePanel.Children.Add(modelBlock);
-        }
+        string combined = $"{header}\n\n{prettyJson}";
 
-        // Full request JSON body
         TextBlock requestBlock = new()
         {
-            Text = payload.RequestJson,
-            TextWrapping = TextWrapping.Wrap,
+            Text = combined,
+            // NoWrap avoids the O(n²) re-measure cost of wrapping multi-line JSON
+            // on every layout pass. JSON is already line-broken by pretty-printing,
+            // so content is naturally readable without word wrapping.
+            TextWrapping = TextWrapping.NoWrap,
             Foreground = FindBrush("AiChatForeground"),
             FontSize = 11,
             FontFamily = new FontFamily("Cascadia Code, Consolas, Courier New"),
-            Margin = new Thickness(8, 0, 8, 8)
+            Margin = new Thickness(8, 6, 8, 4)
         };
         MessagePanel.Children.Add(requestBlock);
-
-        // Separator
-        MessagePanel.Children.Add(new System.Windows.Shapes.Rectangle
-        {
-            Height = 1,
-            Fill = FindBrush("AiChatBorder"),
-            Margin = new Thickness(8, 0, 8, 8)
-        });
     }
 
     private bool ShouldAutoExpandThinkingSections()
