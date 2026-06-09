@@ -163,7 +163,9 @@ public partial class MainWindow : Window
         }
 
         if (e.PropertyName == nameof(MainViewModel.BuildSummary)
-            && _viewModel.BuildSummary == "Building...")
+            && _viewModel.BuildSummary is string summary
+            && (summary.StartsWith("Building") || summary.StartsWith("Running")
+                || summary.StartsWith("Build") || summary.StartsWith("Run ")))
         {
             ShowLayoutAnchorable(BuildOutputAnchorable);
         }
