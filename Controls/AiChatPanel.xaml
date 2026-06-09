@@ -217,7 +217,7 @@
                                         <CheckBox x:Name="RawTextCheckBox"
                                                   Content="Raw mode"
                                                   Foreground="{DynamicResource AiChatForeground}"
-                                                  ToolTip="Show raw text sent to and received from the model, without markdown formatting." />
+                                                  ToolTip="Show the raw JSON request payload sent to the API, including system prompt, conversation messages, tool definitions, and inference parameters." />
                                         <CheckBox x:Name="DisableStreamingCheckBox"
                                                   Content="Disable Streaming"
                                                   Margin="0,4,0,0"

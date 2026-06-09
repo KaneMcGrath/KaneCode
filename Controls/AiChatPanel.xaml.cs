@@ -3,6 +3,7 @@ using KaneCode.Services.Ai;
 using KaneCode.Theming;
 using System.Diagnostics;
 using System.IO;
+using System.Linq;
 using System.Threading;
 using System.Text.Json;
 using System.Text.RegularExpressions;
@@ -46,6 +47,27 @@ public partial class AiChatPanel : UserControl
     private bool _isUpdatingConversationSelection;
     private const int DefaultOutboundTokenBudget = AiProviderSettings.DefaultContextLength;
     private const int MaxToolCallIterations = 150;
+
+    // ── Raw Mode state ─────────────────────────────────────────────
+
+    /// <summary>
+    /// Captured raw JSON request payloads for each API call made during the
+    /// current conversation. Each entry holds the full JSON body that was
+    /// serialized and sent over the wire to the provider endpoint.
+    /// </summary>
+    private readonly List<RawRequestPayload> _rawRequestPayloads = [];
+
+    /// <summary>
+    /// Represents a single captured API request payload.
+    /// </summary>
+    private sealed record RawRequestPayload(
+        string EndpointUrl,
+        string Model,
+        string RequestJson,
+        string? ResponseContent,
+        string? ReasoningContent);
+
+    // ── Stream section visuals ──────────────────────────────────────
 
     private sealed class StreamSectionVisual(
         Border root,
@@ -372,6 +394,8 @@ public partial class AiChatPanel : UserControl
         MessageScroller.ScrollChanged += MessageScroller_ScrollChanged;
         MessageScroller.SizeChanged += MessageScroller_SizeChanged;
         SettingsOptionsButton.Checked += SettingsOptionsButton_Checked;
+        RawTextCheckBox.Checked += RawTextCheckBox_Changed;
+        RawTextCheckBox.Unchecked += RawTextCheckBox_Changed;
     }
 
     /// <summary>
@@ -1616,6 +1640,7 @@ public partial class AiChatPanel : UserControl
 
         _activeConversation = selectedConversation;
         _conversationState.ActiveConversationId = selectedConversation.Id;
+        _rawRequestPayloads.Clear();
         RenderActiveConversation();
         SavePersistedConversation();
         RefreshToolsCheckboxPanel();
@@ -1957,61 +1982,13 @@ public partial class AiChatPanel : UserControl
         PinnedSectionPanel.Visibility = Visibility.Collapsed;
         RenderReferenceTags();
 
-        Dictionary<string, ToolCallSectionVisual> toolCallBlocks = new(StringComparer.Ordinal);
-        StackPanel? lastAssistantContainer = null;
-        RichTextBox? lastAssistantBlock = null;
-
-        foreach (AiChatMessage message in conversation.Messages)
+        if (IsRawTextModeEnabled())
         {
-            switch (message.Role)
-            {
-                case AiChatRole.System:
-                    AppendSystemMessage(message.Content);
-                    lastAssistantContainer = null;
-                    lastAssistantBlock = null;
-                    break;
-                case AiChatRole.User:
-                    AppendUserMessage(message.Content);
-                    lastAssistantContainer = null;
-                    lastAssistantBlock = null;
-                    break;
-                case AiChatRole.Assistant:
-                    (lastAssistantContainer, lastAssistantBlock) = CreateAssistantMessageBlock();
-
-                    if (!string.IsNullOrWhiteSpace(message.ThinkingContent))
-                    {
-                        (StreamSectionVisual thinkingSection, ChunkedTextPresenter thinkingPresenter) = CreateThinkingSection(lastAssistantContainer, lastAssistantBlock);
-                        thinkingPresenter.ReplaceAll(FormatDisplayedAssistantContent(message.ThinkingContent, ShouldRemoveVerticalWhitespace()));
-                        SetInlineSectionHeader(thinkingSection, "Thought");
-                    }
-
-                    if (message.ToolCalls is not null)
-                    {
-                        foreach (AiToolCallRequest toolCall in message.ToolCalls)
-                        {
-                            ToolCallSectionVisual block = CreateToolCallBlock(toolCall.FunctionName, toolCall.ArgumentsJson, lastAssistantContainer, lastAssistantBlock);
-                            toolCallBlocks[toolCall.Id] = block;
-                        }
-                    }
-
-                    RenderAssistantContent(lastAssistantBlock, message.Content);
-                    break;
-                case AiChatRole.Tool:
-                    if (message.ToolCallId is not null && toolCallBlocks.TryGetValue(message.ToolCallId, out ToolCallSectionVisual? toolCallBlock))
-                    {
-                        TryParseToolResult(message.Content, out bool success, out string resultText);
-                        ToolCallResult toolCallResult = success
-                            ? ToolCallResult.Ok(resultText)
-                            : ToolCallResult.Fail(resultText);
-                        FinalizeToolCallBlock(toolCallBlock, toolCallResult);
-                    }
-                    else
-                    {
-                        AppendSystemMessage($"Tool result: {message.Content}");
-                    }
-
-                    break;
-            }
+            RebuildRawConversation(conversation);
+        }
+        else
+        {
+            RebuildNormalConversation(conversation);
         }
 
         RefreshContextWindowDisplay();
@@ -2031,6 +2008,7 @@ public partial class AiChatPanel : UserControl
             conversation.Title = "New conversation";
         }
 
+        _rawRequestPayloads.Clear();
         TouchConversation(conversation);
         RefreshConversationSelector();
         RenderActiveConversation();
@@ -2493,6 +2471,26 @@ public partial class AiChatPanel : UserControl
                     }
                 });
 
+                /* Capture the raw request JSON payload before sending to the provider.
+                 * We capture every iteration (including tool-calling loop iterations)
+                 * even when raw mode is off, so the user can toggle it on at any time
+                 * and see the full history. */
+                if (_provider is OpenAiProvider openAiProvider)
+                {
+                    string rawJson = openAiProvider.BuildRawRequestJson(
+                        outboundMessages,
+                        model,
+                        toolsDef,
+                        streamResponses);
+                    string endpointUrl = openAiProvider.GetChatCompletionEndpoint();
+                    _rawRequestPayloads.Add(new RawRequestPayload(
+                        endpointUrl,
+                        model,
+                        rawJson,
+                        ResponseContent: null,
+                        ReasoningContent: null));
+                }
+
                 /* Batch accumulator groups rapid per-token dispatches into batches
                  * at a fixed interval (50ms), reducing UI thread overhead during
                  * high-speed streaming. Structural first-time creations use
@@ -2748,6 +2746,17 @@ public partial class AiChatPanel : UserControl
                     });
                 }
 
+                // Update the most recent raw payload with the accumulated response content
+                if (_rawRequestPayloads.Count > 0)
+                {
+                    RawRequestPayload lastPayload = _rawRequestPayloads[^1];
+                    _rawRequestPayloads[^1] = lastPayload with
+                    {
+                        ReasoningContent = reasoningBuilder.ToString(),
+                        ResponseContent = responseBuilder.ToString()
+                    };
+                }
+
                 List<RecoveredMalformedToolCall> recoveredMalformedToolCalls = _activeMode?.ToolsEnabled == true && streamedToolCalls.Count == 0
                     ? MalformedToolCallRecovery.Recover(reasoningBuilder.ToString(), responseBuilder.ToString()).ToList()
                     : [];
@@ -2994,6 +3003,13 @@ public partial class AiChatPanel : UserControl
 
                 UpdateStatsBarFinal(reasoningTokenCount, contentTokenCount, streamStopwatch);
                 RefreshContextWindowDisplay();
+
+                // If raw mode is enabled, rebuild the display from captured payloads
+                // now that streaming has fully completed and the state is settled.
+                if (IsRawTextModeEnabled() && _rawRequestPayloads.Count > 0)
+                {
+                    RebuildConversationDisplay();
+                }
             });
         }
     }
@@ -3361,6 +3377,238 @@ public partial class AiChatPanel : UserControl
     private bool IsRawTextModeEnabled()
     {
         return RawTextCheckBox.IsChecked == true;
+    }
+
+    private void RawTextCheckBox_Changed(object sender, RoutedEventArgs e)
+    {
+        // Avoid rebuilding during active streaming — the inline raw-mode rendering
+        // handles live updates. The display will be fully rebuilt once streaming
+        // completes or when the user switches conversations.
+        if (_isStreaming)
+        {
+            return;
+        }
+
+        // Rebuild the entire conversation display when toggling raw mode.
+        // We dispatch to ensure the dispatcher frame has settled.
+        Dispatcher.InvokeAsync(RebuildConversationDisplay, DispatcherPriority.Background);
+    }
+
+    /// <summary>
+    /// Rebuilds the entire <see cref="MessagePanel"/> from the active conversation,
+    /// using either raw-mode rendering or normal formatted rendering depending on
+    /// the current state of the raw mode checkbox.
+    /// </summary>
+    private void RebuildConversationDisplay()
+    {
+        AiConversation conversation = EnsureActiveConversation();
+        _streamSections.Clear();
+        PinnedSectionPanel.Children.Clear();
+        PinnedSectionPanel.Visibility = Visibility.Collapsed;
+        MessagePanel.Children.Clear();
+
+        if (!IsRawTextModeEnabled())
+        {
+            RebuildNormalConversation(conversation);
+        }
+        else
+        {
+            RebuildRawConversation(conversation);
+        }
+
+        MessageScroller.ScrollToEnd();
+    }
+
+    /// <summary>
+    /// Rebuilds the message panel in normal (formatted) mode from the conversation history.
+    /// </summary>
+    private void RebuildNormalConversation(AiConversation conversation)
+    {
+        Dictionary<string, ToolCallSectionVisual> toolCallBlocks = new(StringComparer.Ordinal);
+        StackPanel? lastAssistantContainer = null;
+        RichTextBox? lastAssistantBlock = null;
+
+        foreach (AiChatMessage message in conversation.Messages)
+        {
+            switch (message.Role)
+            {
+                case AiChatRole.System:
+                    AppendSystemMessage(message.Content);
+                    lastAssistantContainer = null;
+                    lastAssistantBlock = null;
+                    break;
+                case AiChatRole.User:
+                    AppendUserMessage(message.Content);
+                    lastAssistantContainer = null;
+                    lastAssistantBlock = null;
+                    break;
+                case AiChatRole.Assistant:
+                    (lastAssistantContainer, lastAssistantBlock) = CreateAssistantMessageBlock();
+
+                    if (!string.IsNullOrWhiteSpace(message.ThinkingContent))
+                    {
+                        (StreamSectionVisual thinkingSection, ChunkedTextPresenter thinkingPresenter) = CreateThinkingSection(
+                            lastAssistantContainer, lastAssistantBlock);
+                        thinkingPresenter.ReplaceAll(FormatDisplayedAssistantContent(
+                            message.ThinkingContent, ShouldRemoveVerticalWhitespace()));
+                        SetInlineSectionHeader(thinkingSection, "Thought");
+                    }
+
+                    if (message.ToolCalls is not null)
+                    {
+                        foreach (AiToolCallRequest toolCall in message.ToolCalls)
+                        {
+                            ToolCallSectionVisual block = CreateToolCallBlock(
+                                toolCall.FunctionName, toolCall.ArgumentsJson,
+                                lastAssistantContainer, lastAssistantBlock);
+                            toolCallBlocks[toolCall.Id] = block;
+                        }
+                    }
+
+                    RenderAssistantContent(lastAssistantBlock, message.Content);
+                    break;
+                case AiChatRole.Tool:
+                    if (message.ToolCallId is not null &&
+                        toolCallBlocks.TryGetValue(message.ToolCallId, out ToolCallSectionVisual? toolCallBlock))
+                    {
+                        TryParseToolResult(message.Content, out bool success, out string resultText);
+                        ToolCallResult toolCallResult = success
+                            ? ToolCallResult.Ok(resultText)
+                            : ToolCallResult.Fail(resultText);
+                        FinalizeToolCallBlock(toolCallBlock, toolCallResult);
+                    }
+                    else
+                    {
+                        AppendSystemMessage($"Tool result: {message.Content}");
+                    }
+
+                    break;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Rebuilds the message panel in raw mode, showing the full JSON request
+    /// payloads that were sent to the API, plus the captured responses.
+    /// When no raw payloads have been captured yet (e.g. a restored conversation),
+    /// falls back to rendering the conversation messages as plain text.
+    /// </summary>
+    private void RebuildRawConversation(AiConversation conversation)
+    {
+        if (_rawRequestPayloads.Count == 0)
+        {
+            // No captured payloads — fall back to plain-text rendering of messages
+            RenderConversationAsPlainText(conversation);
+            return;
+        }
+
+        for (int index = 0; index < _rawRequestPayloads.Count; index++)
+        {
+            RawRequestPayload payload = _rawRequestPayloads[index];
+            RenderRawRequestPayload(payload, index);
+        }
+    }
+
+    /// <summary>
+    /// Renders conversation messages as plain monospace text (fallback when
+    /// no raw payloads have been captured yet).
+    /// </summary>
+    private void RenderConversationAsPlainText(AiConversation conversation)
+    {
+        foreach (AiChatMessage message in conversation.Messages)
+        {
+            string label = message.Role switch
+            {
+                AiChatRole.System => "System",
+                AiChatRole.User => "User",
+                AiChatRole.Assistant => "Assistant",
+                AiChatRole.Tool => $"Tool Result ({message.ToolCallId})",
+                _ => "Unknown"
+            };
+
+            string content = message.Content;
+
+            // Include thinking content if present
+            if (!string.IsNullOrWhiteSpace(message.ThinkingContent))
+            {
+                content = $"(thinking: {message.ThinkingContent})\n\n{content}";
+            }
+
+            // Include tool calls if present
+            if (message.ToolCalls is { Count: > 0 })
+            {
+                string toolCallsText = string.Join(
+                    "\n",
+                    message.ToolCalls.Select(tc => $"  → {tc.FunctionName}({tc.ArgumentsJson})"));
+                content = $"{toolCallsText}\n\n{content}";
+            }
+
+            TextBlock block = new()
+            {
+                Text = FormatRawTranscriptEntry(label, content),
+                TextWrapping = TextWrapping.Wrap,
+                Foreground = FindBrush("AiChatSecondaryForeground"),
+                FontSize = 12,
+                FontFamily = new FontFamily("Cascadia Code, Consolas, Courier New"),
+                Margin = new Thickness(8, 4, 8, 4)
+            };
+
+            MessagePanel.Children.Add(block);
+        }
+    }
+
+    /// <summary>
+    /// Renders a single captured raw request payload as a formatted text block.
+    /// </summary>
+    private void RenderRawRequestPayload(RawRequestPayload payload, int sequenceNumber)
+    {
+        // Header: endpoint and model
+        TextBlock headerBlock = new()
+        {
+            Text = $"Request #{sequenceNumber + 1} — {payload.EndpointUrl}",
+            TextWrapping = TextWrapping.Wrap,
+            Foreground = FindBrush("AiChatSecondaryForeground"),
+            FontSize = 10,
+            FontFamily = new FontFamily("Cascadia Code, Consolas, Courier New"),
+            FontWeight = FontWeights.Bold,
+            Margin = new Thickness(8, 10, 8, 2)
+        };
+        MessagePanel.Children.Add(headerBlock);
+
+        // Model line
+        if (!string.IsNullOrWhiteSpace(payload.Model))
+        {
+            TextBlock modelBlock = new()
+            {
+                Text = $"model: {payload.Model}",
+                TextWrapping = TextWrapping.Wrap,
+                Foreground = FindBrush("AiChatSecondaryForeground"),
+                FontSize = 10,
+                FontFamily = new FontFamily("Cascadia Code, Consolas, Courier New"),
+                Margin = new Thickness(8, 0, 8, 4)
+            };
+            MessagePanel.Children.Add(modelBlock);
+        }
+
+        // Full request JSON body
+        TextBlock requestBlock = new()
+        {
+            Text = payload.RequestJson,
+            TextWrapping = TextWrapping.Wrap,
+            Foreground = FindBrush("AiChatForeground"),
+            FontSize = 11,
+            FontFamily = new FontFamily("Cascadia Code, Consolas, Courier New"),
+            Margin = new Thickness(8, 0, 8, 8)
+        };
+        MessagePanel.Children.Add(requestBlock);
+
+        // Separator
+        MessagePanel.Children.Add(new System.Windows.Shapes.Rectangle
+        {
+            Height = 1,
+            Fill = FindBrush("AiChatBorder"),
+            Margin = new Thickness(8, 0, 8, 8)
+        });
     }
 
     private bool ShouldAutoExpandThinkingSections()

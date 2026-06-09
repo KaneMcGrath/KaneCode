@@ -86,6 +86,40 @@ internal sealed class OpenAiProvider : IAiProvider, IDisposable
         return _availableModels;
     }
 
+    /// <summary>
+    /// Builds the full JSON request body that <see cref="StreamCompletionAsync"/> would send,
+    /// using the same serialization logic. This is used by the UI to capture raw request
+    /// payloads for the raw-mode debugging feature.
+    /// </summary>
+    internal string BuildRawRequestJson(
+        IReadOnlyList<AiChatMessage> messages,
+        string model,
+        JsonElement tools,
+        bool streamResponse)
+    {
+        ArgumentNullException.ThrowIfNull(messages);
+
+        string resolvedModel = ResolveModel(model, _settings.SelectedModel);
+        JsonElement serializedMessages = SerializeMessages(messages);
+        bool isGroqCompatibleEndpoint = IsGroqCompatibleEndpoint(_settings.Endpoint);
+
+        return BuildChatCompletionRequestJson(
+            resolvedModel,
+            serializedMessages,
+            tools,
+            _settings,
+            isGroqCompatibleEndpoint,
+            streamResponse);
+    }
+
+    /// <summary>
+    /// Returns the endpoint URL used by this provider for chat completion requests.
+    /// </summary>
+    internal string GetChatCompletionEndpoint()
+    {
+        return BuildChatCompletionsUrl(_settings.Endpoint);
+    }
+
     /// <inheritdoc />
     public async IAsyncEnumerable<AiStreamToken> StreamCompletionAsync(
         IReadOnlyList<AiChatMessage> messages,
@@ -419,7 +453,7 @@ internal sealed class OpenAiProvider : IAiProvider, IDisposable
     /// <summary>
     /// Serializes the message list into a JSON array, handling tool role and tool_calls fields.
     /// </summary>
-    private static JsonElement SerializeMessages(IReadOnlyList<AiChatMessage> messages)
+    internal static JsonElement SerializeMessages(IReadOnlyList<AiChatMessage> messages)
     {
         using var stream = new MemoryStream();
         using (var writer = new Utf8JsonWriter(stream))
