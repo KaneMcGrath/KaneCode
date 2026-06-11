@@ -91,8 +91,16 @@ internal sealed class AiSettingsViewModel : ObservableObject
             return;
         }
 
+        // If the removed entry was the active provider, clear the active flag
+        // and mark the next available entry as active
+        bool wasActive = SelectedEntry.IsActive;
         Entries.Remove(SelectedEntry);
         SelectedEntry = Entries.Count > 0 ? Entries[0] : null;
+
+        if (wasActive && SelectedEntry is not null)
+        {
+            SelectedEntry.IsActive = true;
+        }
     }
 
     /// <summary>
@@ -122,6 +130,7 @@ internal sealed class AiProviderEntryViewModel : ObservableObject
     private string _minP;
     private string _presencePenalty;
     private string _repetitionPenalty;
+    private bool _isActive;
     private bool _isTemperatureEnabled;
     private bool _isTopPEnabled;
     private bool _isTopKEnabled;
@@ -139,6 +148,7 @@ internal sealed class AiProviderEntryViewModel : ObservableObject
         _endpoint = settings.Endpoint;
         _apiKey = settings.ApiKey;
         _selectedModel = settings.SelectedModel;
+        IsActive = settings.IsActive;
         _contextLength = FormatNullableInt(settings.ContextLength, AiProviderSettings.DefaultContextLength);
         _temperature = FormatNullableDouble(settings.Temperature, AiProviderSettings.DefaultTemperature);
         _topP = FormatNullableDouble(settings.TopP, AiProviderSettings.DefaultTopP);
@@ -182,6 +192,16 @@ internal sealed class AiProviderEntryViewModel : ObservableObject
     {
         get => _selectedModel;
         set => SetProperty(ref _selectedModel, value);
+    }
+
+    /// <summary>
+    /// Whether this provider configuration is the currently active/default provider.
+    /// Preserved across save/load cycles in the settings window.
+    /// </summary>
+    public bool IsActive
+    {
+        get => _isActive;
+        set => SetProperty(ref _isActive, value);
     }
 
     public string ContextLength
@@ -274,6 +294,7 @@ internal sealed class AiProviderEntryViewModel : ObservableObject
         Endpoint = Endpoint,
         ApiKey = ApiKey,
         SelectedModel = SelectedModel,
+        IsActive = IsActive,
         ContextLength = ParseNullableInt(ContextLength),
         Temperature = IsTemperatureEnabled ? ParseNullableDouble(Temperature) : null,
         TopP = IsTopPEnabled ? ParseNullableDouble(TopP) : null,

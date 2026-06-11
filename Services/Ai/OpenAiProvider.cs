@@ -82,6 +82,14 @@ internal sealed class OpenAiProvider : IAiProvider, IDisposable
         {
             Debug.WriteLine("AI model discovery timed out.");
         }
+        catch (NotSupportedException)
+        {
+            Debug.WriteLine("AI model discovery failed: the endpoint URL scheme is not supported.");
+        }
+        catch (UriFormatException)
+        {
+            Debug.WriteLine("AI model discovery failed: the endpoint URL is malformed.");
+        }
 
         return _availableModels;
     }

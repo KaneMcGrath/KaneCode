@@ -43,6 +43,13 @@ internal sealed class AiProviderSettings
     public string SelectedModel { get; set; } = string.Empty;
 
     /// <summary>
+    /// Whether this provider configuration is the currently active/default provider.
+    /// Used to persist the active provider selection across application restarts.
+    /// Only one provider should have this set to true at any time.
+    /// </summary>
+    public bool IsActive { get; set; }
+
+    /// <summary>
     /// Internal context window budget used by KaneCode when trimming outbound chat history.
     /// This value is not sent to the provider.
     /// </summary>

@@ -2082,16 +2082,28 @@ public partial class AiChatPanel : UserControl
             return;
         }
 
-        _providerRegistry?.SetActiveProvider(selected);
-        Configure(selected, null);
+        try
+        {
+            _providerRegistry?.SetActiveProvider(selected);
 
-        await RefreshOverlayModelListAsync(selected);
+            // Restore the persisted model for this provider
+            string? savedModel = _providerRegistry?.GetSettings(selected)?.SelectedModel;
+            Configure(selected, savedModel ?? _model);
+
+            await RefreshOverlayModelListAsync(selected, savedModel);
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine(ex, "Failed to switch AI provider.");
+            AppendSystemMessage($"Error switching provider: {ex.Message}");
+        }
     }
 
     /// <summary>
     /// Called when the selected model in the overlay list changes.
-    /// Updates the active model but keeps the overlay open so the user
-    /// can browse other providers/models before dismissing.
+    /// Updates the active model, persists the selection to the provider's settings,
+    /// and saves to disk so it survives application restarts.
+    /// The overlay stays open so the user can browse other providers/models before dismissing.
     /// </summary>
     private void ModelListBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
@@ -2100,8 +2112,29 @@ public partial class AiChatPanel : UserControl
             return;
         }
 
+        // Avoid unnecessary saves when the model hasn't actually changed
+        if (string.Equals(_model, selectedModel, StringComparison.Ordinal))
+        {
+            return;
+        }
+
         _model = selectedModel;
         UpdateModelPickerButtonText();
+
+        // Persist the selected model to the provider's settings
+        if (_provider is not null && _providerRegistry is not null)
+        {
+            AiProviderSettings? settings = _providerRegistry.GetSettings(_provider);
+            if (settings is not null)
+            {
+                settings.SelectedModel = selectedModel;
+                AiSettingsManager.Save(_providerRegistry.Providers
+                    .Select(p => _providerRegistry.GetSettings(p))
+                    .Where(s => s is not null)
+                    .Cast<AiProviderSettings>()
+                    .ToList());
+            }
+        }
     }
 
     /// <summary>
@@ -2145,25 +2178,33 @@ public partial class AiChatPanel : UserControl
             return;
         }
 
-        IAiProvider? active = _providerRegistry.ActiveProvider;
-        if (active is not null)
+        try
         {
-            AiProviderSettings? activeSettings = _providerRegistry.GetSettings(active);
-            Configure(active, activeSettings?.SelectedModel);
-            await RefreshOverlayModelListAsync(active, activeSettings?.SelectedModel);
+            IAiProvider? active = _providerRegistry.ActiveProvider;
+            if (active is not null)
+            {
+                AiProviderSettings? activeSettings = _providerRegistry.GetSettings(active);
+                Configure(active, activeSettings?.SelectedModel);
+                await RefreshOverlayModelListAsync(active, activeSettings?.SelectedModel);
+            }
+            else if (_providerRegistry.Providers.Count > 0)
+            {
+                IAiProvider firstProvider = _providerRegistry.Providers[0];
+                AiProviderSettings? firstProviderSettings = _providerRegistry.GetSettings(firstProvider);
+                Configure(firstProvider, firstProviderSettings?.SelectedModel);
+                await RefreshOverlayModelListAsync(firstProvider, firstProviderSettings?.SelectedModel);
+            }
+            else
+            {
+                Configure(null);
+                ModelListBox.ItemsSource = null;
+                UpdateModelPickerButtonText();
+            }
         }
-        else if (_providerRegistry.Providers.Count > 0)
+        catch (Exception ex)
         {
-            IAiProvider firstProvider = _providerRegistry.Providers[0];
-            AiProviderSettings? firstProviderSettings = _providerRegistry.GetSettings(firstProvider);
-            Configure(firstProvider, firstProviderSettings?.SelectedModel);
-            await RefreshOverlayModelListAsync(firstProvider, firstProviderSettings?.SelectedModel);
-        }
-        else
-        {
-            Configure(null);
-            ModelListBox.ItemsSource = null;
-            UpdateModelPickerButtonText();
+            Debug.WriteLine(ex, "Failed to refresh provider selector.");
+            AppendSystemMessage($"Error loading AI provider: {ex.Message}");
         }
     }
 
@@ -2209,6 +2250,11 @@ public partial class AiChatPanel : UserControl
         }
         catch (OperationCanceledException) when (modelDiscoveryCts.IsCancellationRequested)
         {
+            return;
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine(ex, "AI model discovery failed with unexpected error.");
             return;
         }
 
