@@ -46,6 +46,13 @@ public partial class OptionsWindow : Window
 
         // Save auto-context rules
         AutoContextSettingsManager.Save(_autoContextRules);
+
+        // Save AI provider settings (the view model auto-saves on every change,
+        // but this ensures any deferred or missed saves are flushed on close).
+        _aiSettingsViewModel.Save();
+
+        // Dispose the view model to stop the debounce timer
+        _aiSettingsViewModel.Dispose();
     }
 
     private void OnLoaded(object sender, RoutedEventArgs e)

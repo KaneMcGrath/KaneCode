@@ -1,6 +1,7 @@
 using KaneCode.Infrastructure;
 using KaneCode.Services.Ai;
 using System.Collections.ObjectModel;
+using System.ComponentModel;
 using System.Globalization;
 using System.Windows.Input;
 
@@ -9,17 +10,26 @@ namespace KaneCode.ViewModels;
 /// <summary>
 /// View model for the AI Providers settings page. Allows adding, removing,
 /// and configuring AI provider entries with encrypted API key storage.
+/// All changes (add, remove, edit) are persisted immediately so the
+/// <see cref="AiProviderRegistry"/> can pick them up without restarting the app.
+/// Property-change-triggered saves are debounced (300ms) to avoid excessive
+/// I/O and provider-reloads during rapid typing.
 /// </summary>
-internal sealed class AiSettingsViewModel : ObservableObject
+internal sealed class AiSettingsViewModel : ObservableObject, IDisposable
 {
     private AiProviderEntryViewModel? _selectedEntry;
+    private int _deferSaveCount;
+    private Timer? _debounceTimer;
+    private bool _disposed;
 
     public AiSettingsViewModel()
     {
         var saved = AiSettingsManager.Load();
         foreach (var s in saved)
         {
-            Entries.Add(new AiProviderEntryViewModel(NormalizeSettings(s)));
+            var entry = new AiProviderEntryViewModel(NormalizeSettings(s));
+            AddAndTrack(entry);
+            Entries.Add(entry);
         }
 
         AddCommand = new RelayCommand(_ => AddEntry());
@@ -72,6 +82,46 @@ internal sealed class AiSettingsViewModel : ObservableObject
         return string.IsNullOrWhiteSpace(providerId) ? "openai" : providerId;
     }
 
+    /// <summary>
+    /// Temporarily defers auto-save. Call <see cref="ResumeSave"/> to re-enable.
+    /// Auto-save is deferred during bulk operations so the registry only reloads once.
+    /// </summary>
+    public void DeferSave()
+    {
+        _deferSaveCount++;
+    }
+
+    /// <summary>
+    /// Re-enables auto-save and performs an immediate save if it was previously deferred.
+    /// </summary>
+    public void ResumeSave()
+    {
+        if (_deferSaveCount > 0)
+        {
+            _deferSaveCount--;
+        }
+
+        if (_deferSaveCount == 0)
+        {
+            SaveImmediate();
+        }
+    }
+
+    /// <summary>
+    /// Disposes the debounce timer to avoid resource leaks.
+    /// </summary>
+    public void Dispose()
+    {
+        if (_disposed)
+        {
+            return;
+        }
+
+        _disposed = true;
+        _debounceTimer?.Dispose();
+        _debounceTimer = null;
+    }
+
     private void AddEntry()
     {
         var entry = new AiProviderEntryViewModel(new AiProviderSettings
@@ -80,8 +130,10 @@ internal sealed class AiSettingsViewModel : ObservableObject
             Label = "New Provider"
         });
 
+        AddAndTrack(entry);
         Entries.Add(entry);
         SelectedEntry = entry;
+        SaveImmediate();
     }
 
     private void RemoveSelected()
@@ -94,6 +146,7 @@ internal sealed class AiSettingsViewModel : ObservableObject
         // If the removed entry was the active provider, clear the active flag
         // and mark the next available entry as active
         bool wasActive = SelectedEntry.IsActive;
+        UnsubscribeFromEntry(SelectedEntry);
         Entries.Remove(SelectedEntry);
         SelectedEntry = Entries.Count > 0 ? Entries[0] : null;
 
@@ -101,13 +154,117 @@ internal sealed class AiSettingsViewModel : ObservableObject
         {
             SelectedEntry.IsActive = true;
         }
+
+        SaveImmediate();
     }
 
     /// <summary>
-    /// Persists all entries to disk with encrypted API keys.
+    /// Adds an entry to the internal tracking list and subscribes to its property changes
+    /// so that any field edit triggers an auto-save (debounced).
+    /// </summary>
+    private void AddAndTrack(AiProviderEntryViewModel entry)
+    {
+        ArgumentNullException.ThrowIfNull(entry);
+        entry.PropertyChanged += OnEntryPropertyChanged;
+    }
+
+    /// <summary>
+    /// Unsubscribes from an entry's property changes when it is removed.
+    /// </summary>
+    private void UnsubscribeFromEntry(AiProviderEntryViewModel entry)
+    {
+        ArgumentNullException.ThrowIfNull(entry);
+        entry.PropertyChanged -= OnEntryPropertyChanged;
+    }
+
+    /// <summary>
+    /// Called when any property on any entry changes. Schedules a debounced
+    /// auto-save so rapid typing doesn't trigger excessive I/O and provider reloads.
+    /// </summary>
+    private void OnEntryPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        ScheduleDebouncedSave();
+    }
+
+    /// <summary>
+    /// Schedules a save to happen after a 300ms quiet period.
+    /// If another property change arrives before the timer fires,
+    /// the timer is reset (debouncing coalesces rapid edits).
+    /// </summary>
+    private void ScheduleDebouncedSave()
+    {
+        if (_deferSaveCount > 0)
+        {
+            return;
+        }
+
+        _debounceTimer?.Dispose();
+        _debounceTimer = new Timer(
+            _ =>
+            {
+                if (_disposed)
+                {
+                    return;
+                }
+
+                // Dispatch back to the UI thread to safely access Entries
+                System.Windows.Application.Current?.Dispatcher?.Invoke(() =>
+                {
+                    if (!_disposed)
+                    {
+                        SaveImmediate();
+                    }
+                });
+            },
+            null,
+            TimeSpan.FromMilliseconds(300),
+            Timeout.InfiniteTimeSpan);
+    }
+
+    /// <summary>
+    /// Persists all entries to disk with encrypted API keys immediately.
+    /// This triggers <see cref="AiProviderRegistry.Reload"/> via the
+    /// <see cref="AiSettingsManager.SettingsSaved"/> event, so the changes
+    /// propagate immediately to the AI Chat panel and other consumers.
+    /// </summary>
+    private void SaveImmediate()
+    {
+        if (_deferSaveCount > 0)
+        {
+            return;
+        }
+
+        CancelDebounce();
+        Persist();
+    }
+
+    /// <summary>
+    /// Manual save command — persists immediately (bypasses the debounce).
     /// </summary>
     public void Save()
     {
+        SaveImmediate();
+    }
+
+    /// <summary>
+    /// Cancels any pending debounced save.
+    /// </summary>
+    private void CancelDebounce()
+    {
+        _debounceTimer?.Dispose();
+        _debounceTimer = null;
+    }
+
+    /// <summary>
+    /// Performs the actual serialization and disk write via <see cref="AiSettingsManager"/>.
+    /// </summary>
+    private void Persist()
+    {
+        if (_deferSaveCount > 0)
+        {
+            return;
+        }
+
         var settings = Entries.Select(e => e.ToSettings()).ToList();
         AiSettingsManager.Save(settings);
     }
