@@ -107,7 +107,7 @@ public class OpenAiProviderTests
     }
 
     [Fact]
-    public void WhenParsingModelsResponseThenSelectedModelIsIncludedBeforeDiscoveredModels()
+    public void WhenParsingModelsResponseThenSelectedModelIsPromotedToTopWhenDiscovered()
     {
         string responseJson = """
             {
@@ -120,6 +120,29 @@ public class OpenAiProviderTests
 
         IReadOnlyList<string> models = OpenAiProvider.ParseAvailableModelsResponse(responseJson, "gpt-4o");
 
+        // "gpt-4o" is NOT in the discovered list, so it is not injected.
+        // Only the discovered models are returned.
+        Assert.Equal(["gpt-4.1", "gpt-4o-mini"], models);
+    }
+
+    [Fact]
+    public void WhenParsingModelsResponseThenKnownSelectedModelIsFirst()
+    {
+        // Verify that when the selected model IS among the discovered models,
+        // it is promoted to the top of the list.
+        string responseJson = """
+            {
+              "data": [
+                { "id": "gpt-4.1" },
+                { "id": "gpt-4o" },
+                { "id": "gpt-4o-mini" }
+              ]
+            }
+            """;
+
+        IReadOnlyList<string> models = OpenAiProvider.ParseAvailableModelsResponse(responseJson, "gpt-4o");
+
+        // "gpt-4o" is found in the discovered list and promoted to the top.
         Assert.Equal(["gpt-4o", "gpt-4.1", "gpt-4o-mini"], models);
     }
 

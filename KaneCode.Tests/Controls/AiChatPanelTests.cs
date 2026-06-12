@@ -211,11 +211,23 @@ public class AiChatPanelTests
     }
 
     [Fact]
-    public void WhenBuildingSelectableModelListThenPreferredModelIsPrependedOnce()
+    public void WhenBuildingSelectableModelListThenDiscoveredPreferredModelIsFirst()
     {
+        // When the preferred model is among the discovered list,
+        // it is promoted to the top (but not duplicated).
         IReadOnlyList<string> result = AiChatPanel.BuildSelectableModelList(["gpt-4.1", "gpt-4o"], "gpt-4o");
 
         Assert.Equal(["gpt-4o", "gpt-4.1"], result);
+    }
+
+    [Fact]
+    public void WhenBuildingSelectableModelListThenMissingPreferredModelIsNotInjected()
+    {
+        // When the preferred model is NOT among the discovered list,
+        // it should NOT be injected as an artificial entry.
+        IReadOnlyList<string> result = AiChatPanel.BuildSelectableModelList(["gpt-4.1", "gpt-4o-mini"], "gpt-4o");
+
+        Assert.Equal(["gpt-4.1", "gpt-4o-mini"], result);
     }
 
     [Fact]

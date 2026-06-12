@@ -413,12 +413,34 @@ public partial class AiChatPanel : UserControl
     {
         ArgumentNullException.ThrowIfNull(discoveredModels);
 
+        // Build a de-duplicated list of models WITHOUT injecting the preferredModel
+        // (the saved "Default Model" setting) as an artificial entry. The preferred
+        // model is used only for ordering (promoted to the top) and pre-selection.
+        // If no models are discovered, return an empty list — the "default" fallback
+        // was removed because it polluted the model selector with a non-functional entry.
         List<string> selectableModels = [];
         HashSet<string> seenModels = new(StringComparer.OrdinalIgnoreCase);
 
-        if (!string.IsNullOrWhiteSpace(preferredModel) && seenModels.Add(preferredModel))
+        // Check if the preferred model is in the discovered list
+        bool preferredModelFound = false;
+        if (!string.IsNullOrWhiteSpace(preferredModel))
         {
-            selectableModels.Add(preferredModel);
+            foreach (string discoveredModel in discoveredModels)
+            {
+                if (!string.IsNullOrWhiteSpace(discoveredModel) &&
+                    string.Equals(discoveredModel, preferredModel, StringComparison.OrdinalIgnoreCase))
+                {
+                    preferredModelFound = true;
+                    break;
+                }
+            }
+        }
+
+        // Promote the preferred model to the top if it was discovered
+        if (preferredModelFound)
+        {
+            selectableModels.Add(preferredModel!);
+            seenModels.Add(preferredModel!);
         }
 
         foreach (string discoveredModel in discoveredModels)
@@ -431,7 +453,7 @@ public partial class AiChatPanel : UserControl
             selectableModels.Add(discoveredModel);
         }
 
-        return selectableModels.Count > 0 ? selectableModels : ["default"];
+        return selectableModels;
     }
 
     internal static string? SelectInitialModel(IReadOnlyList<string> availableModels, string? preferredModel)
@@ -2040,13 +2062,20 @@ public partial class AiChatPanel : UserControl
     {
         PopulateProviderList();
 
-        // Select the active provider and its current model
-        if (_provider is not null && ProviderListBox.Items.Count > 0)
+        // Select the active provider. Use the registry's ActiveProvider (which
+        // is always the current live instance) rather than _provider, which may
+        // be a stale reference after AiProviderRegistry.Reload() disposes and
+        // recreates provider instances.
+        IAiProvider? activeProvider = _providerRegistry?.ActiveProvider ?? _provider;
+        if (activeProvider is not null && ProviderListBox.Items.Count > 0)
         {
-            ProviderListBox.SelectedItem = _provider;
+            ProviderListBox.SelectedItem = activeProvider;
         }
 
-        RefreshModelListBox();
+        // NOTE: RefreshModelListBox() is NOT called here because
+        // ProviderListBox.SelectedItem assignment triggers SelectionChanged,
+        // which calls RefreshOverlayModelListAsync — that handles model list
+        // population and selection asynchronously.
 
         ModelPickerOverlay.Visibility = Visibility.Visible;
     }
@@ -2270,10 +2299,21 @@ public partial class AiChatPanel : UserControl
     /// <summary>
     /// Applies a list of model strings to the overlay model list box
     /// and selects the best matching model.
+    /// When no models are available, preserves the current <see cref="_model"/>
+    /// instead of clearing it, so a transient empty state (e.g. before async
+    /// discovery completes) does not reset the selection.
     /// </summary>
     private void ApplyOverlayModelList(IReadOnlyList<string> models, string? preferredModel)
     {
         ModelListBox.ItemsSource = models;
+
+        if (models.Count == 0)
+        {
+            // Preserve the current model selection while we wait for async discovery.
+            // Setting ItemsSource to empty is enough to clear the list display;
+            // SelectedItem is left as-is so the picker button text doesn't flicker.
+            return;
+        }
 
         string? selectedModel = SelectInitialModel(models, preferredModel);
         ModelListBox.SelectedItem = selectedModel;
@@ -2295,7 +2335,11 @@ public partial class AiChatPanel : UserControl
 
         IReadOnlyList<string> models = BuildSelectableModelList(_provider.AvailableModels, _model);
         ModelListBox.ItemsSource = models;
-        ModelListBox.SelectedItem = _model;
+
+        if (models.Count > 0)
+        {
+            ModelListBox.SelectedItem = _model;
+        }
     }
 
     private void CancelModelDiscovery()

@@ -417,12 +417,33 @@ internal sealed class OpenAiProvider : IAiProvider, IDisposable
     {
         ArgumentNullException.ThrowIfNull(discoveredModels);
 
+        // Build a de-duplicated list of discovered models.
+        // The selectedModel is NOT injected into the list — it is used only
+        // for pre-selection at the UI layer. This prevents the saved "Default Model"
+        // setting from appearing as an artificial entry in the model selector.
         List<string> mergedModels = [];
         HashSet<string> seenModels = new(StringComparer.OrdinalIgnoreCase);
 
-        if (!string.IsNullOrWhiteSpace(selectedModel) && seenModels.Add(selectedModel))
+        // If the selectedModel is among the discovered models, promote it to the
+        // top so it appears first in the UI. Otherwise preserve discovery order.
+        bool selectedModelFound = false;
+        if (!string.IsNullOrWhiteSpace(selectedModel))
         {
-            mergedModels.Add(selectedModel);
+            foreach (string discoveredModel in discoveredModels)
+            {
+                if (!string.IsNullOrWhiteSpace(discoveredModel) &&
+                    string.Equals(discoveredModel, selectedModel, StringComparison.OrdinalIgnoreCase))
+                {
+                    selectedModelFound = true;
+                    break;
+                }
+            }
+        }
+
+        if (selectedModelFound)
+        {
+            mergedModels.Add(selectedModel!);
+            seenModels.Add(selectedModel!);
         }
 
         foreach (string discoveredModel in discoveredModels)
@@ -435,14 +456,15 @@ internal sealed class OpenAiProvider : IAiProvider, IDisposable
             mergedModels.Add(discoveredModel);
         }
 
-        return mergedModels.Count > 0 ? mergedModels : ["default"];
+        return mergedModels;
     }
 
     private static IReadOnlyList<string> GetFallbackModels(string? selectedModel)
     {
-        return string.IsNullOrWhiteSpace(selectedModel)
-            ? ["default"]
-            : [selectedModel];
+        // Return an empty list — no models are known yet.
+        // The UI will show nothing until async discovery completes.
+        // Do NOT inject "default" or the selectedModel setting as entries.
+        return [];
     }
 
     private static bool TryExtractEventData(string line, out string data)
