@@ -42,6 +42,23 @@ internal sealed class BuildService : IDisposable
     }
 
     /// <summary>
+    /// Runs <c>dotnet clean</c> in the given project/solution directory.
+    /// </summary>
+    /// <param name="projectOrSolutionPath">Path to the project or solution to clean.</param>
+    /// <param name="configuration">Optional build configuration (Debug/Release). Defaults to all configurations if not specified.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    public async Task CleanAsync(string projectOrSolutionPath, string? configuration = null, CancellationToken cancellationToken = default)
+    {
+        var directory = GetWorkingDirectory(projectOrSolutionPath);
+        var arguments = $"clean \"{projectOrSolutionPath}\"";
+        if (!string.IsNullOrWhiteSpace(configuration))
+        {
+            arguments += $" --configuration {configuration}";
+        }
+        await RunDotnetAsync(arguments, directory, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
     /// Runs <c>dotnet build</c> in the given project/solution directory.
     /// </summary>
     /// <param name="projectOrSolutionPath">Path to the project or solution to build.</param>

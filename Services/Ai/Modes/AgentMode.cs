@@ -23,6 +23,7 @@ internal sealed class AgentMode : IAiChatMode
 
         // Build & test
         "build",
+        "clean",
         "test",
 
         // Git

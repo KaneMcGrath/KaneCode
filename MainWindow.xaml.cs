@@ -463,6 +463,7 @@ public partial class MainWindow : Window
         _agentToolRegistry.Register(new DeleteDirectoryTool(projectRoot));
         _agentToolRegistry.Register(new ListFilesTool(projectRootWithFallback, _externalContextDirectoryRegistry));
         _agentToolRegistry.Register(new SearchFilesTool(projectRootWithFallback, _externalContextDirectoryRegistry));
+        _agentToolRegistry.Register(new RunCleanTool(_viewModel.BuildService, projectRoot));
         _agentToolRegistry.Register(new RunBuildTool(_viewModel.BuildService, projectRoot));
         _agentToolRegistry.Register(new RunTestTool(_viewModel.BuildService, projectRoot));
         _agentToolRegistry.Register(new RunDotnetTool(_viewModel.BuildService, projectRoot));
