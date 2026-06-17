@@ -233,6 +233,7 @@
                                              Padding="6,2"
                                              MinWidth="120"
                                              MaxWidth="260"
+                                             MinHeight="22"
                                              Margin="8,0,0,0"
                                              FontSize="11"
                                              VerticalAlignment="Center"

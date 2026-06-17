@@ -2188,12 +2188,14 @@ public partial class AiChatPanel : UserControl
             if (active is not null)
             {
                 Configure(active, _providerRegistry.GetSettings(active)?.SelectedModel);
+                UpdateModelPickerButtonText();
                 await RefreshOverlayModelListAsync(active);
             }
             else if (_providerRegistry.Providers.Count > 0)
             {
                 IAiProvider firstProvider = _providerRegistry.Providers[0];
                 Configure(firstProvider, _providerRegistry.GetSettings(firstProvider)?.SelectedModel);
+                UpdateModelPickerButtonText();
                 await RefreshOverlayModelListAsync(firstProvider);
             }
             else
