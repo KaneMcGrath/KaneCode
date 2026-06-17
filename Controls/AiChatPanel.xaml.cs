@@ -2065,6 +2065,8 @@ public partial class AiChatPanel : UserControl
     /// <summary>
     /// Called when the selected provider in the overlay list changes.
     /// Sets the active provider, restores the saved model, and fetches the model list asynchronously.
+    /// The button text is updated immediately so the user sees the new provider name right away,
+    /// rather than retaining the previous provider's label while models are being discovered.
     /// </summary>
     private async void ProviderListBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
@@ -2077,6 +2079,7 @@ public partial class AiChatPanel : UserControl
         {
             _providerRegistry?.SetActiveProvider(selected);
             Configure(selected, _providerRegistry?.GetSettings(selected)?.SelectedModel);
+            UpdateModelPickerButtonText();
             await RefreshOverlayModelListAsync(selected);
         }
         catch (Exception ex)
@@ -2143,13 +2146,29 @@ public partial class AiChatPanel : UserControl
     }
 
     /// <summary>
-    /// Updates the model picker button text to show provider: model.
+    /// Updates the model picker button text.  When a model is known and the provider
+    /// has models available, only the model name is displayed.  Otherwise the provider
+    /// name is shown (e.g. when no models have been discovered yet).
     /// </summary>
     private void UpdateModelPickerButtonText()
     {
-        string providerName = _provider?.DisplayName ?? "No provider";
-        string modelName = _model ?? "Select model";
-        ModelPickerButton.Content = $"{providerName}: {modelName}";
+        if (_provider is null)
+        {
+            ModelPickerButton.Content = "No provider";
+            return;
+        }
+
+        bool hasModels = _provider.AvailableModels.Count > 0;
+        bool hasModelName = !string.IsNullOrWhiteSpace(_model);
+
+        if (hasModels && hasModelName)
+        {
+            ModelPickerButton.Content = _model;
+        }
+        else
+        {
+            ModelPickerButton.Content = _provider.DisplayName;
+        }
     }
 
     /// <summary>
@@ -2246,8 +2265,10 @@ public partial class AiChatPanel : UserControl
 
     /// <summary>
     /// Applies a list of models to the model list box and selects the best match.
-    /// When the list is empty, preserves the current <see cref="_model"/> to avoid flicker
-    /// during async discovery transitions.
+    /// When the list is empty, the model list is cleared so it always reflects the
+    /// selected provider's models.  Selection and button-text updates are skipped
+    /// for empty results; the button text was already updated by
+    /// <see cref="ProviderListBox_SelectionChanged"/> before discovery started.
     /// </summary>
     private void ApplyOverlayModelList(IReadOnlyList<string> models)
     {
