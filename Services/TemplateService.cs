@@ -22,8 +22,7 @@ internal sealed class TemplateService
 
     public TemplateService()
     {
-        var appDataPath = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-        _templateFilePath = Path.Combine(appDataPath, "KaneCode", "templates.json");
+        _templateFilePath = Path.Combine(PortablePathProvider.BaseDirectory, "templates.json");
     }
 
     internal IReadOnlyList<FileTemplate> GetTemplates()

@@ -1,3 +1,4 @@
+using KaneCode.Services;
 using System.IO;
 using System.Text.Json;
 using System.Windows.Input;
@@ -10,9 +11,7 @@ namespace KaneCode.Infrastructure;
 /// </summary>
 internal static class HotkeyManager
 {
-    private static readonly string SettingsDirectory = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-        "KaneCode");
+    private static readonly string SettingsDirectory = PortablePathProvider.BaseDirectory;
 
     private static readonly string SettingsFilePath = Path.Combine(SettingsDirectory, "hotkeys.json");
 

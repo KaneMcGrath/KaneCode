@@ -44,6 +44,15 @@ public partial class OptionsWindow : Window
             GeneralSettingsManager.SaveDefaultProjectFolder(newFolder);
         }
 
+        // Save the selected theme
+        string? selectedThemeName = ThemeComboBox.SelectedIndex switch
+        {
+            1 => "Light",
+            2 => "Blue",
+            _ => "Dark"
+        };
+        GeneralSettingsManager.SaveThemeName(selectedThemeName);
+
         // Save auto-context rules
         AutoContextSettingsManager.Save(_autoContextRules);
 

@@ -5,13 +5,11 @@ namespace KaneCode.Services;
 
 /// <summary>
 /// Manages persistence of general IDE settings.
-/// Settings are stored per-user under <c>%LocalAppData%\KaneCode\general-settings.json</c>.
+/// Settings are stored under <c>PortablePathProvider.BaseDirectory\general-settings.json</c>.
 /// </summary>
 internal static class GeneralSettingsManager
 {
-    private static readonly string SettingsDirectory = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-        "KaneCode");
+    private static readonly string SettingsDirectory = PortablePathProvider.BaseDirectory;
 
     private static readonly string SettingsFilePath = Path.Combine(SettingsDirectory, "general-settings.json");
 
@@ -25,37 +23,71 @@ internal static class GeneralSettingsManager
     /// </summary>
     public static string LoadDefaultProjectFolder()
     {
+        var dto = LoadDto();
+        return !string.IsNullOrWhiteSpace(dto?.DefaultProjectFolder) ? dto.DefaultProjectFolder : GetDefaultPath();
+    }
+
+    /// <summary>
+    /// Saves the default project folder setting to disk.
+    /// Any existing settings (e.g. theme) are preserved.
+    /// </summary>
+    public static void SaveDefaultProjectFolder(string folderPath)
+    {
+        var dto = LoadDto() ?? new GeneralSettingsDto();
+        dto.DefaultProjectFolder = folderPath;
+        SaveDto(dto);
+    }
+
+    /// <summary>
+    /// Loads the saved theme name from disk.
+    /// Returns the saved theme name, or null if no theme has been persisted.
+    /// </summary>
+    public static string? LoadThemeName()
+    {
+        var dto = LoadDto();
+        return !string.IsNullOrWhiteSpace(dto?.ThemeName) ? dto.ThemeName : null;
+    }
+
+    /// <summary>
+    /// Saves the theme name to disk.
+    /// Any existing settings (e.g. default project folder) are preserved.
+    /// </summary>
+    public static void SaveThemeName(string themeName)
+    {
+        var dto = LoadDto() ?? new GeneralSettingsDto();
+        dto.ThemeName = themeName;
+        SaveDto(dto);
+    }
+
+    /// <summary>
+    /// Loads the full DTO from disk, or returns null if the file does not exist or is corrupt.
+    /// </summary>
+    private static GeneralSettingsDto? LoadDto()
+    {
         if (!File.Exists(SettingsFilePath))
         {
-            return GetDefaultPath();
+            return null;
         }
 
         try
         {
             var json = File.ReadAllText(SettingsFilePath);
-            var dto = JsonSerializer.Deserialize<GeneralSettingsDto>(json);
-            return !string.IsNullOrWhiteSpace(dto?.DefaultProjectFolder) ? dto.DefaultProjectFolder : GetDefaultPath();
+            return JsonSerializer.Deserialize<GeneralSettingsDto>(json);
         }
         catch (Exception)
         {
-            return GetDefaultPath();
+            return null;
         }
     }
 
     /// <summary>
-    /// Saves the default project folder setting to disk.
+    /// Persists the DTO to disk, creating the directory if necessary.
     /// </summary>
-    public static void SaveDefaultProjectFolder(string folderPath)
+    private static void SaveDto(GeneralSettingsDto dto)
     {
         try
         {
             Directory.CreateDirectory(SettingsDirectory);
-
-            var dto = new GeneralSettingsDto
-            {
-                DefaultProjectFolder = folderPath
-            };
-
             string json = JsonSerializer.Serialize(dto, JsonOptions);
             File.WriteAllText(SettingsFilePath, json);
         }
@@ -68,5 +100,7 @@ internal static class GeneralSettingsManager
     private sealed class GeneralSettingsDto
     {
         public string DefaultProjectFolder { get; set; } = string.Empty;
+
+        public string? ThemeName { get; set; }
     }
 }

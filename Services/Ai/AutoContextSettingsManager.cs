@@ -9,9 +9,7 @@ namespace KaneCode.Services.Ai;
 /// </summary>
 internal static class AutoContextSettingsManager
 {
-    private static readonly string SettingsDirectory = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-        "KaneCode");
+    private static readonly string SettingsDirectory = PortablePathProvider.BaseDirectory;
 
     private static readonly string SettingsFilePath = Path.Combine(SettingsDirectory, "auto-context.json");
 

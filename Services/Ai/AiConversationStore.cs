@@ -7,13 +7,12 @@ using KaneCode.Models;
 namespace KaneCode.Services.Ai;
 
 /// <summary>
-/// Persists AI conversations per project key under LocalAppData.
+/// Persists AI conversations per project key under PortablePathProvider.BaseDirectory.
 /// </summary>
 internal static class AiConversationStore
 {
     private static readonly string HistoryDirectory = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-        "KaneCode",
+        PortablePathProvider.BaseDirectory,
         "ai-chat-history");
 
     private static readonly JsonSerializerOptions JsonOptions = new()

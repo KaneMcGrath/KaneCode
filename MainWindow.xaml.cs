@@ -55,6 +55,9 @@ public partial class MainWindow : Window
         // Fix maximize covering the taskbar when using custom WindowChrome
         WindowMaximizeHelper.Attach(this);
 
+        // Restore the saved theme (if any) before binding the UI
+        RestoreSavedTheme();
+
         // Wire up theme selector
         ThemeSelector.ItemsSource = _themeManager.AvailableThemes;
         ThemeSelector.SelectedItem = _themeManager.CurrentTheme;
@@ -71,6 +74,27 @@ public partial class MainWindow : Window
         RegisterAiChatModes();
         RegisterAgentTools();
         WirePresentationOverlay();
+    }
+
+    /// <summary>
+    /// Restores the previously saved theme from <see cref="GeneralSettingsManager"/>,
+    /// or keeps the default (Dark) if no theme has been persisted.
+    /// </summary>
+    private void RestoreSavedTheme()
+    {
+        string? savedThemeName = GeneralSettingsManager.LoadThemeName();
+        if (savedThemeName is null)
+        {
+            return;
+        }
+
+        ThemeOption? matchingTheme = _themeManager.AvailableThemes
+            .FirstOrDefault(t => string.Equals(t.DisplayName, savedThemeName, StringComparison.OrdinalIgnoreCase));
+
+        if (matchingTheme is not null)
+        {
+            _themeManager.CurrentTheme = matchingTheme;
+        }
     }
 
     private void OnLoaded(object sender, RoutedEventArgs e)

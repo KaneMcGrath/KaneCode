@@ -7,15 +7,13 @@ namespace KaneCode.Services;
 
 /// <summary>
 /// Manages persistence of the recent projects/solutions/folders list.
-/// Entries are stored per-user under <c>%LocalAppData%\KaneCode\recent-projects.json</c>.
+/// Entries are stored under <c>PortablePathProvider.BaseDirectory\recent-projects.json</c>.
 /// </summary>
 internal sealed class RecentProjectsManager
 {
     private const int DefaultMaxEntries = 15;
 
-    private static readonly string SettingsDirectory = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-        "KaneCode");
+    private static readonly string SettingsDirectory = PortablePathProvider.BaseDirectory;
 
     private static readonly string StorageFilePath = Path.Combine(SettingsDirectory, "recent-projects.json");
 

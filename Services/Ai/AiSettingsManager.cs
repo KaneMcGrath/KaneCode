@@ -7,7 +7,7 @@ namespace KaneCode.Services.Ai;
 
 /// <summary>
 /// Manages persistence of AI provider settings including DPAPI-encrypted API keys.
-/// Settings are stored per-user under <c>%LocalAppData%\KaneCode\</c>.
+/// Settings are stored under <c>PortablePathProvider.BaseDirectory\</c>.
 ///
 /// Robustness guarantees:
 ///   • Schema versioning — future format changes are detected, not silently corrupted.
@@ -20,7 +20,7 @@ namespace KaneCode.Services.Ai;
 ///     the corresponding encrypted key file is cleaned up.
 ///
 /// File layout:
-///   %LocalAppData%\KaneCode\
+///   (PortablePathProvider.BaseDirectory)
 ///     ai-settings.json           Main settings file (current)
 ///     ai-settings.backup.json    Previous known-good version (fallback on corruption)
 ///     ai-settings.tmp.json       Temp file used during atomic writes
@@ -31,9 +31,7 @@ internal static class AiSettingsManager
 
     private const int CurrentSchemaVersion = 1;
 
-    private static readonly string SettingsDirectory = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-        "KaneCode");
+    private static readonly string SettingsDirectory = PortablePathProvider.BaseDirectory;
 
     private static readonly string SettingsFilePath = Path.Combine(SettingsDirectory, "ai-settings.json");
     private static readonly string BackupFilePath = Path.Combine(SettingsDirectory, "ai-settings.backup.json");
