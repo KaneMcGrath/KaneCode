@@ -2043,6 +2043,12 @@ public partial class AiChatPanel : UserControl
 
     /// <summary>
     /// Populates the provider list from the registry.
+    /// Creates a snapshot (<see cref="Enumerable.ToList{T}"/>) so that WPF never
+    /// tracks the live <c>List&lt;IAiProvider&gt;</c> that <see cref="AiProviderRegistry.Reload"/>
+    /// mutates in-place (Clear + Add) without <see cref="System.Collections.Specialized.INotifyCollectionChanged"/>
+    /// notifications. Without this snapshot, WPF's <c>ItemContainerGenerator</c> detects
+    /// the inconsistency during the next layout pass and throws
+    /// <see cref="InvalidOperationException"/>.
     /// </summary>
     private void PopulateProviderList()
     {
@@ -2052,7 +2058,8 @@ public partial class AiChatPanel : UserControl
             return;
         }
 
-        ProviderListBox.ItemsSource = _providerRegistry.Providers;
+        // ToList() creates a snapshot — WPF binds to this copy, not the live list.
+        ProviderListBox.ItemsSource = _providerRegistry.Providers.ToList();
     }
 
     /// <summary>
@@ -2188,9 +2195,13 @@ public partial class AiChatPanel : UserControl
     {
         if (!Dispatcher.CheckAccess())
         {
-            Dispatcher.Invoke(RefreshProviderSelector);
+            Dispatcher.Invoke(ProviderRegistry_ProvidersChanged, sender, e);
             return;
         }
+
+        // Re-bind the provider list to a fresh snapshot so WPF never sees the
+        // live list that AiProviderRegistry.Reload mutates in-place.
+        PopulateProviderList();
 
         RefreshProviderSelector();
     }
