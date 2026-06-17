@@ -203,11 +203,6 @@
                                 <PasswordBox x:Name="ApiKeyBox" Width="300" HorizontalAlignment="Left" Margin="0,0,0,10"
                                              PasswordChanged="ApiKeyBox_PasswordChanged" />
 
-                                <TextBlock Text="Default Model" FontSize="12" FontWeight="SemiBold"
-                                           Foreground="{DynamicResource WindowForeground}" Margin="0,0,0,4" />
-                                <TextBox Text="{Binding SelectedModel, UpdateSourceTrigger=PropertyChanged}"
-                                         Width="220" HorizontalAlignment="Left" Margin="0,0,0,10" />
-
                                 <TextBlock Text="Context Length" FontSize="12" FontWeight="SemiBold"
                                            Foreground="{DynamicResource WindowForeground}" Margin="0,0,0,4"
                                            ToolTip="Internal metric used by KaneCode for local context trimming. This value is not sent to the model." />

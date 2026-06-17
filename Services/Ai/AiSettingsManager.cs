@@ -155,6 +155,18 @@ internal static class AiSettingsManager
     /// </summary>
     public static void Save(IReadOnlyList<AiProviderSettings> settings)
     {
+        Save(settings, raiseEvent: true);
+    }
+
+    /// <summary>
+    /// Persists the given provider settings to disk with encrypted API keys.
+    /// When <paramref name="raiseEvent"/> is false, the <see cref="SettingsSaved"/>
+    /// event is not fired after the write completes. Use this for internal flag
+    /// updates (e.g. the active provider selection) to avoid triggering an
+    /// expensive full provider reload when only the in-memory selection changed.
+    /// </summary>
+    public static void Save(IReadOnlyList<AiProviderSettings> settings, bool raiseEvent)
+    {
         ArgumentNullException.ThrowIfNull(settings);
 
         // ── Data-loss guard ─────────────────────────────────────────
@@ -218,7 +230,10 @@ internal static class AiSettingsManager
             // 2. Atomic write to the main file
             AtomicWrite(SettingsFilePath, json);
 
-            SettingsSaved?.Invoke(null, EventArgs.Empty);
+            if (raiseEvent)
+            {
+                SettingsSaved?.Invoke(null, EventArgs.Empty);
+            }
         }
         catch (IOException)
         {

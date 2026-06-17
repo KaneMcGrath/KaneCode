@@ -108,7 +108,7 @@ internal sealed class AiProviderRegistry : IDisposable
             activeSettings.IsActive = true;
         }
 
-        AiSettingsManager.Save(_settingsMap.Values.ToList());
+        AiSettingsManager.Save(_settingsMap.Values.ToList(), raiseEvent: false);
     }
 
     /// <summary>

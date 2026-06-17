@@ -211,31 +211,35 @@ public class AiChatPanelTests
     }
 
     [Fact]
-    public void WhenBuildingSelectableModelListThenDiscoveredPreferredModelIsFirst()
+    public void WhenSelectingModelThenPreferredMatchIsReturned()
     {
-        // When the preferred model is among the discovered list,
-        // it is promoted to the top (but not duplicated).
-        IReadOnlyList<string> result = AiChatPanel.BuildSelectableModelList(["gpt-4.1", "gpt-4o"], "gpt-4o");
+        string? result = AiChatPanel.SelectModel(["gpt-4o", "gpt-4.1"], "gpt-4o");
 
-        Assert.Equal(["gpt-4o", "gpt-4.1"], result);
+        Assert.Equal("gpt-4o", result);
     }
 
     [Fact]
-    public void WhenBuildingSelectableModelListThenMissingPreferredModelIsNotInjected()
+    public void WhenSelectingModelThenPreferredMatchIsReturnedIgnoringCase()
     {
-        // When the preferred model is NOT among the discovered list,
-        // it should NOT be injected as an artificial entry.
-        IReadOnlyList<string> result = AiChatPanel.BuildSelectableModelList(["gpt-4.1", "gpt-4o-mini"], "gpt-4o");
-
-        Assert.Equal(["gpt-4.1", "gpt-4o-mini"], result);
-    }
-
-    [Fact]
-    public void WhenSelectingInitialModelThenPreferredMatchIsReturnedIgnoringCase()
-    {
-        string? result = AiChatPanel.SelectInitialModel(["gpt-4o", "gpt-4.1"], "GPT-4.1");
+        string? result = AiChatPanel.SelectModel(["gpt-4o", "gpt-4.1"], "GPT-4.1");
 
         Assert.Equal("gpt-4.1", result);
+    }
+
+    [Fact]
+    public void WhenSelectingModelAndPreferredIsMissingThenFirstModelIsReturned()
+    {
+        string? result = AiChatPanel.SelectModel(["gpt-4.1", "gpt-4o-mini"], "gpt-4o");
+
+        Assert.Equal("gpt-4.1", result);
+    }
+
+    [Fact]
+    public void WhenSelectingModelAndListIsEmptyThenNullIsReturned()
+    {
+        string? result = AiChatPanel.SelectModel([], "gpt-4o");
+
+        Assert.Null(result);
     }
 
     [Fact]
