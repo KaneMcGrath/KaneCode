@@ -2108,7 +2108,8 @@ public partial class AiChatPanel : UserControl
                     .Select(p => _providerRegistry.GetSettings(p))
                     .Where(s => s is not null)
                     .Cast<AiProviderSettings>()
-                    .ToList());
+                    .ToList(),
+                    raiseEvent: false);
             }
         }
     }
