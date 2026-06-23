@@ -317,7 +317,7 @@ internal sealed class OpenAiProvider : IAiProvider, IDisposable
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(endpoint);
 
-        if (!Uri.TryCreate(endpoint.Trim(), UriKind.Absolute, out Uri? uri))
+        if (!Uri.TryCreate(EnsureScheme(endpoint.Trim()), UriKind.Absolute, out Uri? uri))
         {
             return false;
         }
@@ -325,11 +325,42 @@ internal sealed class OpenAiProvider : IAiProvider, IDisposable
         return uri.Host.EndsWith("groq.com", StringComparison.OrdinalIgnoreCase);
     }
 
+    /// <summary>
+    /// Normalizes an endpoint URL for use with <see cref="HttpClient"/>.
+    ///   • Prepends "http://" if no scheme is present (e.g. "localhost:8080").
+    ///   • Replaces host "0.0.0.0" with "127.0.0.1" since 0.0.0.0 is a listen-only
+    ///     wildcard address that cannot be used as a connection target.
+    /// </summary>
+    private static string EnsureScheme(string endpoint)
+    {
+        // A valid absolute URI must have a scheme. We look for "://" which is
+        // present in any properly formed absolute URI (http://, https://, etc.).
+        int colonIndex = endpoint.IndexOf(':');
+        if (!(colonIndex > 0 && endpoint.Length > colonIndex + 2 &&
+              endpoint[colonIndex + 1] == '/' && endpoint[colonIndex + 2] == '/'))
+        {
+            endpoint = "http://" + endpoint;
+        }
+
+        // Replace 0.0.0.0 with 127.0.0.1 — 0.0.0.0 is a wildcard listen address
+        // that .NET HttpClient correctly rejects as a connection target.
+        if (Uri.TryCreate(endpoint, UriKind.Absolute, out Uri? uri) &&
+            string.Equals(uri.Host, "0.0.0.0", StringComparison.OrdinalIgnoreCase))
+        {
+            var builder = new UriBuilder(uri) { Host = "127.0.0.1" };
+            return builder.Uri.ToString();
+        }
+
+        return endpoint;
+    }
+
     internal static string BuildModelsUrl(string endpoint)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(endpoint);
 
-        if (!Uri.TryCreate(endpoint.Trim(), UriKind.Absolute, out Uri? uri))
+        string normalizedEndpoint = EnsureScheme(endpoint.Trim());
+
+        if (!Uri.TryCreate(normalizedEndpoint, UriKind.Absolute, out Uri? uri))
         {
             throw new InvalidOperationException("The configured AI endpoint must be an absolute URL.");
         }
@@ -359,7 +390,9 @@ internal sealed class OpenAiProvider : IAiProvider, IDisposable
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(endpoint);
 
-        if (!Uri.TryCreate(endpoint.Trim(), UriKind.Absolute, out var uri))
+        string normalizedEndpoint = EnsureScheme(endpoint.Trim());
+
+        if (!Uri.TryCreate(normalizedEndpoint, UriKind.Absolute, out var uri))
         {
             throw new InvalidOperationException("The configured AI endpoint must be an absolute URL.");
         }
