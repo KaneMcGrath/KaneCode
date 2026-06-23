@@ -1,5 +1,6 @@
 using KaneCode.Models;
 using KaneCode.Services.Ai;
+using KaneCode.Services.Ai.Modes;
 using KaneCode.Theming;
 using System.Diagnostics;
 using System.IO;
@@ -44,6 +45,8 @@ public partial class AiChatPanel : UserControl
     private ExternalContextDirectoryRegistry? _externalContextDirectoryRegistry;
     private IAiChatMode? _activeMode;
     private AiConversation? _activeConversation;
+    private readonly List<ModeDropdownPresetItem> _presetDropdownItems = [];
+    private bool _isUpdatingModeSelection;
     private ListBox? _mentionPopup;
     private string? _pendingSelectionContext;
     private bool _isUpdatingConversationSelection;
@@ -798,7 +801,28 @@ public partial class AiChatPanel : UserControl
         }
 
         _activeMode = customMode;
-        ModeSelector.SelectedItem = customMode;
+        SelectDropdownItemForMode(customMode);
+    }
+
+    /// <summary>
+    /// Opens the preset editor window. After the user saves changes, presets
+    /// are persisted and the dropdown is refreshed.
+    /// </summary>
+    private void OpenPresetEditor()
+    {
+        if (_toolRegistry is null)
+        {
+            return;
+        }
+
+        Window owner = Window.GetWindow(this);
+        AiPresetEditorWindow editor = new AiPresetEditorWindow(_toolRegistry, owner);
+
+        if (editor.ShowDialog() == true)
+        {
+            // Presets are saved by the editor; the PresetsSaved event
+            // will trigger a dropdown refresh via OnPresetsSaved.
+        }
     }
 
     /// <summary>
@@ -882,18 +906,192 @@ public partial class AiChatPanel : UserControl
     {
         ArgumentNullException.ThrowIfNull(registry);
         _modeRegistry = registry;
-        ModeSelector.ItemsSource = registry.Modes;
+
+        AiPresetManager.PresetsSaved += OnPresetsSaved;
+
+        RebuildModeDropdownItems();
+
         _activeMode = registry.Default;
 
         if (_activeMode is not null)
         {
-            ModeSelector.SelectedItem = _activeMode;
+            SelectDropdownItemForMode(_activeMode);
+        }
+    }
+
+    /// <summary>
+    /// Rebuilds the mode selector dropdown items combining built-in modes and presets.
+    /// Built-in modes appear first, followed by a separator, then a "Presets" header,
+    /// then individual preset entries, and finally an "Edit presets..." action item.
+    /// </summary>
+    private void RebuildModeDropdownItems()
+    {
+        if (_modeRegistry is null)
+        {
+            return;
+        }
+
+        AgentToolRegistry toolRegistry = _toolRegistry ?? new AgentToolRegistry();
+
+        List<object> items = [];
+
+        // 1. Built-in modes
+        items.Add(new ModeDropdownHeaderItem { Text = "Built-in" });
+        foreach (IAiChatMode mode in _modeRegistry.Modes)
+        {
+            items.Add(new ModeDropdownModeItem { Mode = mode });
+        }
+
+        // 2. Separator
+        items.Add(new ModeDropdownSeparatorItem());
+
+        // 3. Presets section
+        items.Add(new ModeDropdownHeaderItem { Text = "Presets" });
+
+        _presetDropdownItems.Clear();
+        List<Models.AiPreset> presets = AiPresetManager.Load();
+        foreach (Models.AiPreset preset in presets)
+        {
+            PresetMode presetMode = new PresetMode(preset, toolRegistry);
+            var dropdownItem = new ModeDropdownPresetItem
+            {
+                Preset = preset,
+                Mode = presetMode
+            };
+            _presetDropdownItems.Add(dropdownItem);
+            items.Add(dropdownItem);
+        }
+
+        // 4. Edit presets action item (when clicked, opens the preset editor)
+        items.Add(new ModeDropdownActionItem
+        {
+            Text = "✏️ Edit presets...",
+            Action = () =>
+            {
+                OpenPresetEditor();
+                // Restore the previously active selection after editing
+                if (_activeMode is not null)
+                {
+                    SelectDropdownItemForMode(_activeMode);
+                }
+            }
+        });
+
+        _isUpdatingModeSelection = true;
+        try
+        {
+            ModeSelector.ItemsSource = items;
+        }
+        finally
+        {
+            _isUpdatingModeSelection = false;
+        }
+    }
+
+    /// <summary>
+    /// Refreshes the preset dropdown items (called after presets are saved).
+    /// Preserves the current selection if the active mode still exists.
+    /// </summary>
+    private void RefreshPresetDropdownItems()
+    {
+        IAiChatMode? previouslyActiveMode = _activeMode;
+        string? previousPresetId = null;
+
+        if (previouslyActiveMode?.Id.StartsWith("preset:", StringComparison.Ordinal) == true)
+        {
+            previousPresetId = previouslyActiveMode.Id;
+        }
+
+        RebuildModeDropdownItems();
+
+        // Try to restore the previous selection
+        if (previousPresetId is not null)
+        {
+            // Try to find the same preset
+            foreach (var presetItem in _presetDropdownItems)
+            {
+                if (string.Equals(presetItem.Mode.Id, previousPresetId, StringComparison.Ordinal))
+                {
+                    SelectDropdownItemForMode(presetItem.Mode);
+                    return;
+                }
+            }
+
+            // Preset was deleted — fall back to first preset or custom mode
+            if (_presetDropdownItems.Count > 0)
+            {
+                SelectDropdownItemForMode(_presetDropdownItems[0].Mode);
+            }
+            else
+            {
+                IAiChatMode? customMode = _modeRegistry?.Get("custom");
+                if (customMode is not null)
+                {
+                    _activeMode = customMode;
+                    SelectDropdownItemForMode(customMode);
+                }
+            }
+        }
+        else if (previouslyActiveMode is not null)
+        {
+            SelectDropdownItemForMode(previouslyActiveMode);
+        }
+    }
+
+    /// <summary>
+    /// Finds and selects the dropdown item corresponding to the given mode.
+    /// </summary>
+    private void SelectDropdownItemForMode(IAiChatMode mode)
+    {
+        _isUpdatingModeSelection = true;
+        try
+        {
+            foreach (object item in ModeSelector.Items)
+            {
+                if (item is ModeDropdownModeItem modeItem && ReferenceEquals(modeItem.Mode, mode))
+                {
+                    ModeSelector.SelectedItem = item;
+                    _activeMode = mode;
+                    return;
+                }
+
+                if (item is ModeDropdownPresetItem presetItem && string.Equals(presetItem.Mode.Id, mode.Id, StringComparison.Ordinal))
+                {
+                    ModeSelector.SelectedItem = item;
+                    _activeMode = presetItem.Mode;
+                    return;
+                }
+            }
+
+            // Fallback: try by id
+            foreach (object item in ModeSelector.Items)
+            {
+                if (item is ModeDropdownModeItem modeItem && string.Equals(modeItem.Mode.Id, mode.Id, StringComparison.Ordinal))
+                {
+                    ModeSelector.SelectedItem = item;
+                    _activeMode = modeItem.Mode;
+                    return;
+                }
+            }
+        }
+        finally
+        {
+            _isUpdatingModeSelection = false;
+        }
+    }
+
+    private void OnPresetsSaved(object? sender, EventArgs e)
+    {
+        if (System.Windows.Application.Current?.Dispatcher is { } dispatcher)
+        {
+            dispatcher.BeginInvoke(() => RefreshPresetDropdownItems());
         }
     }
 
     /// <summary>
     /// Programmatically switches the active conversation to the mode with the given <paramref name="modeId"/>.
     /// If the mode is found and is different from the current mode, it is applied as a preset.
+    /// Supports both built-in mode IDs (e.g. "agent") and preset IDs (e.g. "preset:&lt;guid&gt;").
     /// </summary>
     internal void SwitchToMode(string modeId)
     {
@@ -904,19 +1102,37 @@ public partial class AiChatPanel : UserControl
             return;
         }
 
-        IAiChatMode? mode = _modeRegistry.Get(modeId);
-        if (mode is null)
-        {
-            return;
-        }
-
         if (string.Equals(_activeMode?.Id, modeId, StringComparison.Ordinal))
         {
             return;
         }
 
+        IAiChatMode? mode = null;
+
+        // Check if this is a preset mode id
+        if (modeId.StartsWith("preset:", StringComparison.Ordinal))
+        {
+            foreach (ModeDropdownPresetItem presetItem in _presetDropdownItems)
+            {
+                if (string.Equals(presetItem.Mode.Id, modeId, StringComparison.Ordinal))
+                {
+                    mode = presetItem.Mode;
+                    break;
+                }
+            }
+        }
+        else
+        {
+            mode = _modeRegistry.Get(modeId);
+        }
+
+        if (mode is null)
+        {
+            return;
+        }
+
         _activeMode = mode;
-        ModeSelector.SelectedItem = mode;
+        SelectDropdownItemForMode(mode);
 
         if (mode.Id != "custom")
         {
@@ -2301,23 +2517,38 @@ public partial class AiChatPanel : UserControl
 
     private void ModeSelector_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (ModeSelector.SelectedItem is not IAiChatMode mode)
+        if (_isUpdatingModeSelection)
         {
             return;
         }
 
-        _activeMode = mode;
-
-        // When switching to a preset mode (not Custom), reset tools and
-        // system prompt to that mode's defaults.
-        if (mode.Id != "custom")
+        if (ModeSelector.SelectedItem is ModeDropdownModeItem modeItem)
         {
-            ApplyModePreset(mode);
-        }
+            IAiChatMode mode = modeItem.Mode;
+            _activeMode = mode;
 
-        AppendSystemMessage($"Switched to {mode.DisplayName} mode.");
-        RefreshToolsCheckboxPanel();
-        RefreshContextWindowDisplay();
+            if (mode.Id != "custom")
+            {
+                ApplyModePreset(mode);
+            }
+
+            AppendSystemMessage($"Switched to {mode.DisplayName} mode.");
+            RefreshToolsCheckboxPanel();
+            RefreshContextWindowDisplay();
+        }
+        else if (ModeSelector.SelectedItem is ModeDropdownPresetItem presetItem)
+        {
+            _activeMode = presetItem.Mode;
+            ApplyModePreset(presetItem.Mode);
+            AppendSystemMessage($"Switched to preset \"{presetItem.Preset.Name}\" mode.");
+            RefreshToolsCheckboxPanel();
+            RefreshContextWindowDisplay();
+        }
+        else if (ModeSelector.SelectedItem is ModeDropdownActionItem actionItem)
+        {
+            // Invoke the action and restore the previous selection
+            actionItem.Action?.Invoke();
+        }
     }
 
     /// <summary>
