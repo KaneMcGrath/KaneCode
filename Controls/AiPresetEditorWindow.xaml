@@ -77,6 +77,40 @@
                         Background="{DynamicResource EditorBackground}"
                         BorderBrush="{DynamicResource EditorBorder}"
                         BorderThickness="1" />
+                <ToggleButton x:Name="CopyFromToggleButton"
+                              Content="Copy From"
+                              Padding="10,3"
+                              MinHeight="24"
+                              FontSize="11"
+                              Margin="0,0,4,0"
+                              Cursor="Hand"
+                              Click="CopyFromToggleButton_Click"
+                              Foreground="{DynamicResource EditorForeground}"
+                              Background="{DynamicResource EditorBackground}"
+                              BorderBrush="{DynamicResource EditorBorder}"
+                              BorderThickness="1"
+                              ToolTip="Create a new preset with values copied from a mode or preset" />
+                <Popup x:Name="CopyFromPopup"
+                       PlacementTarget="{Binding ElementName=CopyFromToggleButton}"
+                       Placement="Bottom"
+                       StaysOpen="False"
+                       AllowsTransparency="True"
+                       PopupAnimation="Slide"
+                       Focusable="True"
+                       Closed="CopyFromPopup_Closed">
+                    <Border Background="{DynamicResource EditorBackground}"
+                            BorderBrush="{DynamicResource EditorBorder}"
+                            BorderThickness="1"
+                            Padding="0"
+                            SnapsToDevicePixels="True"
+                            MaxHeight="300"
+                            MinWidth="180">
+                        <ScrollViewer VerticalScrollBarVisibility="Auto"
+                                      HorizontalScrollBarVisibility="Disabled">
+                            <StackPanel x:Name="CopyFromItemsPanel" />
+                        </ScrollViewer>
+                    </Border>
+                </Popup>
                 <Button x:Name="DeletePresetButton"
                         Content="Delete"
                         Padding="10,3"

@@ -816,7 +816,7 @@ public partial class AiChatPanel : UserControl
         }
 
         Window owner = Window.GetWindow(this);
-        AiPresetEditorWindow editor = new AiPresetEditorWindow(_toolRegistry, owner);
+        AiPresetEditorWindow editor = new AiPresetEditorWindow(_toolRegistry, _modeRegistry ?? new AiChatModeRegistry(), _activeMode, owner);
 
         if (editor.ShowDialog() == true)
         {
