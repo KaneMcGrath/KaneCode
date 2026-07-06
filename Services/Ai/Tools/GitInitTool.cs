@@ -78,7 +78,15 @@ internal sealed class GitInitTool : IAgentTool
                 return Task.FromResult(ToolCallResult.Fail("Failed to initialize Git repository. The directory may already be part of a repository."));
             }
 
-            _onRepositoryChanged();
+            // Dispatch the repository-changed callback to the UI thread.
+            // The callback modifies ObservableCollections that are bound to WPF
+            // controls, which must only be touched from the dispatcher thread.
+            var dispatcher = System.Windows.Application.Current?.Dispatcher;
+            if (dispatcher is not null)
+            {
+                dispatcher.Invoke(_onRepositoryChanged);
+            }
+
             return Task.FromResult(ToolCallResult.Ok($"Initialized empty Git repository in '{projectRoot}'. A .gitignore file was created."));
         }
         catch (ArgumentException ex)
