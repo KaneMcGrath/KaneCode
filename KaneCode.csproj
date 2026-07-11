@@ -1,3 +1,4 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <MarkupCompilePass1DependsOn>$(MarkupCompilePass1DependsOn);GenerateTargetFrameworkMonikerAttribute</MarkupCompilePass1DependsOn>
@@ -54,6 +55,7 @@
     <PackageReference Include="NuGet.Protocol" Version="6.13.2" />
     <PackageReference Include="NuGet.Packaging" Version="6.13.2" />
     <PackageReference Include="NuGet.ProjectModel" Version="6.13.2" />
+    <PackageReference Include="Svg" Version="3.4.7" />
   </ItemGroup>
   <ItemGroup>
     <Resource Include="Icons\KaneCode.ico">

@@ -519,6 +519,7 @@ public partial class AiChatPanel : UserControl
         ("Read Files",     "Read Files"),
         ("Write Files",    "Write Files"),
         ("Dotnet",         "Dotnet"),
+        ("Drawing",        "Drawing"),
         ("Presentation",   "Presentation"),
     ];
 
@@ -4431,11 +4432,76 @@ public partial class AiChatPanel : UserControl
             SetInlineSectionForeground(block.Section, errorForeground);
         }
 
+        // Render SVG inline if present (draw_svg tool)
+        if (result.Success && !string.IsNullOrWhiteSpace(result.SvgContent) &&
+            string.Equals(block.ToolName, "draw_svg", StringComparison.Ordinal))
+        {
+            AppendSvgImage(block.Section.Root, result.SvgContent);
+        }
+
         bool shouldStickToBottom = IsMessageScrollerNearBottom();
 
         if (shouldStickToBottom)
         {
             MessageScroller.ScrollToEnd();
+        }
+    }
+
+    /// <summary>
+    /// Renders an SVG image below the given tool call section root element.
+    /// The image is displayed directly in the message panel, visible even when
+    /// the tool call expander is collapsed.
+    /// </summary>
+    private static void AppendSvgImage(Border sectionRoot, string svgContent)
+    {
+        ArgumentNullException.ThrowIfNull(sectionRoot);
+        ArgumentException.ThrowIfNullOrWhiteSpace(svgContent);
+
+        if (sectionRoot.Parent is not Panel parentPanel)
+        {
+            return;
+        }
+
+        try
+        {
+            using var svgStream = new MemoryStream(System.Text.Encoding.UTF8.GetBytes(svgContent));
+            Svg.SvgDocument svgDoc = Svg.SvgDocument.Open<Svg.SvgDocument>(svgStream);
+
+            // Render at a reasonable display width (fit within chat panel)
+            using System.Drawing.Bitmap bitmap = svgDoc.Draw(800, 0);
+
+            System.Windows.Media.Imaging.BitmapSource bitmapSource =
+                System.Windows.Interop.Imaging.CreateBitmapSourceFromHBitmap(
+                    bitmap.GetHbitmap(),
+                    IntPtr.Zero,
+                    System.Windows.Int32Rect.Empty,
+                    System.Windows.Media.Imaging.BitmapSizeOptions.FromEmptyOptions());
+
+            System.Windows.Controls.Image image = new()
+            {
+                Source = bitmapSource,
+                Stretch = System.Windows.Media.Stretch.Uniform,
+                MaxWidth = 780,
+                Margin = new Thickness(8, 8, 8, 4),
+                HorizontalAlignment = HorizontalAlignment.Left,
+                VerticalAlignment = VerticalAlignment.Top
+            };
+
+            // Insert the image after the section root in the parent panel
+            int sectionIndex = parentPanel.Children.IndexOf(sectionRoot);
+            if (sectionIndex >= 0 && sectionIndex < parentPanel.Children.Count - 1)
+            {
+                parentPanel.Children.Insert(sectionIndex + 1, image);
+            }
+            else
+            {
+                parentPanel.Children.Add(image);
+            }
+        }
+        catch (Exception)
+        {
+            // SVG rendering failed — the text result is already shown,
+            // so we silently skip the inline image.
         }
     }
 
