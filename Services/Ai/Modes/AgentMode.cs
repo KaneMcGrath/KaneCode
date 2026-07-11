@@ -26,6 +26,10 @@ internal sealed class AgentMode : IAiChatMode
         "clean",
         "test",
 
+        // Drawing
+        "draw_svg",
+        "edit_last_svg",
+
         // Git
         "git_branches",
         "git_checkout",
