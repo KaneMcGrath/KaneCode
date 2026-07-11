@@ -15,6 +15,7 @@ using System.Windows.Controls;
 using System.Windows.Documents;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 
 namespace KaneCode.Controls;
@@ -4450,9 +4451,10 @@ public partial class AiChatPanel : UserControl
     /// <summary>
     /// Renders an SVG image below the given tool call section root element.
     /// The image is displayed directly in the message panel, visible even when
-    /// the tool call expander is collapsed.
+    /// the tool call expander is collapsed. Clicking the image opens a full-screen
+    /// viewer with zoom and pan support.
     /// </summary>
-    private static void AppendSvgImage(Border sectionRoot, string svgContent)
+    private void AppendSvgImage(Border sectionRoot, string svgContent)
     {
         ArgumentNullException.ThrowIfNull(sectionRoot);
         ArgumentException.ThrowIfNullOrWhiteSpace(svgContent);
@@ -4470,21 +4472,40 @@ public partial class AiChatPanel : UserControl
             // Render at a reasonable display width (fit within chat panel)
             using System.Drawing.Bitmap bitmap = svgDoc.Draw(800, 0);
 
-            System.Windows.Media.Imaging.BitmapSource bitmapSource =
-                System.Windows.Interop.Imaging.CreateBitmapSourceFromHBitmap(
-                    bitmap.GetHbitmap(),
-                    IntPtr.Zero,
-                    System.Windows.Int32Rect.Empty,
-                    System.Windows.Media.Imaging.BitmapSizeOptions.FromEmptyOptions());
+            BitmapSource bitmapSource = ConvertBitmapToBitmapSource(bitmap);
 
-            System.Windows.Controls.Image image = new()
+            Image image = new()
             {
                 Source = bitmapSource,
-                Stretch = System.Windows.Media.Stretch.Uniform,
+                Stretch = Stretch.Uniform,
                 MaxWidth = 780,
                 Margin = new Thickness(8, 8, 8, 4),
                 HorizontalAlignment = HorizontalAlignment.Left,
-                VerticalAlignment = VerticalAlignment.Top
+                VerticalAlignment = VerticalAlignment.Top,
+                Cursor = Cursors.Hand,
+                ToolTip = "Click to enlarge"
+            };
+
+            // Capture the SVG content so the viewer can re-render at high resolution
+            string capturedSvg = svgContent;
+            image.MouseLeftButtonDown += (_, _) =>
+            {
+                try
+                {
+                    using var viewerStream = new MemoryStream(System.Text.Encoding.UTF8.GetBytes(capturedSvg));
+                    Svg.SvgDocument viewerDoc = Svg.SvgDocument.Open<Svg.SvgDocument>(viewerStream);
+
+                    // Render at higher resolution for the full-screen viewer
+                    using System.Drawing.Bitmap viewerBitmap = viewerDoc.Draw(1600, 0);
+                    BitmapSource viewerSource = ConvertBitmapToBitmapSource(viewerBitmap);
+
+                    ImageViewerWindow.Open(viewerSource, "SVG Image", Window.GetWindow(this));
+                }
+                catch (Exception)
+                {
+                    // Fallback: open with the inline-resolution bitmap if re-render fails
+                    ImageViewerWindow.Open(bitmapSource, "SVG Image", Window.GetWindow(this));
+                }
             };
 
             // Insert the image after the section root in the parent panel
@@ -4503,6 +4524,36 @@ public partial class AiChatPanel : UserControl
             // SVG rendering failed — the text result is already shown,
             // so we silently skip the inline image.
         }
+    }
+
+    /// <summary>
+    /// Converts a <see cref="System.Drawing.Bitmap"/> to a WPF <see cref="BitmapSource"/>,
+    /// properly freeing the GDI handle after conversion.
+    /// </summary>
+    private static BitmapSource ConvertBitmapToBitmapSource(System.Drawing.Bitmap bitmap)
+    {
+        ArgumentNullException.ThrowIfNull(bitmap);
+
+        IntPtr hBitmap = bitmap.GetHbitmap();
+        try
+        {
+            return System.Windows.Interop.Imaging.CreateBitmapSourceFromHBitmap(
+                hBitmap,
+                IntPtr.Zero,
+                Int32Rect.Empty,
+                BitmapSizeOptions.FromEmptyOptions());
+        }
+        finally
+        {
+            NativeMethods.DeleteObject(hBitmap);
+        }
+    }
+
+    private static class NativeMethods
+    {
+        [System.Runtime.InteropServices.DllImport("gdi32.dll")]
+        [return: System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.Bool)]
+        public static extern bool DeleteObject(IntPtr hObject);
     }
 
     private void RemoveInlineSection(StreamSectionVisual section)
