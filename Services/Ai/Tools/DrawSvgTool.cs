@@ -12,6 +12,12 @@ namespace KaneCode.Services.Ai.Tools;
 /// </summary>
 internal sealed class DrawSvgTool : IAgentTool
 {
+    /// <summary>
+    /// The most recent SVG content rendered by <see cref="draw_svg"/>.
+    /// Read by <see cref="EditLastSvgTool"/> to enable incremental editing without
+    /// repeating the full SVG content.
+    /// </summary>
+    internal static string? LastSvgContent { get; set; }
     private static readonly JsonElement Schema = JsonDocument.Parse("""
         {
             "type": "object",
@@ -70,6 +76,8 @@ internal sealed class DrawSvgTool : IAgentTool
             return Task.FromResult(ToolCallResult.Fail(
                 $"Invalid SVG content: {ex.Message}"));
         }
+
+        LastSvgContent = content;
 
         return Task.FromResult(ToolCallResult.OkWithSvg(
             "SVG rendered successfully.", content));

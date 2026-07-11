@@ -4433,9 +4433,10 @@ public partial class AiChatPanel : UserControl
             SetInlineSectionForeground(block.Section, errorForeground);
         }
 
-        // Render SVG inline if present (draw_svg tool)
+        // Render SVG inline if present (draw_svg or edit_last_svg tools)
         if (result.Success && !string.IsNullOrWhiteSpace(result.SvgContent) &&
-            string.Equals(block.ToolName, "draw_svg", StringComparison.Ordinal))
+            (string.Equals(block.ToolName, "draw_svg", StringComparison.Ordinal) ||
+             string.Equals(block.ToolName, "edit_last_svg", StringComparison.Ordinal)))
         {
             AppendSvgImage(block.Section.Root, result.SvgContent);
         }
