@@ -9,16 +9,18 @@ using System.Text.Json;
 namespace KaneCode.Services.Ai;
 
 /// <summary>
-/// AI provider that talks to an OpenAI-compatible <c>/v1/chat/completions</c>
+/// Legacy AI provider that talks to an OpenAI-compatible <c>/v1/completions</c>
 /// endpoint with optional SSE streaming and an optional API key.
+/// This provider is maintained for backward compatibility with models/servers
+/// that do not support the <c>/v1/chat/completions</c> endpoint.
 /// </summary>
-internal sealed class OpenAiProvider : IAiProvider, IDisposable
+internal sealed class V1CompletionsProvider : IAiProvider, IDisposable
 {
     private readonly HttpClient _httpClient = new() { Timeout = TimeSpan.FromMinutes(5) };
     private readonly AiProviderSettings _settings;
     private IReadOnlyList<string> _availableModels;
 
-    public OpenAiProvider(AiProviderSettings settings)
+    public V1CompletionsProvider(AiProviderSettings settings)
     {
         ArgumentNullException.ThrowIfNull(settings);
         _settings = settings;
@@ -26,10 +28,10 @@ internal sealed class OpenAiProvider : IAiProvider, IDisposable
     }
 
     public string DisplayName => string.IsNullOrWhiteSpace(_settings.Label)
-        ? "OpenAI-compatible"
+        ? "/v1/completions"
         : _settings.Label;
 
-    public string ProviderId => "openai";
+    public string ProviderId => "v1completions";
 
     public bool IsConfigured => !string.IsNullOrWhiteSpace(_settings.Endpoint);
 

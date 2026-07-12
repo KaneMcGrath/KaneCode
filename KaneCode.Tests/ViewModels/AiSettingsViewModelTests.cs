@@ -10,7 +10,7 @@ public class AiSettingsViewModelTests
     {
         AiProviderSettings settings = new()
         {
-            ProviderId = "openai",
+            ProviderId = "v1completions",
             Label = "Test Provider",
             ContextLength = 16384
         };
@@ -25,7 +25,7 @@ public class AiSettingsViewModelTests
     {
         AiProviderEntryViewModel entry = new(new AiProviderSettings
         {
-            ProviderId = "openai",
+            ProviderId = "v1completions",
             Label = "Test Provider"
         })
         {
@@ -42,7 +42,7 @@ public class AiSettingsViewModelTests
     {
         AiProviderEntryViewModel entry = new(new AiProviderSettings
         {
-            ProviderId = "openai",
+            ProviderId = "v1completions",
             Label = "Test Provider"
         })
         {
@@ -59,7 +59,7 @@ public class AiSettingsViewModelTests
     {
         AiProviderSettings settings = new()
         {
-            ProviderId = "openai",
+            ProviderId = "v1completions",
             Label = "Test Provider",
             Temperature = null
         };
@@ -75,7 +75,7 @@ public class AiSettingsViewModelTests
     {
         AiProviderEntryViewModel entry = new(new AiProviderSettings
         {
-            ProviderId = "openai",
+            ProviderId = "v1completions",
             Label = "Test Provider",
             Temperature = 0.9
         })

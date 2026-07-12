@@ -3,7 +3,7 @@ using System.Text.Json;
 
 namespace KaneCode.Tests.Services.Ai;
 
-public class OpenAiProviderTests
+public class V1CompletionsProviderTests
 {
     [Fact]
     public void WhenStreamingEnabledThenRequestPayloadSetsStreamTrue()
@@ -15,7 +15,7 @@ public class OpenAiProviderTests
         };
         using JsonDocument messagesDocument = JsonDocument.Parse("[{\"role\":\"user\",\"content\":\"Hello\"}]");
 
-        string json = OpenAiProvider.BuildChatCompletionRequestJson(
+        string json = V1CompletionsProvider.BuildChatCompletionRequestJson(
             "gpt-test",
             messagesDocument.RootElement.Clone(),
             default,
@@ -40,7 +40,7 @@ public class OpenAiProviderTests
         };
         using JsonDocument messagesDocument = JsonDocument.Parse("[{\"role\":\"user\",\"content\":\"Hello\"}]");
 
-        string json = OpenAiProvider.BuildChatCompletionRequestJson(
+        string json = V1CompletionsProvider.BuildChatCompletionRequestJson(
             "gpt-test",
             messagesDocument.RootElement.Clone(),
             default,
@@ -68,7 +68,7 @@ public class OpenAiProviderTests
         };
         using JsonDocument messagesDocument = JsonDocument.Parse("[{\"role\":\"user\",\"content\":\"Hello\"}]");
 
-        string json = OpenAiProvider.BuildChatCompletionRequestJson(
+        string json = V1CompletionsProvider.BuildChatCompletionRequestJson(
             "gpt-test",
             messagesDocument.RootElement.Clone(),
             default,
@@ -93,7 +93,7 @@ public class OpenAiProviderTests
         };
         using JsonDocument messagesDocument = JsonDocument.Parse("[{\"role\":\"user\",\"content\":\"Hello\"}]");
 
-        string json = OpenAiProvider.BuildChatCompletionRequestJson(
+        string json = V1CompletionsProvider.BuildChatCompletionRequestJson(
             "gpt-test",
             messagesDocument.RootElement.Clone(),
             default,
@@ -118,7 +118,7 @@ public class OpenAiProviderTests
             }
             """;
 
-        IReadOnlyList<string> models = OpenAiProvider.ParseAvailableModelsResponse(responseJson, "gpt-4o");
+        IReadOnlyList<string> models = V1CompletionsProvider.ParseAvailableModelsResponse(responseJson, "gpt-4o");
 
         // "gpt-4o" is NOT in the discovered list, so it is not injected.
         // Only the discovered models are returned.
@@ -140,7 +140,7 @@ public class OpenAiProviderTests
             }
             """;
 
-        IReadOnlyList<string> models = OpenAiProvider.ParseAvailableModelsResponse(responseJson, "gpt-4o");
+        IReadOnlyList<string> models = V1CompletionsProvider.ParseAvailableModelsResponse(responseJson, "gpt-4o");
 
         // "gpt-4o" is found in the discovered list and promoted to the top.
         Assert.Equal(["gpt-4o", "gpt-4.1", "gpt-4o-mini"], models);
@@ -149,7 +149,7 @@ public class OpenAiProviderTests
     [Fact]
     public void WhenBuildingModelsUrlFromChatCompletionsEndpointThenModelsEndpointIsReturned()
     {
-        string url = OpenAiProvider.BuildModelsUrl("https://example.test/v1/chat/completions");
+        string url = V1CompletionsProvider.BuildModelsUrl("https://example.test/v1/chat/completions");
 
         Assert.Equal("https://example.test/v1/models", url);
     }

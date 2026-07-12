@@ -2754,14 +2754,14 @@ public partial class AiChatPanel : UserControl
                  * We capture every iteration (including tool-calling loop iterations)
                  * even when raw mode is off, so the user can toggle it on at any time
                  * and see the full history. */
-                if (_provider is OpenAiProvider openAiProvider)
+                if (_provider is V1CompletionsProvider v1CompletionsProvider)
                 {
-                    string rawJson = openAiProvider.BuildRawRequestJson(
+                    string rawJson = v1CompletionsProvider.BuildRawRequestJson(
                         outboundMessages,
                         model,
                         toolsDef,
                         streamResponses);
-                    string endpointUrl = openAiProvider.GetChatCompletionEndpoint();
+                    string endpointUrl = v1CompletionsProvider.GetChatCompletionEndpoint();
                     _rawRequestPayloads.Add(new RawRequestPayload(
                         endpointUrl,
                         model,

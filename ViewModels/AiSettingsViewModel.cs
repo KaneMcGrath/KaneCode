@@ -57,11 +57,41 @@ internal sealed class AiSettingsViewModel : ObservableObject, IDisposable
 
     /// <summary>
     /// Known provider types for the combo box.
+    /// These are the display-friendly names shown in the UI.
+    /// Use <see cref="DisplayToProviderId"/> to map to internal identifiers.
     /// </summary>
     public static IReadOnlyList<string> ProviderTypes { get; } =
     [
-        "openai"
+        "/v1/completions"
     ];
+
+    /// <summary>
+    /// Maps the display-friendly combo-box value (e.g. "/v1/completions")
+    /// back to the internally persisted provider ID (e.g. "v1completions").
+    /// </summary>
+    internal static string DisplayToProviderId(string? displayName)
+    {
+        return displayName switch
+        {
+            "/v1/completions" => "v1completions",
+            null or "" => "v1completions",
+            _ => displayName
+        };
+    }
+
+    /// <summary>
+    /// Maps an internally persisted provider ID (e.g. "v1completions")
+    /// to its display-friendly combo-box value (e.g. "/v1/completions").
+    /// </summary>
+    internal static string ProviderIdToDisplay(string? providerId)
+    {
+        return providerId switch
+        {
+            "v1completions" => "/v1/completions",
+            null or "" => "/v1/completions",
+            _ => providerId
+        };
+    }
 
     private static AiProviderSettings NormalizeSettings(AiProviderSettings settings)
     {
@@ -76,10 +106,10 @@ internal sealed class AiSettingsViewModel : ObservableObject, IDisposable
     {
         if (string.Equals(providerId, "llamacpp", StringComparison.OrdinalIgnoreCase))
         {
-            return "openai";
+            return "v1completions";
         }
 
-        return string.IsNullOrWhiteSpace(providerId) ? "openai" : providerId;
+        return string.IsNullOrWhiteSpace(providerId) ? "v1completions" : providerId;
     }
 
     /// <summary>
@@ -126,7 +156,7 @@ internal sealed class AiSettingsViewModel : ObservableObject, IDisposable
     {
         var entry = new AiProviderEntryViewModel(new AiProviderSettings
         {
-            ProviderId = "openai",
+            ProviderId = "v1completions",
             Label = "New Provider"
         });
 
@@ -298,9 +328,12 @@ internal sealed class AiProviderEntryViewModel : ObservableObject
     public AiProviderEntryViewModel(AiProviderSettings settings)
     {
         ArgumentNullException.ThrowIfNull(settings);
-        _providerId = string.Equals(settings.ProviderId, "llamacpp", StringComparison.OrdinalIgnoreCase)
-            ? "openai"
+        // Map internal provider IDs to display-friendly names for the combo box.
+        // "llamacpp" is a legacy provider ID that we map to the v1/completions provider.
+        string internalId = string.Equals(settings.ProviderId, "llamacpp", StringComparison.OrdinalIgnoreCase)
+            ? "v1completions"
             : settings.ProviderId;
+        _providerId = AiSettingsViewModel.ProviderIdToDisplay(internalId);
         _label = settings.Label;
         _endpoint = settings.Endpoint;
         _apiKey = settings.ApiKey;
@@ -444,9 +477,7 @@ internal sealed class AiProviderEntryViewModel : ObservableObject
     /// </summary>
     public AiProviderSettings ToSettings() => new()
     {
-        ProviderId = string.Equals(ProviderId, "llamacpp", StringComparison.OrdinalIgnoreCase)
-            ? "openai"
-            : ProviderId,
+        ProviderId = AiSettingsViewModel.DisplayToProviderId(ProviderId),
         Label = Label,
         Endpoint = Endpoint,
         ApiKey = ApiKey,
