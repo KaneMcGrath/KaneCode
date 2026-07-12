@@ -15,6 +15,8 @@ internal sealed class TeacherMode : IAiChatMode
         "search",
         "presentation_new",
         "presentation_add_slide",
+        "draw_svg",
+        "edit_last_svg",
     };
 
     public string Id => "teacher";

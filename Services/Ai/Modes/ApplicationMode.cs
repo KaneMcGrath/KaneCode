@@ -19,6 +19,8 @@ internal sealed class ApplicationMode : IAiChatMode
         "read",
         "list",
         "search",
+        "draw_svg",
+        "edit_last_svg",
     };
 
     private readonly Func<IReadOnlyList<Models.RecentProjectItem>>? _recentProjectsProvider;

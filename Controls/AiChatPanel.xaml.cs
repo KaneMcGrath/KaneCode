@@ -918,6 +918,15 @@ public partial class AiChatPanel : UserControl
         if (_activeMode is not null)
         {
             SelectDropdownItemForMode(_activeMode);
+
+            // Apply the mode preset so conversation.EnabledTools reflects
+            // the mode's allowed-tool set. Without this, EnabledTools is
+            // null and the checkbox panel treats null as "all checked."
+            ApplyModePreset(_activeMode);
+
+            // Refresh the tools checkbox panel so the checked/unchecked
+            // state correctly reflects the mode's allowed tools on startup.
+            RefreshToolsCheckboxPanel();
         }
     }
 
