@@ -1,5 +1,9 @@
+using System.IO;
+using System.Security.Cryptography;
+using System.Windows;
 using KaneCode.Controls;
 using KaneCode.Models;
+using KaneCode.Services;
 using KaneCode.Services.Ai;
 
 namespace KaneCode.Tests.Controls;
@@ -307,5 +311,130 @@ public class AiChatPanelTests
 
         Assert.Equal("Explain this file", persistedConversationHistory[^1].Content);
         Assert.Equal("Attached context\n\nExplain this file", requestConversationHistory[^1].Content);
+    }
+
+    [Fact]
+    public void WhenClipboardContainsPngBytesThenImageBytesAreParsedWithPngExtension()
+    {
+        byte[] pngBytes = [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A];
+        IDataObject dataObject = new DataObject();
+        dataObject.SetData("PNG", pngBytes);
+
+        bool result = AiChatPanel.TryParseImageBytesFromDataObject(dataObject, out byte[] imageBytes, out string extension);
+
+        Assert.True(result);
+        Assert.Equal(".png", extension);
+        Assert.Equal(pngBytes, imageBytes);
+    }
+
+    [Fact]
+    public void WhenClipboardContainsJpegBytesThenImageBytesAreParsedWithJpgExtension()
+    {
+        byte[] jpegBytes = [0xFF, 0xD8, 0xFF, 0xE0];
+        IDataObject dataObject = new DataObject();
+        dataObject.SetData("JPEG", jpegBytes);
+
+        bool result = AiChatPanel.TryParseImageBytesFromDataObject(dataObject, out byte[] imageBytes, out string extension);
+
+        Assert.True(result);
+        Assert.Equal(".jpg", extension);
+        Assert.Equal(jpegBytes, imageBytes);
+    }
+
+    [Fact]
+    public void WhenClipboardHasNoImageDataThenImageBytesAreNotParsed()
+    {
+        IDataObject dataObject = new DataObject();
+        dataObject.SetData(DataFormats.Text, "just some text");
+
+        bool result = AiChatPanel.TryParseImageBytesFromDataObject(dataObject, out byte[] imageBytes, out string extension);
+
+        Assert.False(result);
+        Assert.Empty(imageBytes);
+        Assert.Equal(".png", extension);
+    }
+
+    [Fact]
+    public void WhenClipboardContainsImageFilePathThenItIsParsed()
+    {
+        string imagePath = Path.Combine(Path.GetTempPath(), $"clipboard-test-{Guid.NewGuid():N}.png");
+        try
+        {
+            File.WriteAllBytes(imagePath, [0x89, 0x50, 0x4E, 0x47]);
+            IDataObject dataObject = new DataObject();
+            dataObject.SetData(DataFormats.FileDrop, new[] { imagePath });
+
+            bool result = AiChatPanel.TryParseImageFilePathFromDataObject(dataObject, out string parsedPath);
+
+            Assert.True(result);
+            Assert.Equal(imagePath, parsedPath);
+        }
+        finally
+        {
+            if (File.Exists(imagePath))
+            {
+                File.Delete(imagePath);
+            }
+        }
+    }
+
+    [Fact]
+    public void WhenClipboardContainsNonImageFilePathThenItIsNotParsed()
+    {
+        string textPath = Path.Combine(Path.GetTempPath(), $"clipboard-test-{Guid.NewGuid():N}.txt");
+        try
+        {
+            File.WriteAllText(textPath, "not an image");
+            IDataObject dataObject = new DataObject();
+            dataObject.SetData(DataFormats.FileDrop, new[] { textPath });
+
+            bool result = AiChatPanel.TryParseImageFilePathFromDataObject(dataObject, out string parsedPath);
+
+            Assert.False(result);
+            Assert.Equal(string.Empty, parsedPath);
+        }
+        finally
+        {
+            if (File.Exists(textPath))
+            {
+                File.Delete(textPath);
+            }
+        }
+    }
+
+    [Fact]
+    public void WhenSavingPastedImageThenFileIsWrittenWithHashBasedName()
+    {
+        byte[] imageBytes = [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A];
+        string expectedHash = Convert.ToHexString(SHA256.HashData(imageBytes)).ToLowerInvariant();
+        string expectedPath = Path.Combine(
+            PortablePathProvider.BaseDirectory,
+            "ai-pasted-images",
+            $"{expectedHash}.png");
+
+        try
+        {
+            string savedPath = AiChatPanel.SavePastedImage(imageBytes, ".png");
+
+            Assert.Equal(expectedPath, savedPath);
+            Assert.True(File.Exists(savedPath));
+
+            // Re-saving the same bytes reuses the existing file (no exception, deterministic path).
+            string secondPath = AiChatPanel.SavePastedImage(imageBytes, ".PNG");
+            Assert.Equal(savedPath, secondPath);
+        }
+        finally
+        {
+            if (File.Exists(expectedPath))
+            {
+                File.Delete(expectedPath);
+            }
+        }
+    }
+
+    [Fact]
+    public void WhenSavingEmptyImageThenArgumentExceptionIsThrown()
+    {
+        Assert.Throws<ArgumentException>(() => AiChatPanel.SavePastedImage([], ".png"));
     }
 }

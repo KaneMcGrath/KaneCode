@@ -1,4 +1,5 @@
 using KaneCode.Models;
+using KaneCode.Services;
 using KaneCode.Services.Ai;
 using KaneCode.Services.Ai.Modes;
 using KaneCode.Theming;
@@ -402,6 +403,12 @@ public partial class AiChatPanel : UserControl
         SettingsOptionsButton.Checked += SettingsOptionsButton_Checked;
         RawTextCheckBox.Checked += RawTextCheckBox_Changed;
         RawTextCheckBox.Unchecked += RawTextCheckBox_Changed;
+
+        CommandManager.AddPreviewExecutedHandler(InputBox, OnInputBoxPreviewPaste);
+        Console.WriteLine("[Paste] CommandManager.AddPreviewExecutedHandler registered on InputBox");
+
+        DataObject.AddPastingHandler(InputBox, OnInputBoxPaste);
+        Console.WriteLine("[Paste] DataObject.AddPastingHandler registered on InputBox");
     }
 
     /// <summary>
@@ -1828,6 +1835,290 @@ public partial class AiChatPanel : UserControl
         }
     }
 
+    /// <summary>
+    /// Reads an image from the clipboard (screenshot, copied picture, or copied image file)
+    /// and adds it as an <see cref="AiReferenceKind.Image"/> reference so it is automatically
+    /// attached as vision context on the next message (when the provider supports images).
+    /// </summary>
+    private void PasteImageButton_Click(object sender, RoutedEventArgs e)
+    {
+        PasteImageFromClipboard();
+    }
+
+    /// <summary>
+    /// Shared clipboard-image paste logic used by both the inline input and the expanded
+    /// input window. Reads an image from the clipboard and attaches it as vision context.
+    /// </summary>
+    private void PasteImageFromClipboard()
+    {
+        try
+        {
+            if (TryGetImageBytesFromClipboard(out byte[] imageBytes, out string extension))
+            {
+                string fileName = SavePastedImage(imageBytes, extension);
+                AddReference(AiContextReferenceFactory.CreateImageReference(fileName));
+                AppendSystemMessage("Image pasted — attached as vision context for the next message.");
+                return;
+            }
+
+            if (TryGetImageFilePathFromClipboard(out string imageFilePath))
+            {
+                AddReference(AiContextReferenceFactory.CreateImageReference(imageFilePath));
+                AppendSystemMessage("Image pasted — attached as vision context for the next message.");
+                return;
+            }
+
+            AppendSystemMessage("No image found on the clipboard.");
+        }
+        catch (IOException ex)
+        {
+            AppendSystemMessage($"Could not paste image: {ex.Message}");
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            AppendSystemMessage($"Could not paste image: {ex.Message}");
+        }
+        catch (System.Security.Cryptography.CryptographicException ex)
+        {
+            AppendSystemMessage($"Could not paste image: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// The directory under <see cref="PortablePathProvider.BaseDirectory"/> where
+    /// clipboard-pasted images are persisted. Content is addressed by a hash of the
+    /// image bytes so re-pasting the same image reuses the same file (and the same
+    /// reference, which is de-duplicated by path).
+    /// </summary>
+    internal static string PastedImagesDirectory =>
+        Path.Combine(PortablePathProvider.BaseDirectory, "ai-pasted-images");
+
+    /// <summary>
+    /// Saves raw image bytes to the pasted-images directory using a file name derived
+    /// from a SHA-256 hash of the bytes (so identical images share a path). Returns the
+    /// absolute file path of the saved image. Existing files with the same hash are reused.
+    /// </summary>
+    internal static string SavePastedImage(byte[] imageBytes, string extension)
+    {
+        ArgumentNullException.ThrowIfNull(imageBytes);
+
+        if (imageBytes.Length == 0)
+        {
+            throw new ArgumentException("The image data is empty.", nameof(imageBytes));
+        }
+
+        string normalizedExtension = string.IsNullOrWhiteSpace(extension)
+            ? ".png"
+            : (extension.StartsWith(".", StringComparison.Ordinal) ? extension : "." + extension).ToLowerInvariant();
+        string hash = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(imageBytes)).ToLowerInvariant();
+        string directoryPath = PastedImagesDirectory;
+        Directory.CreateDirectory(directoryPath);
+        string filePath = Path.Combine(directoryPath, $"{hash}{normalizedExtension}");
+
+        if (!File.Exists(filePath))
+        {
+            File.WriteAllBytes(filePath, imageBytes);
+        }
+
+        return filePath;
+    }
+
+    /// <summary>
+    /// Attempts to read image bytes from the clipboard. Prefers lossless PNG bytes placed
+    /// on the clipboard by most screenshot and browser tools; falls back to encoding a
+    /// <see cref="BitmapSource"/> (e.g. a copied picture) as PNG. Returns false when the
+    /// clipboard holds no recognized image data.
+    /// </summary>
+    internal static bool TryGetImageBytesFromClipboard(out byte[] imageBytes, out string extension)
+    {
+        imageBytes = [];
+        extension = ".png";
+
+        IDataObject? dataObject = GetClipboardData();
+        if (dataObject is null)
+        {
+            return false;
+        }
+
+        return TryParseImageBytesFromDataObject(dataObject, out imageBytes, out extension);
+    }
+
+    /// <summary>
+    /// Parses image bytes from an <see cref="IDataObject"/> (e.g. the clipboard data object).
+    /// Prefers lossless PNG bytes placed on the clipboard by most screenshot and browser
+    /// tools; falls back to encoding a <see cref="BitmapSource"/> (e.g. a copied picture)
+    /// as PNG. Returns false when the data object holds no recognized image data.
+    /// </summary>
+    internal static bool TryParseImageBytesFromDataObject(IDataObject dataObject, out byte[] imageBytes, out string extension)
+    {
+        ArgumentNullException.ThrowIfNull(dataObject);
+
+        imageBytes = [];
+        extension = ".png";
+
+        // Most screenshot/snipping tools place PNG bytes directly on the clipboard.
+        byte[]? pngBytes = dataObject.GetData("PNG") as byte[];
+        if (pngBytes is { Length: > 0 })
+        {
+            imageBytes = pngBytes;
+            extension = ".png";
+            return true;
+        }
+
+        byte[]? jpegBytes = dataObject.GetData("JPG") as byte[] ?? dataObject.GetData("JPEG") as byte[];
+        if (jpegBytes is { Length: > 0 })
+        {
+            imageBytes = jpegBytes;
+            extension = ".jpg";
+            return true;
+        }
+
+        byte[]? gifBytes = dataObject.GetData("GIF") as byte[];
+        if (gifBytes is { Length: > 0 })
+        {
+            imageBytes = gifBytes;
+            extension = ".gif";
+            return true;
+        }
+
+        // Fallback: any BitmapSource we can coerce into a real image.
+        BitmapSource? bitmap = GetClipboardBitmap(dataObject);
+        if (bitmap is not null)
+        {
+            imageBytes = EncodeBitmapAsPng(bitmap);
+            extension = ".png";
+            return true;
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// Attempts to read an image file path from the clipboard (file-drag/copy of an image).
+    /// Returns false when no image file path is present.
+    /// </summary>
+    internal static bool TryGetImageFilePathFromClipboard(out string imageFilePath)
+    {
+        imageFilePath = string.Empty;
+
+        IDataObject? dataObject = GetClipboardData();
+        if (dataObject is null || !dataObject.GetDataPresent(DataFormats.FileDrop))
+        {
+            return false;
+        }
+
+        return TryParseImageFilePathFromDataObject(dataObject, out imageFilePath);
+    }
+
+    /// <summary>
+    /// Parses an image file path from an <see cref="IDataObject"/> (e.g. a clipboard
+    /// file drop). Returns false when no image file path is present.
+    /// </summary>
+    internal static bool TryParseImageFilePathFromDataObject(IDataObject dataObject, out string imageFilePath)
+    {
+        ArgumentNullException.ThrowIfNull(dataObject);
+
+        imageFilePath = string.Empty;
+
+        if (!dataObject.GetDataPresent(DataFormats.FileDrop))
+        {
+            return false;
+        }
+
+        string[]? droppedFilePaths = dataObject.GetData(DataFormats.FileDrop) as string[];
+        if (droppedFilePaths is null || droppedFilePaths.Length == 0)
+        {
+            return false;
+        }
+
+        string firstPath = droppedFilePaths[0];
+        if (!File.Exists(firstPath))
+        {
+            return false;
+        }
+
+        string extension = Path.GetExtension(firstPath);
+        if (!AiContextReferenceFactory.IsImageExtension(extension))
+        {
+            return false;
+        }
+
+        imageFilePath = firstPath;
+        return true;
+    }
+
+    /// <summary>
+    /// Reads the current clipboard data object, swallowing the transient
+    /// <see cref="COMException"/> that occurs when another process holds the clipboard open.
+    /// </summary>
+    private static IDataObject? GetClipboardData()
+    {
+        try
+        {
+            return Clipboard.GetDataObject();
+        }
+        catch (System.Runtime.InteropServices.COMException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Attempts to extract a <see cref="BitmapSource"/> image from an <see cref="IDataObject"/>,
+    /// coercing bitmap/DIB formats into a usable image source.
+    /// </summary>
+    private static BitmapSource? GetClipboardBitmap(IDataObject dataObject)
+    {
+        try
+        {
+            if (dataObject.GetDataPresent(DataFormats.Bitmap))
+            {
+                object? bitmapData = dataObject.GetData(DataFormats.Bitmap);
+                if (bitmapData is BitmapSource bitmapSource)
+                {
+                    return bitmapSource;
+                }
+            }
+        }
+        catch (System.Runtime.InteropServices.COMException)
+        {
+        }
+        catch (ArgumentException)
+        {
+        }
+        catch (NotSupportedException)
+        {
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Encodes a <see cref="BitmapSource"/> as PNG bytes. Returns an empty array if the
+    /// source cannot be encoded (e.g. it is frozen or has no valid dimensions).
+    /// </summary>
+    private static byte[] EncodeBitmapAsPng(BitmapSource bitmap)
+    {
+        ArgumentNullException.ThrowIfNull(bitmap);
+
+        try
+        {
+            PngBitmapEncoder encoder = new();
+            encoder.Frames.Add(BitmapFrame.Create(bitmap));
+            using MemoryStream stream = new();
+            encoder.Save(stream);
+            return stream.ToArray();
+        }
+        catch (ArgumentException)
+        {
+            return [];
+        }
+        catch (NotSupportedException)
+        {
+            return [];
+        }
+    }
+
     private void NewConversationButton_Click(object sender, RoutedEventArgs e)
     {
         AiConversation conversation = CreateConversation();
@@ -1880,6 +2171,16 @@ public partial class AiChatPanel : UserControl
         {
             InputBox.Text = text;
             await SendMessageAsync();
+        };
+
+        // Allow pasting images into the expanded input window (Ctrl+V) just like the inline box.
+        popup.InputBox.PreviewKeyDown += (_, args) =>
+        {
+            if (args.Key == Key.V &&
+                (Keyboard.Modifiers & ModifierKeys.Control) == ModifierKeys.Control)
+            {
+                PasteImageFromClipboard();
+            }
         };
 
         // Hide the inline input controls while the popup is open
@@ -2032,6 +2333,245 @@ public partial class AiChatPanel : UserControl
             e.Handled = true;
             await SendMessageAsync();
         }
+    }
+
+    /// <summary>
+    /// Intercepts the Paste command at the preview (tunneling) stage.
+    /// If the clipboard contains a bitmap, the paste is cancelled and the
+    /// image is saved as a temp file and added as an image reference.
+    /// </summary>
+    private void OnInputBoxPreviewPaste(object sender, ExecutedRoutedEventArgs e)
+    {
+        Console.WriteLine($"[Paste] OnInputBoxPreviewPaste ENTERED, Command={e.Command}, Handled={e.Handled}");
+
+        if (e.Command != ApplicationCommands.Paste)
+        {
+            Console.WriteLine($"[Paste] OnInputBoxPreviewPaste SKIP: not Paste command (got {e.Command})");
+            return;
+        }
+
+        bool hasImage = Clipboard.ContainsImage();
+        Console.WriteLine($"[Paste] OnInputBoxPreviewPaste: Clipboard.ContainsImage() = {hasImage}");
+
+        // Log all formats on the clipboard for diagnostics
+        string[] formats = Clipboard.GetDataObject()?.GetFormats() ?? [];
+        Console.WriteLine($"[Paste] OnInputBoxPreviewPaste: clipboard formats: [{string.Join(", ", formats)}]");
+
+        // Try GetImage directly — it handles more formats than ContainsImage
+        BitmapSource? directImage = Clipboard.GetImage();
+        Console.WriteLine($"[Paste] OnInputBoxPreviewPaste: Clipboard.GetImage() = {(directImage is null ? "null" : $"{directImage.PixelWidth}x{directImage.PixelHeight}")}");
+
+        if (!hasImage && directImage is null)
+        {
+            Console.WriteLine("[Paste] OnInputBoxPreviewPaste SKIP: no image on clipboard (neither ContainsImage nor GetImage)");
+            return;
+        }
+
+        Console.WriteLine("[Paste] OnInputBoxPreviewPaste HANDLING: cancelling paste, calling HandleClipboardImagePaste");
+        e.Handled = true;
+        HandleClipboardImagePaste();
+    }
+
+    /// <summary>
+    /// Intercepts paste operations via the Pasting attached event.
+    /// If the clipboard contains a bitmap, cancels the text paste and
+    /// handles the image. Matches the standard WPF recipe:
+    /// DataObject.AddPastingHandler + e.SourceDataObject + e.CancelCommand.
+    /// </summary>
+    private void OnInputBoxPaste(object sender, DataObjectPastingEventArgs e)
+    {
+        bool hasBitmap = e.SourceDataObject.GetDataPresent(DataFormats.Bitmap);
+        bool hasImage = Clipboard.ContainsImage();
+        Console.WriteLine($"[Paste] OnInputBoxPaste ENTERED: SourceDataObject.Bitmap={hasBitmap}, Clipboard.ContainsImage={hasImage}");
+
+        if (hasBitmap || hasImage)
+        {
+            Console.WriteLine("[Paste] OnInputBoxPaste HANDLING: calling CancelCommand + Handled + HandleClipboardImagePaste");
+            e.CancelCommand();
+            e.Handled = true;
+            HandleClipboardImagePaste();
+        }
+        else
+        {
+            Console.WriteLine("[Paste] OnInputBoxPaste SKIP: no image/bitmap on clipboard, letting default paste proceed");
+        }
+    }
+
+    /// <summary>
+    /// Reads a bitmap image from the clipboard, persists it to a temp file,
+    /// and adds it as an <see cref="AiReferenceKind.Image"/> reference.
+    /// When the current provider does not support images, the paste is
+    /// silently ignored and a system message warns the user.
+    /// </summary>
+    internal void HandleClipboardImagePaste()
+    {
+        Console.WriteLine("[Paste] HandleClipboardImagePaste ENTERED");
+
+        // Try GetImage first — it handles more formats than ContainsImage
+        BitmapSource? image = Clipboard.GetImage();
+        Console.WriteLine($"[Paste] HandleClipboardImagePaste: Clipboard.GetImage() returned {(image is null ? "null" : $"{image.PixelWidth}x{image.PixelHeight}")}");
+
+        if (image is null)
+        {
+            // Last resort: try to get PNG or DIB bytes directly
+            IDataObject? dataObj = Clipboard.GetDataObject();
+            if (dataObj is not null)
+            {
+                string[] formats = dataObj.GetFormats();
+                Console.WriteLine($"[Paste] HandleClipboardImagePaste: trying raw formats: [{string.Join(", ", formats)}]");
+
+                // Try PNG format first
+                if (dataObj.GetDataPresent("PNG", true))
+                {
+                    object? pngRaw = dataObj.GetData("PNG", true);
+                    Console.WriteLine($"[Paste] HandleClipboardImagePaste: PNG raw data = {(pngRaw is null ? "null" : pngRaw.GetType().Name)}");
+                    if (pngRaw is byte[] pngBytes)
+                    {
+                        SaveImageBytes(pngBytes, "image/png");
+                        return;
+                    }
+                    else if (pngRaw is MemoryStream pngStream)
+                    {
+                        SaveImageBytes(pngStream.ToArray(), "image/png");
+                        return;
+                    }
+                }
+
+                // Try DIB
+                if (dataObj.GetDataPresent(DataFormats.Dib, true))
+                {
+                    object? dibRaw = dataObj.GetData(DataFormats.Dib, true);
+                    Console.WriteLine($"[Paste] HandleClipboardImagePaste: DIB raw data = {(dibRaw is null ? "null" : dibRaw.GetType().Name)}");
+                    if (dibRaw is byte[] dibBytes)
+                    {
+                        // DIB to BitmapSource conversion
+                        BitmapSource? dibImage = ConvertDibToBitmapSource(dibBytes);
+                        if (dibImage is not null)
+                        {
+                            image = dibImage;
+                        }
+                    }
+                }
+
+                // Try DeviceIndependentBitmap
+                if (image is null && dataObj.GetDataPresent("DeviceIndependentBitmap", true))
+                {
+                    object? dibRaw = dataObj.GetData("DeviceIndependentBitmap", true);
+                    Console.WriteLine($"[Paste] HandleClipboardImagePaste: DeviceIndependentBitmap raw = {(dibRaw is null ? "null" : dibRaw.GetType().Name)}");
+                    if (dibRaw is byte[] dibBytes)
+                    {
+                        image = ConvertDibToBitmapSource(dibBytes);
+                    }
+                }
+            }
+
+            if (image is null)
+            {
+                Console.WriteLine("[Paste] HandleClipboardImagePaste SKIP: could not extract image from clipboard in any format");
+                return;
+            }
+        }
+
+        bool providerSupportsImages = _provider?.SupportsImages == true;
+        Console.WriteLine($"[Paste] HandleClipboardImagePaste: _provider={_provider?.GetType().Name}, SupportsImages={providerSupportsImages}");
+
+        if (!providerSupportsImages)
+        {
+            Console.WriteLine("[Paste] HandleClipboardImagePaste SKIP: provider does not support images");
+            AppendSystemMessage("The current AI provider does not support images. Paste ignored.");
+            return;
+        }
+
+        try
+        {
+            // Encode to PNG in memory
+            PngBitmapEncoder encoder = new();
+            encoder.Frames.Add(BitmapFrame.Create(image));
+
+            byte[] pngBytes;
+            using (MemoryStream stream = new())
+            {
+                encoder.Save(stream);
+                pngBytes = stream.ToArray();
+            }
+
+            Console.WriteLine($"[Paste] HandleClipboardImagePaste: encoded PNG, {pngBytes.Length} bytes");
+
+            // Save to temp file with a unique name
+            string tempDir = Path.GetTempPath();
+            string fileName = $"kane_paste_{DateTimeOffset.UtcNow:yyyyMMdd_HHmmss_fff}.png";
+            string filePath = Path.Combine(tempDir, fileName);
+            File.WriteAllBytes(filePath, pngBytes);
+
+            Console.WriteLine($"[Paste] HandleClipboardImagePaste: saved to {filePath}");
+
+            AiChatReference imageRef = AiContextReferenceFactory.CreateImageReference(filePath);
+            AddReference(imageRef);
+
+            Console.WriteLine("[Paste] HandleClipboardImagePaste: reference added, SUCCESS");
+            AppendSystemMessage($"📋 Pasted image added as reference: {fileName}");
+        }
+        catch (IOException ex)
+        {
+            Console.WriteLine($"[Paste] HandleClipboardImagePaste IOException: {ex.Message}");
+            AppendSystemMessage($"Failed to save pasted image: {ex.Message}");
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            Console.WriteLine($"[Paste] HandleClipboardImagePaste UnauthorizedAccessException: {ex.Message}");
+            AppendSystemMessage($"Failed to save pasted image: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Saves raw image bytes directly to a temp file and adds as reference.
+    /// </summary>
+    private void SaveImageBytes(byte[] bytes, string mimeType)
+    {
+        string extension = mimeType switch
+        {
+            "image/png" => ".png",
+            "image/jpeg" => ".jpg",
+            "image/gif" => ".gif",
+            "image/webp" => ".webp",
+            "image/bmp" => ".bmp",
+            _ => ".png"
+        };
+
+        string tempDir = Path.GetTempPath();
+        string fileName = $"kane_paste_{DateTimeOffset.UtcNow:yyyyMMdd_HHmmss_fff}{extension}";
+        string filePath = Path.Combine(tempDir, fileName);
+        File.WriteAllBytes(filePath, bytes);
+
+        Console.WriteLine($"[Paste] SaveImageBytes: saved {bytes.Length} bytes to {filePath}");
+
+        AiChatReference imageRef = AiContextReferenceFactory.CreateImageReference(filePath);
+        AddReference(imageRef);
+
+        Console.WriteLine("[Paste] SaveImageBytes: reference added, SUCCESS");
+        AppendSystemMessage($"📋 Pasted image added as reference: {fileName}");
+    }
+
+    /// <summary>
+    /// Converts raw DIB (Device Independent Bitmap) bytes to a <see cref="BitmapSource"/>.
+    /// </summary>
+    private static BitmapSource? ConvertDibToBitmapSource(byte[] dibBytes)
+    {
+        try
+        {
+            using MemoryStream stream = new(dibBytes);
+            BmpBitmapDecoder decoder = new(stream, BitmapCreateOptions.None, BitmapCacheOption.OnLoad);
+            if (decoder.Frames.Count > 0)
+            {
+                return decoder.Frames[0];
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[Paste] ConvertDibToBitmapSource failed: {ex.Message}");
+        }
+
+        return null;
     }
 
     // ── @ mention autocomplete ─────────────────────────────────────

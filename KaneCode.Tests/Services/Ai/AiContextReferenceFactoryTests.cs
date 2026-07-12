@@ -71,4 +71,25 @@ public sealed class AiContextReferenceFactoryTests : IDisposable
         Assert.Contains("line 11", normalizedContent, StringComparison.Ordinal);
         Assert.Contains("line 260", normalizedContent, StringComparison.Ordinal);
     }
+
+    [Theory]
+    [InlineData(".png", true)]
+    [InlineData(".jpg", true)]
+    [InlineData(".jpeg", true)]
+    [InlineData(".gif", true)]
+    [InlineData(".webp", true)]
+    [InlineData(".bmp", true)]
+    [InlineData(".tiff", true)]
+    [InlineData(".tif", true)]
+    [InlineData(".ico", true)]
+    [InlineData("PNG", true)]
+    [InlineData("png", true)]
+    [InlineData(".txt", false)]
+    [InlineData(".cs", false)]
+    [InlineData("", false)]
+    [InlineData(null, false)]
+    public void WhenCheckingImageExtensionThenKnownImageFormatsAreAccepted(string? extension, bool expected)
+    {
+        Assert.Equal(expected, AiContextReferenceFactory.IsImageExtension(extension!));
+    }
 }

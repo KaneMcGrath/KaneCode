@@ -85,6 +85,24 @@ internal static class AiContextReferenceFactory
         return reference;
     }
 
+    /// <summary>
+    /// Returns true when the given file extension (including or excluding the leading
+    /// dot, e.g. ".png" or "png") corresponds to a known image format.
+    /// </summary>
+    internal static bool IsImageExtension(string extension)
+    {
+        if (string.IsNullOrWhiteSpace(extension))
+        {
+            return false;
+        }
+
+        string normalizedExtension = extension.StartsWith(".", StringComparison.Ordinal)
+            ? extension
+            : "." + extension;
+
+        return ImageExtensions.Contains(normalizedExtension);
+    }
+
     internal static string GetImageMimeType(string extension)
     {
         return extension.ToLowerInvariant() switch
