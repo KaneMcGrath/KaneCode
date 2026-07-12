@@ -17,6 +17,11 @@ internal enum AiChatRole
 internal sealed record AiToolCallRequest(string Id, string FunctionName, string ArgumentsJson);
 
 /// <summary>
+/// An image attached to a user message for vision-capable models.
+/// </summary>
+internal sealed record AiChatImagePart(string Base64Data, string MimeType);
+
+/// <summary>
 /// A single message in an AI chat conversation.
 /// For <see cref="AiChatRole.Assistant"/> messages that invoke tools,
 /// <see cref="ToolCalls"/> contains the requested calls.
@@ -44,4 +49,12 @@ internal sealed record AiChatMessage(AiChatRole Role, string Content)
     /// Set only on <see cref="AiChatRole.Tool"/> messages.
     /// </summary>
     public string? ToolCallId { get; init; }
+
+    /// <summary>
+    /// Images attached to a user message for vision-capable providers.
+    /// Each entry contains base64-encoded image data and its MIME type.
+    /// When set, the provider serializes <c>content</c> as an array of
+    /// <c>text</c> and <c>image_url</c> parts per the OpenAI vision format.
+    /// </summary>
+    public IReadOnlyList<AiChatImagePart>? Images { get; init; }
 }

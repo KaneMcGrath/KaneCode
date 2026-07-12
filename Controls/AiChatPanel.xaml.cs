@@ -1412,6 +1412,7 @@ public partial class AiChatPanel : UserControl
             AiReferenceKind.BuildOutput => "🏗️ ",
             AiReferenceKind.Class => "🔷 ",
             AiReferenceKind.ExternalFolder => "📁 ",
+            AiReferenceKind.Image => "🖼️ ",
             _ => "🔗 "
         };
 
@@ -2657,6 +2658,23 @@ public partial class AiChatPanel : UserControl
             .Select(reference => reference.FullPath)
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
+
+        // Collect image references for vision-capable providers
+        List<AiChatImagePart> pendingImages = [];
+        bool providerSupportsImages = _provider?.SupportsImages == true;
+        if (providerSupportsImages)
+        {
+            foreach (AiChatReference imageRef in pendingReferences.Where(r => r.Kind == AiReferenceKind.Image))
+            {
+                if (!string.IsNullOrEmpty(imageRef.Content))
+                {
+                    string extension = System.IO.Path.GetExtension(imageRef.FullPath);
+                    string mimeType = AiContextReferenceFactory.GetImageMimeType(extension);
+                    pendingImages.Add(new AiChatImagePart(imageRef.Content, mimeType));
+                }
+            }
+        }
+
         string pendingContext = BuildPendingPromptContext(pendingReferences, _pendingSelectionContext);
 
         _pendingSelectionContext = null;
@@ -2671,7 +2689,11 @@ public partial class AiChatPanel : UserControl
 
         AppendUserMessage(displayedUserContent);
 
-        conversation.Messages.Add(new AiChatMessage(AiChatRole.User, text));
+        AiChatMessage userMessage = new(AiChatRole.User, text)
+        {
+            Images = pendingImages.Count > 0 ? pendingImages : null
+        };
+        conversation.Messages.Add(userMessage);
         TouchConversation(conversation);
         RefreshConversationSelector();
         List<AiChatMessage> requestConversationHistory = BuildRequestConversationHistory(conversation.Messages, outboundUserContent);

@@ -33,6 +33,8 @@ internal sealed class V1ChatCompletionsProvider : IAiProvider, IDisposable
 
     public string ProviderId => "v1chatcompletions";
 
+    public bool SupportsImages => true;
+
     public bool IsConfigured => !string.IsNullOrWhiteSpace(_settings.Endpoint);
 
     public IReadOnlyList<string> AvailableModels => _availableModels;
@@ -517,6 +519,8 @@ internal sealed class V1ChatCompletionsProvider : IAiProvider, IDisposable
 
     /// <summary>
     /// Serializes the message list into a JSON array, handling tool role and tool_calls fields.
+    /// When a user message has <see cref="AiChatMessage.Images"/>, the content is serialized
+    /// as an array of <c>text</c> and <c>image_url</c> parts per the OpenAI vision format.
     /// </summary>
     internal static JsonElement SerializeMessages(IReadOnlyList<AiChatMessage> messages)
     {
@@ -538,7 +542,17 @@ internal sealed class V1ChatCompletionsProvider : IAiProvider, IDisposable
                     _ => "user"
                 };
                 writer.WriteString("role", role);
-                writer.WriteString("content", m.Content);
+
+                bool hasImages = m.Role == AiChatRole.User && m.Images is { Count: > 0 };
+
+                if (hasImages)
+                {
+                    WriteVisionContent(writer, m.Content, m.Images!);
+                }
+                else
+                {
+                    writer.WriteString("content", m.Content);
+                }
 
                 if (m.Role == AiChatRole.Assistant && m.ThinkingContent is not null)
                 {
@@ -574,6 +588,39 @@ internal sealed class V1ChatCompletionsProvider : IAiProvider, IDisposable
         }
 
         return JsonDocument.Parse(stream.ToArray()).RootElement.Clone();
+    }
+
+    /// <summary>
+    /// Writes the <c>content</c> property as a JSON array of text and image parts
+    /// for the OpenAI vision format:
+    /// <c>[{"type":"text","text":"..."},{"type":"image_url","image_url":{"url":"data:mime;base64,..."}}]</c>
+    /// </summary>
+    private static void WriteVisionContent(Utf8JsonWriter writer, string textContent, IReadOnlyList<AiChatImagePart> images)
+    {
+        writer.WriteStartArray("content");
+
+        // Text part
+        if (!string.IsNullOrWhiteSpace(textContent))
+        {
+            writer.WriteStartObject();
+            writer.WriteString("type", "text");
+            writer.WriteString("text", textContent);
+            writer.WriteEndObject();
+        }
+
+        // Image parts
+        foreach (AiChatImagePart image in images)
+        {
+            writer.WriteStartObject();
+            writer.WriteString("type", "image_url");
+            writer.WriteStartObject("image_url");
+            string dataUrl = $"data:{image.MimeType};base64,{image.Base64Data}";
+            writer.WriteString("url", dataUrl);
+            writer.WriteEndObject();
+            writer.WriteEndObject();
+        }
+
+        writer.WriteEndArray();
     }
 
     /// <summary>

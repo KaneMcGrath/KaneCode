@@ -25,9 +25,21 @@ internal static class AiContextReferenceFactory
         "__pycache__", ".venv", "venv",
     };
 
+    private static readonly HashSet<string> ImageExtensions = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".tiff", ".tif", ".ico"
+    };
+
     internal static AiChatReference CreateFileReference(string filePath)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(filePath);
+
+        string extension = Path.GetExtension(filePath);
+
+        if (ImageExtensions.Contains(extension))
+        {
+            return CreateImageReference(filePath);
+        }
 
         AiChatReference reference = new(AiReferenceKind.File, filePath);
 
@@ -45,6 +57,47 @@ internal static class AiContextReferenceFactory
         }
 
         return reference;
+    }
+
+    internal static AiChatReference CreateImageReference(string filePath)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(filePath);
+
+        string extension = Path.GetExtension(filePath);
+        string mimeType = GetImageMimeType(extension);
+
+        AiChatReference reference = new(AiReferenceKind.Image, filePath);
+
+        try
+        {
+            byte[] imageBytes = File.ReadAllBytes(filePath);
+            reference.Content = Convert.ToBase64String(imageBytes);
+        }
+        catch (IOException)
+        {
+            reference.Content = string.Empty;
+        }
+        catch (UnauthorizedAccessException)
+        {
+            reference.Content = string.Empty;
+        }
+
+        return reference;
+    }
+
+    internal static string GetImageMimeType(string extension)
+    {
+        return extension.ToLowerInvariant() switch
+        {
+            ".png" => "image/png",
+            ".jpg" or ".jpeg" => "image/jpeg",
+            ".gif" => "image/gif",
+            ".webp" => "image/webp",
+            ".bmp" => "image/bmp",
+            ".tiff" or ".tif" => "image/tiff",
+            ".ico" => "image/x-icon",
+            _ => "image/png"
+        };
     }
 
     internal static AiChatReference CreateCurrentDocumentReference(AiContextDocumentSnapshot document)

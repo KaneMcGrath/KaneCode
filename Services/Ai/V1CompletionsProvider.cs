@@ -33,6 +33,8 @@ internal sealed class V1CompletionsProvider : IAiProvider, IDisposable
 
     public string ProviderId => "v1completions";
 
+    public bool SupportsImages => false;
+
     public bool IsConfigured => !string.IsNullOrWhiteSpace(_settings.Endpoint);
 
     public IReadOnlyList<string> AvailableModels => _availableModels;

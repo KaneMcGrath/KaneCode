@@ -23,7 +23,10 @@ internal enum AiReferenceKind
     Class,
 
     /// <summary>An external folder attached for request-scoped tool access.</summary>
-    ExternalFolder
+    ExternalFolder,
+
+    /// <summary>An image file attached for vision-capable providers.</summary>
+    Image
 }
 
 /// <summary>
@@ -67,6 +70,7 @@ internal sealed class AiChatReference
             AiReferenceKind.Class => $"[Class: {DisplayName}]\nPath: {FullPath}\n```csharp\n{Content}\n```",
             AiReferenceKind.ExternalFolder =>
                 $"[External folder: {DisplayName}]\nPath: {FullPath}\nThis folder is external context outside the loaded project. For this conversation, the agent may use read, list, and search with paths inside this folder.\nFiles:\n{Content}",
+            AiReferenceKind.Image => $"[Image: {DisplayName}]\nPath: {FullPath}",
             _ => Content
         };
     }
@@ -79,6 +83,7 @@ internal sealed class AiChatReference
             AiReferenceKind.BuildOutput => "Build output",
             AiReferenceKind.CurrentDocument => Path.GetFileName(fullPath),
             AiReferenceKind.ExternalFolder => GetFolderDisplayName(fullPath),
+            AiReferenceKind.Image => Path.GetFileName(fullPath),
             _ => Path.GetFileName(fullPath)
         };
     }

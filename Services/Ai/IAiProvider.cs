@@ -19,6 +19,13 @@ internal interface IAiProvider
     string ProviderId { get; }
 
     /// <summary>
+    /// Whether the provider supports image/video inputs (vision).
+    /// When true, image files added as context are sent as base64-encoded
+    /// <c>image_url</c> content parts in the OpenAI vision format.
+    /// </summary>
+    bool SupportsImages { get; }
+
+    /// <summary>
     /// Whether the provider has been configured with the minimum required settings
     /// (e.g. an endpoint, with an optional API key when required) to make requests.
     /// </summary>
