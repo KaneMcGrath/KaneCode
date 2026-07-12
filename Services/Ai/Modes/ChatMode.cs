@@ -11,8 +11,30 @@ internal sealed class ChatMode : IAiChatMode
 {
     private static readonly HashSet<string> AllowedToolsSet = new(StringComparer.Ordinal)
     {
+        // Drawing — visual communication only, no side effects
         "draw_svg",
         "edit_last_svg",
+
+        // Diagnostics and code intelligence — read-only
+        "get_diagnostics",
+
+        // Git inspection — read-only queries
+        "git_branches",
+        "git_conflicts",
+        "git_diff",
+        "git_head_file",
+        "git_log",
+        "git_status",
+
+        // File system browsing — read-only
+        "list",
+        "read",
+        "search",
+
+        // NuGet browsing — read-only queries
+        "nuget_info",
+        "nuget_list_installed",
+        "nuget_search",
     };
 
     public string Id => "chat";
