@@ -432,6 +432,7 @@ public partial class MainWindow : Window
         _aiChatModeRegistry.Register(new AgentMode());
         _aiChatModeRegistry.Register(new ChatMode());
         _aiChatModeRegistry.Register(new TeacherMode());
+        _aiChatModeRegistry.Register(new NoToolsMode());
         _aiChatModeRegistry.Register(new CustomMode());
     }
 
