@@ -2793,6 +2793,10 @@ public partial class AiChatPanel : UserControl
     {
         PopulateProviderList();
 
+        // Reset the search box so a previously typed filter does not persist
+        // when re-opening the picker for a different provider.
+        ModelSearchBox.Text = string.Empty;
+
         // Select the active provider from the registry
         IAiProvider? activeProvider = _providerRegistry?.ActiveProvider;
         if (activeProvider is not null && ProviderListBox.Items.Count > 0)
@@ -2801,6 +2805,9 @@ public partial class AiChatPanel : UserControl
         }
 
         ModelPickerOverlay.Visibility = Visibility.Visible;
+
+        // Focus the search box so the user can immediately start typing to filter.
+        ModelSearchBox.Focus();
     }
 
     private void CloseModelPickerOverlay()
@@ -2863,6 +2870,11 @@ public partial class AiChatPanel : UserControl
     /// </summary>
     private void ModelListBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
+        if (_isProgrammaticModelSelection)
+        {
+            return;
+        }
+
         if (ModelListBox.SelectedItem is not string selectedModel)
         {
             return;
@@ -2899,6 +2911,99 @@ public partial class AiChatPanel : UserControl
     private void ModelPickerCloseButton_Click(object sender, RoutedEventArgs e)
     {
         CloseModelPickerOverlay();
+    }
+
+    /// <summary>
+    /// The full, unfiltered model list for the currently selected provider.
+    /// Kept separately from <see cref="ModelListBox"/>'s <see cref="ItemsControl.ItemsSource"/>
+    /// so the search box can re-filter without re-fetching models from the provider.
+    /// </summary>
+    private IReadOnlyList<string> _overlayModelList = [];
+
+    /// <summary>
+    /// Set while the search box programmatically re-highlights a model so that
+    /// <see cref="ModelListBox_SelectionChanged"/> does not treat the highlight as an
+    /// explicit user selection (which would change and persist the active model).
+    /// </summary>
+    private bool _isProgrammaticModelSelection;
+
+    /// <summary>
+    /// Called when the text in the model search box changes. Filters the model list
+    /// box to models whose names contain the search term (case-insensitive). The
+    /// active model is only changed when the user explicitly clicks a model, not while
+    /// they are typing a filter — if the highlighted model is filtered out, the first
+    /// match is highlighted without committing it.
+    /// </summary>
+    private void ModelSearchBox_TextChanged(object sender, TextChangedEventArgs e)
+    {
+        if (_overlayModelList.Count == 0)
+        {
+            return;
+        }
+
+        IReadOnlyList<string> filtered = FilterModels(_overlayModelList, ModelSearchBox.Text);
+        ModelListBox.ItemsSource = filtered;
+
+        if (filtered.Count == 0)
+        {
+            return;
+        }
+
+        // Keep the current selection if it is still visible after filtering.
+        string? currentSelection = ModelListBox.SelectedItem as string;
+        if (currentSelection is not null && filtered.Contains(currentSelection, StringComparer.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        // If the search was cleared, restore the highlight to the active model.
+        if (string.IsNullOrWhiteSpace(ModelSearchBox.Text) &&
+            _model is not null &&
+            filtered.Contains(_model, StringComparer.OrdinalIgnoreCase))
+        {
+            ModelListBox.SelectedItem = _model;
+            return;
+        }
+
+        // Otherwise highlight the first match for keyboard/click navigation without
+        // committing it as the active model (no persistence, no button-text change).
+        _isProgrammaticModelSelection = true;
+        try
+        {
+            ModelListBox.SelectedItem = filtered[0];
+        }
+        finally
+        {
+            _isProgrammaticModelSelection = false;
+        }
+    }
+
+    /// <summary>
+    /// Returns the subset of <paramref name="models"/> whose names contain
+    /// <paramref name="searchTerm"/> (case-insensitive). An empty or whitespace
+    /// search term returns the list unchanged.
+    /// </summary>
+    private static IReadOnlyList<string> FilterModels(IReadOnlyList<string> models, string? searchTerm)
+    {
+        ArgumentNullException.ThrowIfNull(models);
+
+        if (string.IsNullOrWhiteSpace(searchTerm))
+        {
+            return models;
+        }
+
+        string normalizedTerm = searchTerm.Trim();
+        List<string> matches = new(models.Count);
+
+        foreach (string model in models)
+        {
+            if (model.Contains(normalizedTerm, StringComparison.OrdinalIgnoreCase))
+            {
+                matches.Add(model);
+            }
+        }
+
+        return matches;
     }
 
     /// <summary>
@@ -3042,7 +3147,11 @@ public partial class AiChatPanel : UserControl
     /// </summary>
     private void ApplyOverlayModelList(IReadOnlyList<string> models)
     {
-        ModelListBox.ItemsSource = models;
+        // Store the full list so the search box can re-filter without re-fetching.
+        _overlayModelList = models;
+
+        IReadOnlyList<string> visibleModels = FilterModels(models, ModelSearchBox.Text);
+        ModelListBox.ItemsSource = visibleModels;
 
         if (models.Count == 0)
         {

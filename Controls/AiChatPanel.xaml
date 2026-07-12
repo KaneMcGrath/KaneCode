@@ -486,17 +486,59 @@
                     </Grid.ColumnDefinitions>
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
                         <RowDefinition Height="*" />
                         <RowDefinition Height="Auto" />
                     </Grid.RowDefinitions>
-                    <TextBlock Grid.Row="0"
+                    <!-- Model search box (aligned to the Model column) -->
+                    <TextBox x:Name="ModelSearchBox"
+                             Grid.Row="0"
+                             Grid.Column="1"
+                             FontSize="11"
+                             Padding="6,4"
+                             Margin="6,6,6,2"
+                             VerticalContentAlignment="Center"
+                             Foreground="{DynamicResource AiChatForeground}"
+                             Background="{DynamicResource AiChatInputBackground}"
+                             CaretBrush="{DynamicResource AiChatForeground}"
+                             BorderBrush="{DynamicResource AiChatBorder}"
+                             BorderThickness="1"
+                             TextChanged="ModelSearchBox_TextChanged">
+                        <TextBox.Style>
+                            <Style TargetType="TextBox" BasedOn="{StaticResource {x:Type TextBox}}">
+                                <Style.Triggers>
+                                    <MultiTrigger>
+                                        <MultiTrigger.Conditions>
+                                            <Condition Property="Text" Value="" />
+                                            <Condition Property="IsKeyboardFocused" Value="False" />
+                                        </MultiTrigger.Conditions>
+                                        <Setter Property="Background">
+                                            <Setter.Value>
+                                                <VisualBrush AlignmentX="Left"
+                                                             AlignmentY="Center"
+                                                             Stretch="None">
+                                                    <VisualBrush.Visual>
+                                                        <TextBlock Text="Search models"
+                                                                   FontSize="11"
+                                                                   Foreground="{DynamicResource AiChatSecondaryForeground}"
+                                                                   Margin="4,0,0,0" />
+                                                    </VisualBrush.Visual>
+                                                </VisualBrush>
+                                            </Setter.Value>
+                                        </Setter>
+                                    </MultiTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </TextBox.Style>
+                    </TextBox>
+                    <TextBlock Grid.Row="1"
                                Grid.Column="0"
                                Text="Provider"
                                FontSize="11"
                                FontWeight="SemiBold"
                                Foreground="{DynamicResource AiChatSecondaryForeground}"
                                Padding="8,6,4,4" />
-                    <TextBlock Grid.Row="0"
+                    <TextBlock Grid.Row="1"
                                Grid.Column="1"
                                Text="Model"
                                FontSize="11"
@@ -504,7 +546,7 @@
                                Foreground="{DynamicResource AiChatSecondaryForeground}"
                                Padding="4,6,8,4" />
                     <ListBox x:Name="ProviderListBox"
-                             Grid.Row="1"
+                             Grid.Row="2"
                              Grid.Column="0"
                              DisplayMemberPath="DisplayName"
                              FontSize="11"
@@ -533,7 +575,7 @@
                         </ListBox.Resources>
                     </ListBox>
                     <ListBox x:Name="ModelListBox"
-                             Grid.Row="1"
+                             Grid.Row="2"
                              Grid.Column="1"
                              FontSize="11"
                              Foreground="{DynamicResource AiChatForeground}"
@@ -560,7 +602,7 @@
                         </ListBox.Resources>
                     </ListBox>
                     <!-- Close button at bottom right -->
-                    <Button Grid.Row="2"
+                    <Button Grid.Row="3"
                             Grid.Column="1"
                             x:Name="ModelPickerCloseButton"
                             Content="✕ Close"
