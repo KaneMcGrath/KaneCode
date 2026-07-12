@@ -1351,6 +1351,12 @@ public partial class AiChatPanel : UserControl
     // ── Reference management ───────────────────────────────────────
 
     /// <summary>
+    /// Stores inline image borders keyed by their reference so they can be removed
+    /// when the user clicks the remove button on either the inline image or the tag.
+    /// </summary>
+    private readonly Dictionary<AiChatReference, Border> _inlineImageBorders = [];
+
+    /// <summary>
     /// Adds a file reference to the next message context.
     /// </summary>
     internal void AddFileReference(string filePath)
@@ -1371,6 +1377,12 @@ public partial class AiChatPanel : UserControl
 
         conversation.References.Add(reference);
         TouchConversation(conversation);
+
+        if (reference.Kind == AiReferenceKind.Image)
+        {
+            AppendInlineImage(reference);
+        }
+
         RenderReferenceTags();
         SavePersistedConversation();
     }
@@ -1380,6 +1392,14 @@ public partial class AiChatPanel : UserControl
         AiConversation conversation = EnsureActiveConversation();
         conversation.References.Remove(reference);
         TouchConversation(conversation);
+
+        // Remove the inline image border if one exists for this reference
+        if (_inlineImageBorders.TryGetValue(reference, out Border? inlineBorder))
+        {
+            MessagePanel.Children.Remove(inlineBorder);
+            _inlineImageBorders.Remove(reference);
+        }
+
         RenderReferenceTags();
         SavePersistedConversation();
     }
@@ -1390,6 +1410,12 @@ public partial class AiChatPanel : UserControl
 
         foreach (AiChatReference reference in EnsureActiveConversation().References)
         {
+            // Image references are rendered inline in the message panel, not as tags
+            if (reference.Kind == AiReferenceKind.Image)
+            {
+                continue;
+            }
+
             Border tag = CreateReferenceTag(reference);
             ReferenceTagsPanel.Children.Add(tag);
         }
@@ -2732,6 +2758,7 @@ public partial class AiChatPanel : UserControl
         CancelStreaming();
         _pendingSelectionContext = null;
         _streamSections.Clear();
+        _inlineImageBorders.Clear();
         MessagePanel.Children.Clear();
         PinnedSectionPanel.Children.Clear();
         PinnedSectionPanel.Visibility = Visibility.Collapsed;
@@ -2744,6 +2771,15 @@ public partial class AiChatPanel : UserControl
         else
         {
             RebuildNormalConversation(conversation);
+        }
+
+        // Render any image references as inline images at the end of the message panel
+        foreach (AiChatReference reference in conversation.References)
+        {
+            if (reference.Kind == AiReferenceKind.Image)
+            {
+                AppendInlineImage(reference);
+            }
         }
 
         RefreshContextWindowDisplay();
@@ -4368,6 +4404,7 @@ public partial class AiChatPanel : UserControl
     {
         AiConversation conversation = EnsureActiveConversation();
         _streamSections.Clear();
+        _inlineImageBorders.Clear();
         PinnedSectionPanel.Children.Clear();
         PinnedSectionPanel.Visibility = Visibility.Collapsed;
         MessagePanel.Children.Clear();
@@ -4379,6 +4416,15 @@ public partial class AiChatPanel : UserControl
         else
         {
             RebuildRawConversation(conversation);
+        }
+
+        // Render any image references as inline images at the end of the message panel
+        foreach (AiChatReference reference in conversation.References)
+        {
+            if (reference.Kind == AiReferenceKind.Image)
+            {
+                AppendInlineImage(reference);
+            }
         }
 
         MessageScroller.ScrollToEnd();
@@ -5141,6 +5187,147 @@ public partial class AiChatPanel : UserControl
         if (shouldStickToBottom)
         {
             MessageScroller.ScrollToEnd();
+        }
+    }
+
+    /// <summary>
+    /// Renders a pasted/copied image inline in the message panel, similar to how
+    /// <see cref="draw_svg"/> results appear. The image includes a remove button
+    /// and a click-to-enlarge handler. This replaces the old reference-tag-only
+    /// approach for images — images now appear inline in the chat flow.
+    /// </summary>
+    private void AppendInlineImage(AiChatReference reference)
+    {
+        ArgumentNullException.ThrowIfNull(reference);
+
+        if (reference.Kind != AiReferenceKind.Image || string.IsNullOrWhiteSpace(reference.FullPath))
+        {
+            return;
+        }
+
+        if (!File.Exists(reference.FullPath))
+        {
+            return;
+        }
+
+        try
+        {
+            BitmapImage bitmap = new();
+            bitmap.BeginInit();
+            bitmap.UriSource = new Uri(reference.FullPath);
+            bitmap.CacheOption = BitmapCacheOption.OnLoad;
+            bitmap.DecodePixelWidth = 780;
+            bitmap.EndInit();
+            bitmap.Freeze();
+
+            // Remove button in the top-right corner of the inline image
+            Button removeButton = new()
+            {
+                Content = "✕",
+                FontSize = 11,
+                Width = 22,
+                Height = 22,
+                Padding = new Thickness(0),
+                Foreground = FindBrush("AiChatRefTagForeground"),
+                Background = new SolidColorBrush(Color.FromArgb(0xCC, 0x40, 0x40, 0x40)),
+                BorderThickness = new Thickness(0),
+                Cursor = Cursors.Hand,
+                HorizontalAlignment = HorizontalAlignment.Right,
+                VerticalAlignment = VerticalAlignment.Top,
+                ToolTip = "Remove image",
+                Margin = new Thickness(0, 2, 2, 0),
+                Tag = reference
+            };
+            removeButton.Click += (_, _) =>
+            {
+                if (removeButton.Tag is AiChatReference refToRemove)
+                {
+                    RemoveReference(refToRemove);
+                }
+            };
+
+            Image image = new()
+            {
+                Source = bitmap,
+                Stretch = Stretch.Uniform,
+                MaxWidth = 780,
+                HorizontalAlignment = HorizontalAlignment.Left,
+                VerticalAlignment = VerticalAlignment.Top,
+                Cursor = Cursors.Hand,
+                ToolTip = "Click to enlarge"
+            };
+
+            // Capture for the click handler
+            string capturedFilePath = reference.FullPath;
+            string capturedDisplayName = reference.DisplayName;
+            image.MouseLeftButtonDown += (_, _) =>
+            {
+                try
+                {
+                    BitmapImage viewerBitmap = new();
+                    viewerBitmap.BeginInit();
+                    viewerBitmap.UriSource = new Uri(capturedFilePath);
+                    viewerBitmap.CacheOption = BitmapCacheOption.OnLoad;
+                    viewerBitmap.EndInit();
+                    viewerBitmap.Freeze();
+
+                    ImageViewerWindow.Open(viewerBitmap, capturedDisplayName, Window.GetWindow(this));
+                }
+                catch (Exception)
+                {
+                    // Silently skip if the high-res load fails
+                }
+            };
+
+            // Info bar showing the image filename
+            TextBlock infoBar = new()
+            {
+                Text = $"🖼️ {reference.DisplayName}",
+                FontSize = 11,
+                Foreground = FindBrush("AiChatSecondaryForeground"),
+                Margin = new Thickness(0, 2, 0, 0),
+                HorizontalAlignment = HorizontalAlignment.Left
+            };
+
+            // Wrap image + info in a vertically-oriented panel
+            StackPanel imagePanel = new()
+            {
+                Orientation = Orientation.Vertical,
+                Margin = new Thickness(12, 0, 12, 0),
+                Children =
+                {
+                    image,
+                    infoBar
+                }
+            };
+
+            // Wrap everything in a border with the remove button overlaid
+            Grid overlayGrid = new();
+            overlayGrid.Children.Add(imagePanel);
+            overlayGrid.Children.Add(removeButton);
+
+            Border border = new()
+            {
+                Child = overlayGrid,
+                Background = FindBrush("AiChatInputBackground"),
+                CornerRadius = new CornerRadius(6),
+                Margin = new Thickness(40, 4, 8, 4),
+                Padding = new Thickness(0),
+                HorizontalAlignment = HorizontalAlignment.Right,
+                Tag = reference
+            };
+
+            _inlineImageBorders[reference] = border;
+            MessagePanel.Children.Add(border);
+            MessageScroller.ScrollToEnd();
+        }
+        catch (IOException)
+        {
+            // Image file is missing or inaccessible — skip inline rendering
+        }
+        catch (NotSupportedException)
+        {
+            // Image format is not supported — skip inline rendering
         }
     }
 
