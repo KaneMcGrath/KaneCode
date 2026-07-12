@@ -121,7 +121,7 @@ internal sealed class AiProviderRegistry : IDisposable
         {
             "v1completions" => new V1CompletionsProvider(settings),
             "llamacpp" => new V1CompletionsProvider(settings),
-            // Future: "v1chatcompletions" => new V1ChatCompletionsProvider(settings),
+            "v1chatcompletions" => new V1ChatCompletionsProvider(settings),
             _ => null
         };
     }

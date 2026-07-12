@@ -62,7 +62,8 @@ internal sealed class AiSettingsViewModel : ObservableObject, IDisposable
     /// </summary>
     public static IReadOnlyList<string> ProviderTypes { get; } =
     [
-        "/v1/completions"
+        "/v1/completions",
+        "/v1/chat/completions"
     ];
 
     /// <summary>
@@ -74,7 +75,8 @@ internal sealed class AiSettingsViewModel : ObservableObject, IDisposable
         return displayName switch
         {
             "/v1/completions" => "v1completions",
-            null or "" => "v1completions",
+            "/v1/chat/completions" => "v1chatcompletions",
+            null or "" => "v1chatcompletions",
             _ => displayName
         };
     }
@@ -88,7 +90,8 @@ internal sealed class AiSettingsViewModel : ObservableObject, IDisposable
         return providerId switch
         {
             "v1completions" => "/v1/completions",
-            null or "" => "/v1/completions",
+            "v1chatcompletions" => "/v1/chat/completions",
+            null or "" => "/v1/chat/completions",
             _ => providerId
         };
     }

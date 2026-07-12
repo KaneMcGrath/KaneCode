@@ -2769,6 +2769,21 @@ public partial class AiChatPanel : UserControl
                         ResponseContent: null,
                         ReasoningContent: null));
                 }
+                else if (_provider is V1ChatCompletionsProvider v1ChatCompletionsProvider)
+                {
+                    string rawJson = v1ChatCompletionsProvider.BuildRawRequestJson(
+                        outboundMessages,
+                        model,
+                        toolsDef,
+                        streamResponses);
+                    string endpointUrl = v1ChatCompletionsProvider.GetChatCompletionEndpoint();
+                    _rawRequestPayloads.Add(new RawRequestPayload(
+                        endpointUrl,
+                        model,
+                        rawJson,
+                        ResponseContent: null,
+                        ReasoningContent: null));
+                }
 
                 /* Batch accumulator groups rapid per-token dispatches into batches
                  * at a fixed interval (50ms), reducing UI thread overhead during

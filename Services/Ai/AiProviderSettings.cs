@@ -15,7 +15,7 @@ internal sealed class AiProviderSettings
     public const double DefaultRepetitionPenalty = 1.0;
 
     /// <summary>
-    /// Provider identifier (e.g. "openai", "azure-openai").
+    /// Provider identifier (e.g. "v1completions", "v1chatcompletions").
     /// </summary>
     public string ProviderId { get; set; } = string.Empty;
 
