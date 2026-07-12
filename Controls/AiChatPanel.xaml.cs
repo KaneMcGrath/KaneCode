@@ -15,6 +15,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Documents;
 using System.Windows.Input;
+using System.Drawing.Imaging;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
@@ -3910,9 +3911,31 @@ public partial class AiChatPanel : UserControl
                             ? result.Output
                             : $"Error: {result.Error}";
 
+                        // If the tool produced SVG content and the user has "Add SVG to context"
+                        // enabled, render the SVG to a PNG and attach it as an image on the tool
+                        // result message so the model can see it immediately on the next loop iteration.
+                        List<AiChatImagePart>? toolMessageImages = null;
+                        if (result.Success &&
+                            !string.IsNullOrWhiteSpace(result.SvgContent) &&
+                            (string.Equals(toolCall.FunctionName, "draw_svg", StringComparison.Ordinal) ||
+                             string.Equals(toolCall.FunctionName, "edit_last_svg", StringComparison.Ordinal)))
+                        {
+                            // Check the checkbox on the UI thread
+                            bool addToContext = await Dispatcher.InvokeAsync(() => SvgToContextCheckBox.IsChecked == true);
+                            if (addToContext)
+                            {
+                                AiChatImagePart? imagePart = RenderSvgToImagePart(result.SvgContent);
+                                if (imagePart is not null)
+                                {
+                                    toolMessageImages = [imagePart];
+                                }
+                            }
+                        }
+
                         AiChatMessage toolMessage = new(AiChatRole.Tool, resultContent)
                         {
-                            ToolCallId = toolCallId
+                            ToolCallId = toolCallId,
+                            Images = toolMessageImages
                         };
                         AddMessageToHistories(requestConversationHistory, toolMessage);
 
@@ -5180,6 +5203,13 @@ public partial class AiChatPanel : UserControl
              string.Equals(block.ToolName, "edit_last_svg", StringComparison.Ordinal)))
         {
             AppendSvgImage(block.Section.Root, result.SvgContent);
+
+            // If enabled, also add the rendered SVG as a vision reference so
+            // the model can "see" the result in subsequent conversation turns
+            if (SvgToContextCheckBox.IsChecked == true)
+            {
+                TryAddSvgAsImageReference(result.SvgContent);
+            }
         }
 
         bool shouldStickToBottom = IsMessageScrollerNearBottom();
@@ -5437,6 +5467,93 @@ public partial class AiChatPanel : UserControl
         [System.Runtime.InteropServices.DllImport("gdi32.dll")]
         [return: System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.Bool)]
         public static extern bool DeleteObject(IntPtr hObject);
+    }
+
+    /// <summary>
+    /// Renders SVG content to a PNG, returning the base64-encoded image data
+    /// and MIME type suitable for attaching to an <see cref="AiChatMessage.Images"/>
+    /// collection. Returns null if rendering fails.
+    /// </summary>
+    private static AiChatImagePart? RenderSvgToImagePart(string svgContent)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(svgContent);
+
+        try
+        {
+            using MemoryStream svgStream = new(System.Text.Encoding.UTF8.GetBytes(svgContent));
+            Svg.SvgDocument svgDoc = Svg.SvgDocument.Open<Svg.SvgDocument>(svgStream);
+
+            using System.Drawing.Bitmap bitmap = svgDoc.Draw(800, 0);
+            using MemoryStream pngStream = new();
+            bitmap.Save(pngStream, System.Drawing.Imaging.ImageFormat.Png);
+            byte[] pngBytes = pngStream.ToArray();
+
+            return new AiChatImagePart(Convert.ToBase64String(pngBytes), "image/png");
+        }
+        catch (Exception)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Renders the given SVG content to a PNG file, saves it to the pasted-images
+    /// directory, and adds it as an <see cref="AiReferenceKind.Image"/> reference
+    /// so the AI model can "see" the rendered visual output in subsequent turns.
+    /// </summary>
+    private void TryAddSvgAsImageReference(string svgContent)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(svgContent);
+
+        try
+        {
+            AiChatImagePart? imagePart = RenderSvgToImagePart(svgContent);
+            if (imagePart is null)
+            {
+                return;
+            }
+
+            byte[] pngBytes = Convert.FromBase64String(imagePart.Base64Data);
+            string filePath = SavePastedImage(pngBytes, ".png");
+            AiChatReference reference = new(AiReferenceKind.Image, filePath, "SVG rendering");
+
+            try
+            {
+                byte[] imageBytes = File.ReadAllBytes(filePath);
+                reference.Content = Convert.ToBase64String(imageBytes);
+            }
+            catch (IOException)
+            {
+                reference.Content = string.Empty;
+            }
+            catch (UnauthorizedAccessException)
+            {
+                reference.Content = string.Empty;
+            }
+
+            AiConversation conversation = EnsureActiveConversation();
+
+            // Don't add duplicate SVG references
+            if (conversation.References.Any(
+                    existingReference => AreSameReference(existingReference, reference)))
+            {
+                return;
+            }
+
+            conversation.References.Add(reference);
+            TouchConversation(conversation);
+
+            // Append the image inline (like a pasted image)
+            AppendInlineImage(reference);
+
+            RenderReferenceTags();
+            SavePersistedConversation();
+        }
+        catch (Exception)
+        {
+            // Rendering or saving failed — the SVG is already shown inline,
+            // so we silently skip adding it as context.
+        }
     }
 
     private void RemoveInlineSection(StreamSectionVisual section)

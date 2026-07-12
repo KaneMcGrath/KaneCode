@@ -543,7 +543,7 @@ internal sealed class V1ChatCompletionsProvider : IAiProvider, IDisposable
                 };
                 writer.WriteString("role", role);
 
-                bool hasImages = m.Role == AiChatRole.User && m.Images is { Count: > 0 };
+                bool hasImages = (m.Role == AiChatRole.User || m.Role == AiChatRole.Tool) && m.Images is { Count: > 0 };
 
                 if (hasImages)
                 {
