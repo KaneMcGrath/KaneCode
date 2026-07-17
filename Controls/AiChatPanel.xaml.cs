@@ -5419,8 +5419,41 @@ public partial class AiChatPanel : UserControl
                 ToolTip = "Click to enlarge"
             };
 
-            // Capture the SVG content so the viewer can re-render at high resolution
+            // Capture the SVG content so it can be saved and re-rendered at high resolution
             string capturedSvg = svgContent;
+
+            // Add right-click context menu with Save As option
+            ContextMenu contextMenu = new();
+            MenuItem saveMenuItem = new()
+            {
+                Header = "Save As..."
+            };
+
+            saveMenuItem.Click += (sender, _) =>
+            {
+                try
+                {
+                    Microsoft.Win32.SaveFileDialog saveDialog = new()
+                    {
+                        Filter = "SVG Files (*.svg)|*.svg|All Files (*.*)|*.*",
+                        DefaultExt = "svg",
+                        InitialDirectory = Environment.GetFolderPath(Environment.SpecialFolder.Desktop),
+                        Title = "Save SVG Image"
+                    };
+
+                    if (saveDialog.ShowDialog() == true)
+                    {
+                        File.WriteAllText(saveDialog.FileName, capturedSvg, System.Text.Encoding.UTF8);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show($"Failed to save SVG: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                }
+            };
+
+            contextMenu.Items.Add(saveMenuItem);
+            image.ContextMenu = contextMenu;
             image.MouseLeftButtonDown += (_, _) =>
             {
                 try
