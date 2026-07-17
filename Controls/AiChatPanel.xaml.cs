@@ -419,6 +419,24 @@ public partial class AiChatPanel : UserControl
     {
         _provider = provider;
         _model = model;
+        UpdateSvgToContextCheckBox();
+    }
+
+    /// <summary>
+    /// Enables or disables the "Add SVG to context" checkbox based on whether
+    /// the current AI provider supports images. When the provider does not support
+    /// images, the checkbox is unchecked and greyed out so SVG content is never
+    /// attached as vision context regardless of any stale user preference.
+    /// </summary>
+    private void UpdateSvgToContextCheckBox()
+    {
+        bool supportsImages = _provider?.SupportsImages ?? false;
+        SvgToContextCheckBox.IsEnabled = supportsImages;
+
+        if (!supportsImages)
+        {
+            SvgToContextCheckBox.IsChecked = false;
+        }
     }
 
     /// <summary>
@@ -3911,17 +3929,18 @@ public partial class AiChatPanel : UserControl
                             ? result.Output
                             : $"Error: {result.Error}";
 
-                        // If the tool produced SVG content and the user has "Add SVG to context"
-                        // enabled, render the SVG to a PNG and attach it as an image on the tool
-                        // result message so the model can see it immediately on the next loop iteration.
+                        // If the tool produced SVG content, the provider supports images, and the
+                        // user has "Add SVG to context" enabled, render the SVG to a PNG and
+                        // attach it as an image on the tool result message so the model can see
+                        // it immediately on the next loop iteration.
                         List<AiChatImagePart>? toolMessageImages = null;
                         if (result.Success &&
                             !string.IsNullOrWhiteSpace(result.SvgContent) &&
                             (string.Equals(toolCall.FunctionName, "draw_svg", StringComparison.Ordinal) ||
                              string.Equals(toolCall.FunctionName, "edit_last_svg", StringComparison.Ordinal)))
                         {
-                            // Check the checkbox on the UI thread
-                            bool addToContext = await Dispatcher.InvokeAsync(() => SvgToContextCheckBox.IsChecked == true);
+                            bool addToContext = await Dispatcher.InvokeAsync(() =>
+                                _provider?.SupportsImages == true && SvgToContextCheckBox.IsChecked == true);
                             if (addToContext)
                             {
                                 AiChatImagePart? imagePart = RenderSvgToImagePart(result.SvgContent);
@@ -5204,9 +5223,10 @@ public partial class AiChatPanel : UserControl
         {
             AppendSvgImage(block.Section.Root, result.SvgContent);
 
-            // If enabled, also add the rendered SVG as a vision reference so
-            // the model can "see" the result in subsequent conversation turns
-            if (SvgToContextCheckBox.IsChecked == true)
+            // If the provider supports images and the "Add SVG to context" checkbox
+            // is enabled, also add the rendered SVG as a vision reference so the
+            // model can "see" the result in subsequent conversation turns.
+            if (_provider?.SupportsImages == true && SvgToContextCheckBox.IsChecked == true)
             {
                 TryAddSvgAsImageReference(result.SvgContent);
             }
