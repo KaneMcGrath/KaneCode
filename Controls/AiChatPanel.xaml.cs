@@ -417,10 +417,7 @@ public partial class AiChatPanel : UserControl
         RawTextCheckBox.Unchecked += RawTextCheckBox_Changed;
 
         CommandManager.AddPreviewExecutedHandler(InputBox, OnInputBoxPreviewPaste);
-        Console.WriteLine("[Paste] CommandManager.AddPreviewExecutedHandler registered on InputBox");
-
         DataObject.AddPastingHandler(InputBox, OnInputBoxPaste);
-        Console.WriteLine("[Paste] DataObject.AddPastingHandler registered on InputBox");
     }
 
     /// <summary>
@@ -2398,32 +2395,21 @@ public partial class AiChatPanel : UserControl
     /// </summary>
     private void OnInputBoxPreviewPaste(object sender, ExecutedRoutedEventArgs e)
     {
-        Console.WriteLine($"[Paste] OnInputBoxPreviewPaste ENTERED, Command={e.Command}, Handled={e.Handled}");
-
         if (e.Command != ApplicationCommands.Paste)
         {
-            Console.WriteLine($"[Paste] OnInputBoxPreviewPaste SKIP: not Paste command (got {e.Command})");
             return;
         }
 
         bool hasImage = Clipboard.ContainsImage();
-        Console.WriteLine($"[Paste] OnInputBoxPreviewPaste: Clipboard.ContainsImage() = {hasImage}");
-
-        // Log all formats on the clipboard for diagnostics
-        string[] formats = Clipboard.GetDataObject()?.GetFormats() ?? [];
-        Console.WriteLine($"[Paste] OnInputBoxPreviewPaste: clipboard formats: [{string.Join(", ", formats)}]");
 
         // Try GetImage directly — it handles more formats than ContainsImage
         BitmapSource? directImage = Clipboard.GetImage();
-        Console.WriteLine($"[Paste] OnInputBoxPreviewPaste: Clipboard.GetImage() = {(directImage is null ? "null" : $"{directImage.PixelWidth}x{directImage.PixelHeight}")}");
 
         if (!hasImage && directImage is null)
         {
-            Console.WriteLine("[Paste] OnInputBoxPreviewPaste SKIP: no image on clipboard (neither ContainsImage nor GetImage)");
             return;
         }
 
-        Console.WriteLine("[Paste] OnInputBoxPreviewPaste HANDLING: cancelling paste, calling HandleClipboardImagePaste");
         e.Handled = true;
         HandleClipboardImagePaste();
     }
@@ -2438,18 +2424,12 @@ public partial class AiChatPanel : UserControl
     {
         bool hasBitmap = e.SourceDataObject.GetDataPresent(DataFormats.Bitmap);
         bool hasImage = Clipboard.ContainsImage();
-        Console.WriteLine($"[Paste] OnInputBoxPaste ENTERED: SourceDataObject.Bitmap={hasBitmap}, Clipboard.ContainsImage={hasImage}");
 
         if (hasBitmap || hasImage)
         {
-            Console.WriteLine("[Paste] OnInputBoxPaste HANDLING: calling CancelCommand + Handled + HandleClipboardImagePaste");
             e.CancelCommand();
             e.Handled = true;
             HandleClipboardImagePaste();
-        }
-        else
-        {
-            Console.WriteLine("[Paste] OnInputBoxPaste SKIP: no image/bitmap on clipboard, letting default paste proceed");
         }
     }
 
@@ -2461,11 +2441,8 @@ public partial class AiChatPanel : UserControl
     /// </summary>
     internal void HandleClipboardImagePaste()
     {
-        Console.WriteLine("[Paste] HandleClipboardImagePaste ENTERED");
-
         // Try GetImage first — it handles more formats than ContainsImage
         BitmapSource? image = Clipboard.GetImage();
-        Console.WriteLine($"[Paste] HandleClipboardImagePaste: Clipboard.GetImage() returned {(image is null ? "null" : $"{image.PixelWidth}x{image.PixelHeight}")}");
 
         if (image is null)
         {
@@ -2473,14 +2450,10 @@ public partial class AiChatPanel : UserControl
             IDataObject? dataObj = Clipboard.GetDataObject();
             if (dataObj is not null)
             {
-                string[] formats = dataObj.GetFormats();
-                Console.WriteLine($"[Paste] HandleClipboardImagePaste: trying raw formats: [{string.Join(", ", formats)}]");
-
                 // Try PNG format first
                 if (dataObj.GetDataPresent("PNG", true))
                 {
                     object? pngRaw = dataObj.GetData("PNG", true);
-                    Console.WriteLine($"[Paste] HandleClipboardImagePaste: PNG raw data = {(pngRaw is null ? "null" : pngRaw.GetType().Name)}");
                     if (pngRaw is byte[] pngBytes)
                     {
                         SaveImageBytes(pngBytes, "image/png");
@@ -2497,7 +2470,6 @@ public partial class AiChatPanel : UserControl
                 if (dataObj.GetDataPresent(DataFormats.Dib, true))
                 {
                     object? dibRaw = dataObj.GetData(DataFormats.Dib, true);
-                    Console.WriteLine($"[Paste] HandleClipboardImagePaste: DIB raw data = {(dibRaw is null ? "null" : dibRaw.GetType().Name)}");
                     if (dibRaw is byte[] dibBytes)
                     {
                         // DIB to BitmapSource conversion
@@ -2513,7 +2485,6 @@ public partial class AiChatPanel : UserControl
                 if (image is null && dataObj.GetDataPresent("DeviceIndependentBitmap", true))
                 {
                     object? dibRaw = dataObj.GetData("DeviceIndependentBitmap", true);
-                    Console.WriteLine($"[Paste] HandleClipboardImagePaste: DeviceIndependentBitmap raw = {(dibRaw is null ? "null" : dibRaw.GetType().Name)}");
                     if (dibRaw is byte[] dibBytes)
                     {
                         image = ConvertDibToBitmapSource(dibBytes);
@@ -2523,17 +2494,14 @@ public partial class AiChatPanel : UserControl
 
             if (image is null)
             {
-                Console.WriteLine("[Paste] HandleClipboardImagePaste SKIP: could not extract image from clipboard in any format");
                 return;
             }
         }
 
         bool providerSupportsImages = _provider?.SupportsImages == true;
-        Console.WriteLine($"[Paste] HandleClipboardImagePaste: _provider={_provider?.GetType().Name}, SupportsImages={providerSupportsImages}");
 
         if (!providerSupportsImages)
         {
-            Console.WriteLine("[Paste] HandleClipboardImagePaste SKIP: provider does not support images");
             AppendSystemMessage("The current AI provider does not support images. Paste ignored.");
             return;
         }
@@ -2551,30 +2519,23 @@ public partial class AiChatPanel : UserControl
                 pngBytes = stream.ToArray();
             }
 
-            Console.WriteLine($"[Paste] HandleClipboardImagePaste: encoded PNG, {pngBytes.Length} bytes");
-
             // Save to temp file with a unique name
             string tempDir = Path.GetTempPath();
             string fileName = $"kane_paste_{DateTimeOffset.UtcNow:yyyyMMdd_HHmmss_fff}.png";
             string filePath = Path.Combine(tempDir, fileName);
             File.WriteAllBytes(filePath, pngBytes);
 
-            Console.WriteLine($"[Paste] HandleClipboardImagePaste: saved to {filePath}");
-
             AiChatReference imageRef = AiContextReferenceFactory.CreateImageReference(filePath);
             AddReference(imageRef);
 
-            Console.WriteLine("[Paste] HandleClipboardImagePaste: reference added, SUCCESS");
             AppendSystemMessage($"📋 Pasted image added as reference: {fileName}");
         }
         catch (IOException ex)
         {
-            Console.WriteLine($"[Paste] HandleClipboardImagePaste IOException: {ex.Message}");
             AppendSystemMessage($"Failed to save pasted image: {ex.Message}");
         }
         catch (UnauthorizedAccessException ex)
         {
-            Console.WriteLine($"[Paste] HandleClipboardImagePaste UnauthorizedAccessException: {ex.Message}");
             AppendSystemMessage($"Failed to save pasted image: {ex.Message}");
         }
     }
@@ -2599,12 +2560,9 @@ public partial class AiChatPanel : UserControl
         string filePath = Path.Combine(tempDir, fileName);
         File.WriteAllBytes(filePath, bytes);
 
-        Console.WriteLine($"[Paste] SaveImageBytes: saved {bytes.Length} bytes to {filePath}");
-
         AiChatReference imageRef = AiContextReferenceFactory.CreateImageReference(filePath);
         AddReference(imageRef);
 
-        Console.WriteLine("[Paste] SaveImageBytes: reference added, SUCCESS");
         AppendSystemMessage($"📋 Pasted image added as reference: {fileName}");
     }
 
@@ -2622,9 +2580,9 @@ public partial class AiChatPanel : UserControl
                 return decoder.Frames[0];
             }
         }
-        catch (Exception ex)
+        catch
         {
-            Console.WriteLine($"[Paste] ConvertDibToBitmapSource failed: {ex.Message}");
+            // DIB conversion failed — return null
         }
 
         return null;
