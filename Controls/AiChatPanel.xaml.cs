@@ -88,7 +88,8 @@ public partial class AiChatPanel : UserControl
         Brush headerBackground,
         Brush contentBackground,
         Brush foreground,
-        Brush borderBrush)
+        Brush borderBrush,
+        Button? stopButton = null)
     {
         public Border Root { get; } = root;
 
@@ -114,6 +115,9 @@ public partial class AiChatPanel : UserControl
         public Brush BorderBrush { get; } = borderBrush;
 
         public bool IsExpanded { get; set; }
+
+        /// <summary>Optional stop button shown in the header while the tool is executing.</summary>
+        public Button? StopButton { get; } = stopButton;
     }
 
     private sealed class ToolCallSectionVisual(
@@ -139,6 +143,13 @@ public partial class AiChatPanel : UserControl
 
         /// <summary>The final accumulated arguments JSON, stored so we can format nicely in <see cref="FinalizeToolCallBlock"/>.</summary>
         public string ArgumentsJson { get; } = argumentsJson;
+
+        /// <summary>
+        /// Per-tool cancellation token source, linked to the global stream CTS.
+        /// Set by the tool-execution loop so the stop button can cancel just this
+        /// tool's execution without stopping the entire agent loop.
+        /// </summary>
+        public CancellationTokenSource? ToolCancellation { get; set; }
     }
 
     /// <summary>
@@ -3890,6 +3901,36 @@ public partial class AiChatPanel : UserControl
                             toolCallBlock = block;
                         });
 
+                        // ── Per-tool cancellation for long-running tools ──────
+                        // Create a linked CTS so the stop button cancels only this
+                        // tool's execution, not the entire agent loop.
+                        CancellationToken effectiveToolCt = ct;
+                        if (toolCallBlock is not null &&
+                            !rawTextMode &&
+                            toolCallBlock.Section.StopButton is not null)
+                        {
+                            CancellationTokenSource toolCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                            toolCallBlock.ToolCancellation = toolCts;
+                            effectiveToolCt = toolCts.Token;
+
+                            // Wire the stop button on the dispatcher thread
+                            Button capturedStopButton = toolCallBlock.Section.StopButton;
+                            await Dispatcher.InvokeAsync(() =>
+                            {
+                                capturedStopButton.Click += (_, _) =>
+                                {
+                                    try
+                                    {
+                                        toolCts.Cancel();
+                                    }
+                                    catch (ObjectDisposedException)
+                                    {
+                                        // CTS already disposed — ignore
+                                    }
+                                };
+                            });
+                        }
+
                         IAgentTool? tool = IsConversationToolAllowed(toolCall.FunctionName)
                             ? _toolRegistry.Get(toolCall.FunctionName)
                             : null;
@@ -3911,11 +3952,17 @@ public partial class AiChatPanel : UserControl
                                     ? default
                                     : argumentsDocument.RootElement;
 
-                                result = await tool.ExecuteAsync(args, ct).ConfigureAwait(false);
+                                result = await tool.ExecuteAsync(args, effectiveToolCt).ConfigureAwait(false);
+                            }
+                            catch (OperationCanceledException) when (ct.IsCancellationRequested)
+                            {
+                                // Global stream cancellation — stop the whole loop
+                                throw;
                             }
                             catch (OperationCanceledException)
                             {
-                                throw;
+                                // Per-tool cancellation (e.g. user clicked stop on "run")
+                                result = ToolCallResult.Fail("Tool execution was cancelled.");
                             }
                             catch (Exception ex)
                             {
@@ -4782,7 +4829,8 @@ public partial class AiChatPanel : UserControl
         Brush borderBrush,
         Panel hostPanel,
         UIElement insertBefore,
-        Brush? streamingContentForeground = null)
+        Brush? streamingContentForeground = null,
+        UIElement? stopButton = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(header);
         ArgumentNullException.ThrowIfNull(headerBackground);
@@ -4797,7 +4845,8 @@ public partial class AiChatPanel : UserControl
         TextBlock? streamContentBlock;
         Border headerBar = CreateSectionHeaderBar(
             header, foreground, headerBackground, borderBrush,
-            out glyphBlock, out headerTextBlock, out streamContentBlock);
+            out glyphBlock, out headerTextBlock, out streamContentBlock,
+            stopButton: stopButton);
 
         // Apply streaming content foreground if provided
         if (streamContentBlock is not null && streamingContentForeground is not null)
@@ -4843,7 +4892,8 @@ public partial class AiChatPanel : UserControl
             headerBackground,
             contentBackground,
             foreground,
-            borderBrush);
+            borderBrush,
+            stopButton: stopButton as Button);
 
         headerBar.MouseLeftButtonUp += (_, _) => ToggleInlineSection(section);
         InsertBefore(hostPanel, root, insertBefore);
@@ -4853,10 +4903,11 @@ public partial class AiChatPanel : UserControl
     }
 
     /// <summary>
-    /// Creates a section header bar with a 3-column layout:
-    ///   [glyph (Auto)] [title (Auto-sized)] [streaming content preview (*, right-aligned)]
+    /// Creates a section header bar with a layout:
+    ///   [glyph (Auto)] [title (Auto-sized)] [streaming content preview (*, right-aligned)] [stopButton (Auto)]
     ///
     /// The streaming content column is always created but initially empty.
+    /// An optional stop button can be provided for long-running tools.
     /// </summary>
     private static Border CreateSectionHeaderBar(
         string title,
@@ -4865,7 +4916,8 @@ public partial class AiChatPanel : UserControl
         Brush borderBrush,
         out TextBlock glyphBlock,
         out TextBlock titleBlock,
-        out TextBlock? streamContentBlock)
+        out TextBlock? streamContentBlock,
+        UIElement? stopButton = null)
     {
         glyphBlock = new TextBlock
         {
@@ -4913,11 +4965,12 @@ public partial class AiChatPanel : UserControl
             VerticalAlignment = VerticalAlignment.Stretch
         };
 
-        // Build grid: [glyph (Auto)] [title (Auto)] [streaming (*)]
+        // Build grid: [glyph (Auto)] [title (Auto)] [streaming (*)] [stopButton (Auto)]
         Grid headerGrid = new();
         headerGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto }); // 0: glyph
         headerGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto }); // 1: title
         headerGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) }); // 2: streaming content
+        headerGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto }); // 3: stop button (optional)
 
         Grid.SetColumn(glyphBlock, 0);
         headerGrid.Children.Add(glyphBlock);
@@ -4927,6 +4980,12 @@ public partial class AiChatPanel : UserControl
 
         Grid.SetColumn(streamClipContainer, 2);
         headerGrid.Children.Add(streamClipContainer);
+
+        if (stopButton is not null)
+        {
+            Grid.SetColumn(stopButton, 3);
+            headerGrid.Children.Add(stopButton);
+        }
 
         return new Border
         {
@@ -5110,6 +5169,30 @@ public partial class AiChatPanel : UserControl
 
         string headerText = FormatToolCallHeader(toolName, argumentsJson);
 
+        // Create a stop button for long-running tools like "run".
+        // The click handler is wired later (in the tool-execution loop) to cancel
+        // just this tool's per-tool CancellationTokenSource, not the global stream.
+        Button? stopButton = null;
+        if (string.Equals(toolName, "run", StringComparison.Ordinal))
+        {
+            stopButton = new Button
+            {
+                Content = "⏹",
+                FontSize = 11,
+                Padding = new Thickness(2, 0, 2, 0),
+                Margin = new Thickness(8, 0, 0, 0),
+                MinWidth = 20,
+                MinHeight = 18,
+                VerticalAlignment = VerticalAlignment.Center,
+                Cursor = Cursors.Hand,
+                Foreground = toolForeground,
+                Background = toolBackground,
+                BorderBrush = toolBorder,
+                BorderThickness = new Thickness(1),
+                ToolTip = "Stop running program"
+            };
+        }
+
         StreamSectionVisual section = CreateInlineSection(
             headerText,
             toolBackground,
@@ -5118,7 +5201,8 @@ public partial class AiChatPanel : UserControl
             toolBorder,
             hostPanel,
             insertBefore,
-            streamingContentForeground: streamForeground);
+            streamingContentForeground: streamForeground,
+            stopButton: stopButton);
 
         /* The result block goes after the argument chunks. Track the index so the
          * ChunkedTextPresenter inserts argument blocks before it. */
@@ -5214,6 +5298,19 @@ public partial class AiChatPanel : UserControl
             block.ResultBlock.Text = result.Error ?? "Unknown error";
             block.ResultBlock.Foreground = errorForeground;
             SetInlineSectionForeground(block.Section, errorForeground);
+        }
+
+        // Hide the stop button (if any) since the tool call has completed
+        if (block.Section.StopButton is not null)
+        {
+            block.Section.StopButton.Visibility = Visibility.Collapsed;
+        }
+
+        // Dispose the per-tool cancellation source (if any)
+        if (block.ToolCancellation is not null)
+        {
+            block.ToolCancellation.Dispose();
+            block.ToolCancellation = null;
         }
 
         // Render SVG inline if present (draw_svg or edit_last_svg tools)
