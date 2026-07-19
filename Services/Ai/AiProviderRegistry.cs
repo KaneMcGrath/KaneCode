@@ -122,6 +122,7 @@ internal sealed class AiProviderRegistry : IDisposable
             "v1completions" => new V1CompletionsProvider(settings),
             "llamacpp" => new V1CompletionsProvider(settings),
             "v1chatcompletions" => new V1ChatCompletionsProvider(settings),
+            "googlegemini" => new GoogleGenAiProvider(settings),
             _ => null
         };
     }

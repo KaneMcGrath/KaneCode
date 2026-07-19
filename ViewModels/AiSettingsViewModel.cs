@@ -63,7 +63,8 @@ internal sealed class AiSettingsViewModel : ObservableObject, IDisposable
     public static IReadOnlyList<string> ProviderTypes { get; } =
     [
         "/v1/completions",
-        "/v1/chat/completions"
+        "/v1/chat/completions",
+        "Google Gemini"
     ];
 
     /// <summary>
@@ -76,6 +77,7 @@ internal sealed class AiSettingsViewModel : ObservableObject, IDisposable
         {
             "/v1/completions" => "v1completions",
             "/v1/chat/completions" => "v1chatcompletions",
+            "Google Gemini" => "googlegemini",
             null or "" => "v1chatcompletions",
             _ => displayName
         };
@@ -91,6 +93,7 @@ internal sealed class AiSettingsViewModel : ObservableObject, IDisposable
         {
             "v1completions" => "/v1/completions",
             "v1chatcompletions" => "/v1/chat/completions",
+            "googlegemini" => "Google Gemini",
             null or "" => "/v1/chat/completions",
             _ => providerId
         };
@@ -357,10 +360,56 @@ internal sealed class AiProviderEntryViewModel : ObservableObject
         _isRepetitionPenaltyEnabled = settings.RepetitionPenalty.HasValue;
     }
 
+    /// <summary>
+    /// Returns the internal provider ID (e.g. "v1chatcompletions", "googlegemini")
+    /// by mapping the display-friendly combo-box value.
+    /// </summary>
+    private string InternalProviderId => AiSettingsViewModel.DisplayToProviderId(_providerId);
+
+    /// <summary>
+    /// Whether the Endpoint field should be visible in the detail panel.
+    /// Hidden for providers with fixed endpoints (e.g. Google Gemini).
+    /// </summary>
+    public bool IsEndpointVisible => InternalProviderId != "googlegemini";
+
+    /// <summary>
+    /// Whether the API Key field should be visible in the detail panel.
+    /// Shown for all providers.
+    /// </summary>
+    public bool IsApiKeyVisible => true;
+
+    /// <summary>
+    /// Whether MinP inference parameter should be visible.
+    /// Hidden for Google Gemini which does not support it.
+    /// </summary>
+    public bool IsMinPVisible => InternalProviderId != "googlegemini";
+
+    /// <summary>
+    /// Whether Presence Penalty inference parameter should be visible.
+    /// Hidden for Google Gemini which does not support it.
+    /// </summary>
+    public bool IsPresencePenaltyVisible => InternalProviderId != "googlegemini";
+
+    /// <summary>
+    /// Whether Repetition Penalty inference parameter should be visible.
+    /// Hidden for Google Gemini which does not support it.
+    /// </summary>
+    public bool IsRepetitionPenaltyVisible => InternalProviderId != "googlegemini";
+
     public string ProviderId
     {
         get => _providerId;
-        set => SetProperty(ref _providerId, value);
+        set
+        {
+            if (SetProperty(ref _providerId, value))
+            {
+                // When the provider type changes, update visibility of dependent fields
+                OnPropertyChanged(nameof(IsEndpointVisible));
+                OnPropertyChanged(nameof(IsMinPVisible));
+                OnPropertyChanged(nameof(IsPresencePenaltyVisible));
+                OnPropertyChanged(nameof(IsRepetitionPenaltyVisible));
+            }
+        }
     }
 
     public string Label

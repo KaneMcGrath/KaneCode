@@ -56,6 +56,7 @@
     <PackageReference Include="NuGet.Packaging" Version="6.13.2" />
     <PackageReference Include="NuGet.ProjectModel" Version="6.13.2" />
     <PackageReference Include="Svg" Version="3.4.7" />
+    <PackageReference Include="Google.GenAI" Version="1.0.0" />
   </ItemGroup>
   <ItemGroup>
     <Resource Include="Icons\KaneCode.ico">
