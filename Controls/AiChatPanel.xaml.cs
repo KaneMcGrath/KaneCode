@@ -1411,14 +1411,7 @@ public partial class AiChatPanel : UserControl
         conversation.References.Add(reference);
         TouchConversation(conversation);
 
-        if (reference.Kind == AiReferenceKind.Image)
-        {
-            AppendInlineImage(reference);
-        }
-        else
-        {
-            AppendContextSection(reference);
-        }
+        AppendContextSection(reference);
 
         RenderReferenceTags();
         SavePersistedConversation();
@@ -2711,15 +2704,6 @@ public partial class AiChatPanel : UserControl
         else
         {
             RebuildNormalConversation(conversation);
-        }
-
-        // Render any image references as inline images at the end of the message panel
-        foreach (AiChatReference reference in conversation.References)
-        {
-            if (reference.Kind == AiReferenceKind.Image)
-            {
-                AppendInlineImage(reference);
-            }
         }
 
         RefreshContextWindowDisplay();
@@ -4418,15 +4402,6 @@ public partial class AiChatPanel : UserControl
             RebuildRawConversation(conversation);
         }
 
-        // Render any image references as inline images at the end of the message panel
-        foreach (AiChatReference reference in conversation.References)
-        {
-            if (reference.Kind == AiReferenceKind.Image)
-            {
-                AppendInlineImage(reference);
-            }
-        }
-
         MessageScroller.ScrollToEnd();
     }
 
@@ -4439,13 +4414,10 @@ public partial class AiChatPanel : UserControl
         StackPanel? lastAssistantContainer = null;
         RichTextBox? lastAssistantBlock = null;
 
-        // Render all non-image references as inline context sections at the top of the chat
+        // Render all references as inline context sections at the top of the chat
         foreach (AiChatReference reference in conversation.References)
         {
-            if (reference.Kind != AiReferenceKind.Image)
-            {
-                AppendContextSection(reference);
-            }
+            AppendContextSection(reference);
         }
 
         foreach (AiChatMessage message in conversation.Messages)
@@ -4801,8 +4773,13 @@ public partial class AiChatPanel : UserControl
             headerGrid.Children.Add(dismissButton);
         }
 
-        // Render the content as a plain text block (context is pre-rendered, not streamed)
-        if (!string.IsNullOrWhiteSpace(content))
+        // Render the content as a plain text block (context is pre-rendered, not streamed).
+        // For image references, render the image thumbnail instead.
+        if (reference.Kind == AiReferenceKind.Image)
+        {
+            AppendContextImageContent(reference, section);
+        }
+        else if (!string.IsNullOrWhiteSpace(content))
         {
             TextBlock contentBlock = new()
             {
@@ -4836,6 +4813,7 @@ public partial class AiChatPanel : UserControl
             AiReferenceKind.Class => "🔷",
             AiReferenceKind.ExternalFolder => "📁",
             AiReferenceKind.Url => "🔗",
+            AiReferenceKind.Image => "🖼️",
             _ => "📎"
         };
 
@@ -4848,6 +4826,7 @@ public partial class AiChatPanel : UserControl
             AiReferenceKind.Class => "Class",
             AiReferenceKind.ExternalFolder => "External Folder",
             AiReferenceKind.Url => "URL",
+            AiReferenceKind.Image => "Image",
             _ => "Context"
         };
 
@@ -4870,6 +4849,98 @@ public partial class AiChatPanel : UserControl
         // For OpenDocuments, the content is already a formatted summary
         // For everything else, just return the content as-is
         return reference.Content;
+    }
+
+    /// <summary>
+    /// Renders an image thumbnail inside a context section's content panel.
+    /// The image is clickable to open a full-screen viewer, and a filename
+    /// info bar is shown below the thumbnail.
+    /// </summary>
+    private void AppendContextImageContent(AiChatReference reference, StreamSectionVisual section)
+    {
+        ArgumentNullException.ThrowIfNull(reference);
+        ArgumentNullException.ThrowIfNull(section);
+
+        if (!File.Exists(reference.FullPath))
+        {
+            TextBlock missingBlock = new()
+            {
+                Text = "(image file not found)",
+                TextWrapping = TextWrapping.Wrap,
+                FontStyle = FontStyles.Italic,
+                Foreground = FindBrush(ThemeResourceKeys.AiChatContextForeground),
+                FontSize = 12
+            };
+            section.ContentPanel.Children.Add(missingBlock);
+            return;
+        }
+
+        try
+        {
+            BitmapImage bitmap = new();
+            bitmap.BeginInit();
+            bitmap.UriSource = new Uri(reference.FullPath);
+            bitmap.CacheOption = BitmapCacheOption.OnLoad;
+            bitmap.DecodePixelWidth = 780;
+            bitmap.EndInit();
+            bitmap.Freeze();
+
+            string capturedFilePath = reference.FullPath;
+            string capturedDisplayName = reference.DisplayName;
+
+            Image image = new()
+            {
+                Source = bitmap,
+                Stretch = Stretch.Uniform,
+                MaxWidth = 780,
+                HorizontalAlignment = HorizontalAlignment.Left,
+                Cursor = Cursors.Hand,
+                ToolTip = "Click to enlarge"
+            };
+
+            image.MouseLeftButtonDown += (_, _) =>
+            {
+                try
+                {
+                    BitmapImage viewerBitmap = new();
+                    viewerBitmap.BeginInit();
+                    viewerBitmap.UriSource = new Uri(capturedFilePath);
+                    viewerBitmap.CacheOption = BitmapCacheOption.OnLoad;
+                    viewerBitmap.EndInit();
+                    viewerBitmap.Freeze();
+
+                    ImageViewerWindow.Open(viewerBitmap, capturedDisplayName, Window.GetWindow(this));
+                }
+                catch (Exception)
+                {
+                    // Silently skip if the high-res load fails
+                }
+            };
+
+            TextBlock infoBar = new()
+            {
+                Text = $"🖼️ {reference.DisplayName}",
+                FontSize = 11,
+                Foreground = FindBrush("AiChatSecondaryForeground"),
+                Margin = new Thickness(0, 4, 0, 0),
+                HorizontalAlignment = HorizontalAlignment.Left
+            };
+
+            section.ContentPanel.Children.Add(image);
+            section.ContentPanel.Children.Add(infoBar);
+        }
+        catch (Exception)
+        {
+            TextBlock errorBlock = new()
+            {
+                Text = "(could not load image)",
+                TextWrapping = TextWrapping.Wrap,
+                FontStyle = FontStyles.Italic,
+                Foreground = FindBrush(ThemeResourceKeys.AiChatContextForeground),
+                FontSize = 12
+            };
+            section.ContentPanel.Children.Add(errorBlock);
+        }
     }
 
     private StreamSectionVisual CreateInlineSection(
