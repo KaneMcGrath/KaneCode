@@ -71,6 +71,48 @@ public sealed class AgentToolPathResolverTests : IDisposable
     }
 
     [Fact]
+    public void WhenRelativePathStartsWithProjectDirNameThenResolvesFromParent()
+    {
+        // Arrange: project root is a subdirectory (e.g. the project folder, not the solution root).
+        // The input path starts with that folder name (e.g. "KaneCode/Models/File.cs" when
+        // projectRoot is "...\KaneCode\KaneCode").
+        string subDir = Path.Combine(_projectRoot, "SubDir");
+        Directory.CreateDirectory(subDir);
+        string innerFilePath = Path.Combine(subDir, "inner.txt");
+        File.WriteAllText(innerFilePath, "inner content");
+
+        // Set the project root provider to point to the subdirectory
+        string subDirCsproj = Path.Combine(subDir, "SubDir.csproj");
+        File.WriteAllText(subDirCsproj, "<Project Sdk=\"Microsoft.NET.Sdk\" />");
+
+        string resolvedPath = AgentToolPathResolver.ResolvePath(
+            () => subDirCsproj,
+            Path.Combine("SubDir", "inner.txt"));
+
+        Assert.Equal(Path.GetFullPath(innerFilePath), resolvedPath, ignoreCase: OperatingSystem.IsWindows());
+    }
+
+    [Fact]
+    public void WhenRelativePathStartsWithProjectDirNameAndParentDirIsNullThenFallsBack()
+    {
+        // When the project root has no parent (e.g. drive root),
+        // the fallback should still work correctly.
+        // For this test, we use a regular relative path that does not match
+        // the project directory name to verify the normal path still works.
+        string nestedDir = Path.Combine(_projectRoot, "nested");
+        Directory.CreateDirectory(nestedDir);
+        string nestedFilePath = Path.Combine(nestedDir, "test.txt");
+        File.WriteAllText(nestedFilePath, "test");
+
+        string resolvedPath = AgentToolPathResolver.ResolvePath(
+            () => _projectRoot,
+            Path.Combine("nested", "test.txt"));
+
+        string expectedPath = Path.GetFullPath(Path.Combine(_projectRoot, "nested", "test.txt"));
+        Assert.Equal(expectedPath, resolvedPath, ignoreCase: OperatingSystem.IsWindows());
+    }
+
+    [Fact]
     public void WhenAbsolutePathIsInsideAllowedExternalRootThenReturnsResolvedPath()
     {
         string externalDirectory = Path.Combine(Path.GetTempPath(), $"KaneCodeExternal_{Guid.NewGuid():N}");

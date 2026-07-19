@@ -46,6 +46,31 @@ internal static class AgentToolPathResolver
         ArgumentException.ThrowIfNullOrWhiteSpace(inputPath);
 
         string projectRoot = GetProjectRootDirectory(projectRootProvider);
+
+        // When the input path is relative and its first segment matches the project root's
+        // leaf directory name (e.g. input is "KaneCode/Models/File.cs" and projectRoot is
+        // "...\KaneCode\KaneCode"), combining them would produce a duplicate folder segment.
+        // In that case, resolve from the project root's parent directory instead.
+        if (!Path.IsPathRooted(inputPath))
+        {
+            string projectDirName = Path.GetFileName(Path.TrimEndingDirectorySeparator(projectRoot));
+
+            if (!string.IsNullOrEmpty(projectDirName) && StartsWithDirectory(inputPath, projectDirName))
+            {
+                string? parentDir = Path.GetDirectoryName(Path.TrimEndingDirectorySeparator(projectRoot));
+
+                if (parentDir is not null)
+                {
+                    string parentCandidatePath = Path.GetFullPath(Path.Combine(parentDir, inputPath));
+
+                    if (IsPathWithinRoot(parentCandidatePath, projectRoot))
+                    {
+                        return parentCandidatePath;
+                    }
+                }
+            }
+        }
+
         string candidatePath = Path.IsPathRooted(inputPath)
             ? Path.GetFullPath(inputPath)
             : Path.GetFullPath(Path.Combine(projectRoot, inputPath));
@@ -126,6 +151,19 @@ internal static class AgentToolPathResolver
     private static bool ContainsDirectorySeparator(string path)
     {
         return path.Contains(Path.DirectorySeparatorChar) || path.Contains(Path.AltDirectorySeparatorChar);
+    }
+
+    /// <summary>
+    /// Returns true when <paramref name="path"/> starts with <paramref name="directoryName"/>
+    /// followed by a directory separator, or is exactly equal to <paramref name="directoryName"/>.
+    /// </summary>
+    private static bool StartsWithDirectory(string path, string directoryName)
+    {
+        StringComparison comparison = GetPathComparison();
+
+        return string.Equals(path, directoryName, comparison)
+            || path.StartsWith(directoryName + Path.DirectorySeparatorChar, comparison)
+            || path.StartsWith(directoryName + Path.AltDirectorySeparatorChar, comparison);
     }
 
     private static bool IsPathWithinRoot(string candidatePath, string rootPath)
