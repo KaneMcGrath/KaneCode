@@ -4,6 +4,7 @@ using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using System.IO;
 using System.Linq;
+using System.Net.Http;
 using System.Text;
 
 namespace KaneCode.Services.Ai;
@@ -262,6 +263,50 @@ internal static class AiContextReferenceFactory
         {
             Content = contentBuilder.ToString().TrimEnd()
         };
+    }
+
+    internal static async System.Threading.Tasks.Task<AiChatReference> CreateUrlReferenceAsync(string url)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(url);
+
+        if (!Uri.TryCreate(url, UriKind.Absolute, out Uri? uri)
+            || (uri.Scheme != "http" && uri.Scheme != "https"))
+        {
+            return new AiChatReference(AiReferenceKind.Url, url, url)
+            {
+                Content = "(invalid or unsupported URL)"
+            };
+        }
+
+        try
+        {
+            using HttpClient client = new();
+            client.DefaultRequestHeaders.UserAgent.ParseAdd(
+                "Mozilla/5.0 (compatible; KaneCode/1.0)");
+            client.Timeout = System.TimeSpan.FromSeconds(15);
+
+            string html = await client.GetStringAsync(uri).ConfigureAwait(false);
+
+            // Truncate to a reasonable limit
+            const int MaxHtmlChars = 100_000;
+            if (html.Length > MaxHtmlChars)
+            {
+                html = html[..MaxHtmlChars]
+                    + $"\n\n(truncated from {html.Length} characters to {MaxHtmlChars})";
+            }
+
+            return new AiChatReference(AiReferenceKind.Url, url, uri.Host + uri.AbsolutePath)
+            {
+                Content = html
+            };
+        }
+        catch (System.Exception ex) when (ex is HttpRequestException or System.Threading.Tasks.TaskCanceledException)
+        {
+            return new AiChatReference(AiReferenceKind.Url, url, url)
+            {
+                Content = $"(failed to fetch URL: {ex.Message})"
+            };
+        }
     }
 
     private static string BuildDisplayName(ClassDeclarationSyntax classDeclaration)

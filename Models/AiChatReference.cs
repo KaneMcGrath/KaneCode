@@ -26,7 +26,10 @@ internal enum AiReferenceKind
     ExternalFolder,
 
     /// <summary>An image file attached for vision-capable providers.</summary>
-    Image
+    Image,
+
+    /// <summary>A URL whose HTML content has been fetched.</summary>
+    Url
 }
 
 /// <summary>
@@ -71,6 +74,7 @@ internal sealed class AiChatReference
             AiReferenceKind.ExternalFolder =>
                 $"[External folder: {DisplayName}]\nPath: {FullPath}\nThis folder is external context outside the loaded project. For this conversation, the agent may use read, list, and search with paths inside this folder.\nFiles:\n{Content}",
             AiReferenceKind.Image => $"[Image: {DisplayName}]\nPath: {FullPath}",
+            AiReferenceKind.Url => $"[Web page: {DisplayName}]\nURL: {FullPath}\n```html\n{Content}\n```",
             _ => Content
         };
     }
@@ -84,6 +88,7 @@ internal sealed class AiChatReference
             AiReferenceKind.CurrentDocument => Path.GetFileName(fullPath),
             AiReferenceKind.ExternalFolder => GetFolderDisplayName(fullPath),
             AiReferenceKind.Image => Path.GetFileName(fullPath),
+            AiReferenceKind.Url => fullPath,
             _ => Path.GetFileName(fullPath)
         };
     }

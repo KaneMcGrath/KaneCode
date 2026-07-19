@@ -1,5 +1,6 @@
 using KaneCode.Models;
 using KaneCode.Services.Ai;
+using Microsoft.VisualBasic;
 using Microsoft.Win32;
 using System.Collections.ObjectModel;
 using System.Linq;
@@ -164,6 +165,32 @@ public partial class AiReferencePickerDialog : Window
             "Add Documentation",
             MessageBoxButton.OK,
             MessageBoxImage.Information);
+    }
+
+    private async void AddUrlButton_Click(object sender, RoutedEventArgs e)
+    {
+        string? url = Microsoft.VisualBasic.Interaction.InputBox(
+            "Enter the URL to fetch:",
+            "Add URL Context",
+            "https://",
+            -1, -1);
+
+        if (string.IsNullOrWhiteSpace(url))
+        {
+            return;
+        }
+
+        AddUrlButton.IsEnabled = false;
+
+        try
+        {
+            AiChatReference reference = await AiContextReferenceFactory.CreateUrlReferenceAsync(url);
+            AddExternalReference(reference);
+        }
+        finally
+        {
+            AddUrlButton.IsEnabled = true;
+        }
     }
 
     private void RemoveExternalReferenceButton_Click(object sender, RoutedEventArgs e)

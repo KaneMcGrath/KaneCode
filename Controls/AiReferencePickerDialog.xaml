@@ -228,6 +228,15 @@
                                 Background="{DynamicResource PanelSecondaryBackground}"
                                 BorderBrush="{DynamicResource AiChatBorder}"
                                 Cursor="Hand" />
+                        <Button x:Name="AddUrlButton"
+                                Content="Add URL"
+                                Padding="12,4"
+                                Margin="0,0,8,8"
+                                Click="AddUrlButton_Click"
+                                Foreground="{DynamicResource PanelForeground}"
+                                Background="{DynamicResource PanelSecondaryBackground}"
+                                BorderBrush="{DynamicResource AiChatBorder}"
+                                Cursor="Hand" />
                     </WrapPanel>
 
                     <TextBlock DockPanel.Dock="Top"

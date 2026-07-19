@@ -213,6 +213,8 @@ internal static class AiConversationStore
             nameof(AiReferenceKind.BuildOutput) => AiReferenceKind.BuildOutput,
             nameof(AiReferenceKind.Class) => AiReferenceKind.Class,
             nameof(AiReferenceKind.ExternalFolder) => AiReferenceKind.ExternalFolder,
+            nameof(AiReferenceKind.Image) => AiReferenceKind.Image,
+            nameof(AiReferenceKind.Url) => AiReferenceKind.Url,
             _ => throw new InvalidDataException($"Unknown reference kind '{kind}'.")
         };
     }
