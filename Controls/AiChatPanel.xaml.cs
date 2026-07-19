@@ -416,6 +416,9 @@ public partial class AiChatPanel : UserControl
         RawTextCheckBox.Checked += RawTextCheckBox_Changed;
         RawTextCheckBox.Unchecked += RawTextCheckBox_Changed;
 
+        // Initial state: auto expand images is enabled only when auto expand context is off
+        AutoExpandImagesCheckBox.IsEnabled = AutoExpandContextCheckBox.IsChecked != true;
+
         CommandManager.AddPreviewExecutedHandler(InputBox, OnInputBoxPreviewPaste);
         DataObject.AddPastingHandler(InputBox, OnInputBoxPaste);
     }
@@ -4629,6 +4632,21 @@ public partial class AiChatPanel : UserControl
         return AutoExpandContextCheckBox.IsChecked == true;
     }
 
+    private bool ShouldAutoExpandImagesSections()
+    {
+        // When auto expand context is on, images are already included.
+        // This checkbox is only effective when auto expand context is off,
+        // and defaults to true.
+        return !ShouldAutoExpandContextSections()
+            && AutoExpandImagesCheckBox.IsChecked == true;
+    }
+
+    private void AutoExpandContextCheckBox_Changed(object sender, RoutedEventArgs e)
+    {
+        bool contextExpanded = AutoExpandContextCheckBox.IsChecked == true;
+        AutoExpandImagesCheckBox.IsEnabled = !contextExpanded;
+    }
+
     private bool ShouldRemoveVerticalWhitespace()
     {
         return RemoveVerticalWhitespaceCheckBox.IsChecked == true;
@@ -4792,7 +4810,10 @@ public partial class AiChatPanel : UserControl
             section.ContentPanel.Children.Add(contentBlock);
         }
 
-        SetInlineSectionExpanded(section, isExpanded: ShouldAutoExpandContextSections());
+        bool autoExpand = reference.Kind == AiReferenceKind.Image
+            ? (ShouldAutoExpandContextSections() || ShouldAutoExpandImagesSections())
+            : ShouldAutoExpandContextSections();
+        SetInlineSectionExpanded(section, isExpanded: autoExpand);
         _inlineContextSections[reference] = section;
         MessageScroller.ScrollToEnd();
     }
