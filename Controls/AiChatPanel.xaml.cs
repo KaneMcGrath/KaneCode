@@ -1384,6 +1384,12 @@ public partial class AiChatPanel : UserControl
     private readonly Dictionary<AiChatReference, Border> _inlineImageBorders = [];
 
     /// <summary>
+    /// Stores inline context section visuals keyed by their reference so they can be removed
+    /// when the user clicks the remove button on the reference tag.
+    /// </summary>
+    private readonly Dictionary<AiChatReference, StreamSectionVisual> _inlineContextSections = [];
+
+    /// <summary>
     /// Adds a file reference to the next message context.
     /// </summary>
     internal void AddFileReference(string filePath)
@@ -1409,6 +1415,10 @@ public partial class AiChatPanel : UserControl
         {
             AppendInlineImage(reference);
         }
+        else
+        {
+            AppendContextSection(reference);
+        }
 
         RenderReferenceTags();
         SavePersistedConversation();
@@ -1427,81 +1437,21 @@ public partial class AiChatPanel : UserControl
             _inlineImageBorders.Remove(reference);
         }
 
+        // Remove the inline context section if one exists for this reference
+        if (_inlineContextSections.TryGetValue(reference, out StreamSectionVisual? contextSection))
+        {
+            RemoveInlineSection(contextSection);
+            _inlineContextSections.Remove(reference);
+        }
+
         RenderReferenceTags();
         SavePersistedConversation();
     }
 
     private void RenderReferenceTags()
     {
-        ReferenceTagsPanel.Children.Clear();
-
-        foreach (AiChatReference reference in EnsureActiveConversation().References)
-        {
-            // Image references are rendered inline in the message panel, not as tags
-            if (reference.Kind == AiReferenceKind.Image)
-            {
-                continue;
-            }
-
-            Border tag = CreateReferenceTag(reference);
-            ReferenceTagsPanel.Children.Add(tag);
-        }
-    }
-
-    private Border CreateReferenceTag(AiChatReference reference)
-    {
-        Button removeButton = new()
-        {
-            Content = "✕",
-            FontSize = 9,
-            Padding = new Thickness(2, 0, 2, 0),
-            Margin = new Thickness(4, 0, 0, 0),
-            Foreground = FindBrush("AiChatSecondaryForeground"),
-            Background = Brushes.Transparent,
-            BorderThickness = new Thickness(0),
-            Cursor = Cursors.Hand,
-            VerticalAlignment = VerticalAlignment.Center
-        };
-        removeButton.Click += (_, _) => RemoveReference(reference);
-
-        string icon = reference.Kind switch
-        {
-            AiReferenceKind.File => "📄 ",
-            AiReferenceKind.CurrentDocument => "📝 ",
-            AiReferenceKind.OpenDocuments => "🗂️ ",
-            AiReferenceKind.BuildOutput => "🏗️ ",
-            AiReferenceKind.Class => "🔷 ",
-            AiReferenceKind.ExternalFolder => "📁 ",
-            AiReferenceKind.Image => "🖼️ ",
-            _ => "🔗 "
-        };
-
-        Border tag = new()
-        {
-            Background = FindBrush("AiChatRefTagBackground"),
-            CornerRadius = new CornerRadius(3),
-            Padding = new Thickness(5, 2, 3, 2),
-            Margin = new Thickness(0, 1, 4, 1),
-            VerticalAlignment = VerticalAlignment.Center,
-            Child = new StackPanel
-            {
-                Orientation = Orientation.Horizontal,
-                Children =
-                {
-                    new TextBlock
-                    {
-                        Text = $"{icon}{reference.DisplayName}",
-                        FontSize = 11,
-                        Foreground = FindBrush("AiChatRefTagForeground"),
-                        VerticalAlignment = VerticalAlignment.Center
-                    },
-                    removeButton
-                }
-            }
-        };
-
-        tag.ToolTip = reference.FullPath;
-        return tag;
+        // Reference tags have been replaced by inline context sections in the chat.
+        // The Add/Paste buttons remain in the reference bar for adding new context.
     }
 
     private static bool AreSameReference(AiChatReference left, AiChatReference right)
@@ -1852,6 +1802,8 @@ public partial class AiChatPanel : UserControl
     {
         AiConversation conversation = EnsureActiveConversation();
         conversation.References.Clear();
+        _inlineContextSections.Clear();
+        _inlineImageBorders.Clear();
         RenderReferenceTags();
         SavePersistedConversation();
     }
@@ -4452,6 +4404,7 @@ public partial class AiChatPanel : UserControl
         AiConversation conversation = EnsureActiveConversation();
         _streamSections.Clear();
         _inlineImageBorders.Clear();
+        _inlineContextSections.Clear();
         PinnedSectionPanel.Children.Clear();
         PinnedSectionPanel.Visibility = Visibility.Collapsed;
         MessagePanel.Children.Clear();
@@ -4485,6 +4438,15 @@ public partial class AiChatPanel : UserControl
         Dictionary<string, ToolCallSectionVisual> toolCallBlocks = new(StringComparer.Ordinal);
         StackPanel? lastAssistantContainer = null;
         RichTextBox? lastAssistantBlock = null;
+
+        // Render all non-image references as inline context sections at the top of the chat
+        foreach (AiChatReference reference in conversation.References)
+        {
+            if (reference.Kind != AiReferenceKind.Image)
+            {
+                AppendContextSection(reference);
+            }
+        }
 
         foreach (AiChatMessage message in conversation.Messages)
         {
@@ -4690,6 +4652,11 @@ public partial class AiChatPanel : UserControl
         return AutoExpandToolsCheckBox.IsChecked == true;
     }
 
+    private bool ShouldAutoExpandContextSections()
+    {
+        return AutoExpandContextCheckBox.IsChecked == true;
+    }
+
     private bool ShouldRemoveVerticalWhitespace()
     {
         return RemoveVerticalWhitespaceCheckBox.IsChecked == true;
@@ -4779,6 +4746,132 @@ public partial class AiChatPanel : UserControl
         return (section, presenter);
     }
 
+    /// <summary>
+    /// Creates a collapsible context section in the message panel showing the content
+    /// of an attached reference (file, document, build output, etc.). Uses a subtle
+    /// blue tint to distinguish context from thinking (warm) and tool calls (yellow).
+    /// </summary>
+    private void AppendContextSection(AiChatReference reference)
+    {
+        ArgumentNullException.ThrowIfNull(reference);
+
+        Brush contextBackground = FindBrush(ThemeResourceKeys.AiChatContextBackground);
+        Brush contextContentBackground = FindBrush(ThemeResourceKeys.AiChatContextContentBackground);
+        Brush contextForeground = FindBrush(ThemeResourceKeys.AiChatContextForeground);
+        Brush contextBorder = FindBrush(ThemeResourceKeys.AiChatContextBorder);
+
+        string header = GetContextSectionHeader(reference);
+        string content = GetContextSectionContent(reference);
+
+        StreamSectionVisual section = CreateInlineSection(
+            header,
+            contextBackground,
+            contextContentBackground,
+            contextForeground,
+            contextBorder,
+            MessagePanel,
+            insertBefore: null);
+
+        // Add a dismiss (✕) button to the far right of the header so the user can
+        // remove the context item directly from the chat without using the tag bar.
+        if (section.HeaderBar.Child is Grid headerGrid)
+        {
+            headerGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            Button dismissButton = new()
+            {
+                Content = "✕",
+                FontSize = 11,
+                Padding = new Thickness(4, 0, 4, 0),
+                Margin = new Thickness(8, 0, 0, 0),
+                MinWidth = 20,
+                MinHeight = 18,
+                VerticalAlignment = VerticalAlignment.Center,
+                Cursor = Cursors.Hand,
+                Foreground = contextForeground,
+                Background = Brushes.Transparent,
+                BorderThickness = new Thickness(0),
+                ToolTip = "Remove this context item"
+            };
+
+            // Capture the reference for the click handler
+            AiChatReference capturedReference = reference;
+            dismissButton.Click += (_, _) => RemoveReference(capturedReference);
+
+            Grid.SetColumn(dismissButton, headerGrid.ColumnDefinitions.Count - 1);
+            headerGrid.Children.Add(dismissButton);
+        }
+
+        // Render the content as a plain text block (context is pre-rendered, not streamed)
+        if (!string.IsNullOrWhiteSpace(content))
+        {
+            TextBlock contentBlock = new()
+            {
+                Text = content,
+                TextWrapping = TextWrapping.Wrap,
+                Foreground = contextForeground,
+                FontSize = 12,
+                FontFamily = new FontFamily("Segoe UI")
+            };
+            section.ContentPanel.Children.Add(contentBlock);
+        }
+
+        SetInlineSectionExpanded(section, isExpanded: ShouldAutoExpandContextSections());
+        _inlineContextSections[reference] = section;
+        MessageScroller.ScrollToEnd();
+    }
+
+    /// <summary>
+    /// Returns a human-readable header string for the context section based on the reference kind.
+    /// </summary>
+    private static string GetContextSectionHeader(AiChatReference reference)
+    {
+        ArgumentNullException.ThrowIfNull(reference);
+
+        string icon = reference.Kind switch
+        {
+            AiReferenceKind.File => "📄",
+            AiReferenceKind.CurrentDocument => "📝",
+            AiReferenceKind.OpenDocuments => "🗂️",
+            AiReferenceKind.BuildOutput => "🏗️",
+            AiReferenceKind.Class => "🔷",
+            AiReferenceKind.ExternalFolder => "📁",
+            AiReferenceKind.Url => "🔗",
+            _ => "📎"
+        };
+
+        string kindLabel = reference.Kind switch
+        {
+            AiReferenceKind.File => "File",
+            AiReferenceKind.CurrentDocument => "Current Document",
+            AiReferenceKind.OpenDocuments => "Open Documents",
+            AiReferenceKind.BuildOutput => "Build Output",
+            AiReferenceKind.Class => "Class",
+            AiReferenceKind.ExternalFolder => "External Folder",
+            AiReferenceKind.Url => "URL",
+            _ => "Context"
+        };
+
+        return $"{icon} {kindLabel}: {reference.DisplayName}";
+    }
+
+    /// <summary>
+    /// Returns the formatted content for the context section body.
+    /// For most kinds this is the <see cref="AiChatReference.Content"/> directly.
+    /// </summary>
+    private static string GetContextSectionContent(AiChatReference reference)
+    {
+        ArgumentNullException.ThrowIfNull(reference);
+
+        if (string.IsNullOrWhiteSpace(reference.Content))
+        {
+            return string.Empty;
+        }
+
+        // For OpenDocuments, the content is already a formatted summary
+        // For everything else, just return the content as-is
+        return reference.Content;
+    }
+
     private StreamSectionVisual CreateInlineSection(
         string header,
         Brush headerBackground,
@@ -4786,7 +4879,7 @@ public partial class AiChatPanel : UserControl
         Brush foreground,
         Brush borderBrush,
         Panel hostPanel,
-        UIElement insertBefore,
+        UIElement? insertBefore,
         Brush? streamingContentForeground = null,
         UIElement? stopButton = null)
     {
@@ -4796,7 +4889,6 @@ public partial class AiChatPanel : UserControl
         ArgumentNullException.ThrowIfNull(foreground);
         ArgumentNullException.ThrowIfNull(borderBrush);
         ArgumentNullException.ThrowIfNull(hostPanel);
-        ArgumentNullException.ThrowIfNull(insertBefore);
 
         TextBlock glyphBlock;
         TextBlock headerTextBlock;
@@ -4957,17 +5049,19 @@ public partial class AiChatPanel : UserControl
         };
     }
 
-    private static void InsertBefore(Panel hostPanel, UIElement element, UIElement insertBefore)
+    private static void InsertBefore(Panel hostPanel, UIElement element, UIElement? insertBefore)
     {
         ArgumentNullException.ThrowIfNull(hostPanel);
         ArgumentNullException.ThrowIfNull(element);
-        ArgumentNullException.ThrowIfNull(insertBefore);
 
-        int index = hostPanel.Children.IndexOf(insertBefore);
-        if (index >= 0)
+        if (insertBefore is not null)
         {
-            hostPanel.Children.Insert(index, element);
-            return;
+            int index = hostPanel.Children.IndexOf(insertBefore);
+            if (index >= 0)
+            {
+                hostPanel.Children.Insert(index, element);
+                return;
+            }
         }
 
         hostPanel.Children.Add(element);

@@ -145,6 +145,12 @@ internal static class ThemeResourceKeys
     public const string AiChatRefTagBackground = nameof(AiChatRefTagBackground);
     public const string AiChatRefTagForeground = nameof(AiChatRefTagForeground);
 
+    // AI Chat context blocks
+    public const string AiChatContextBackground = nameof(AiChatContextBackground);
+    public const string AiChatContextContentBackground = nameof(AiChatContextContentBackground);
+    public const string AiChatContextBorder = nameof(AiChatContextBorder);
+    public const string AiChatContextForeground = nameof(AiChatContextForeground);
+
     // AI Chat tool-call blocks
     public const string AiChatToolCallBackground = nameof(AiChatToolCallBackground);
     public const string AiChatToolCallContentBackground = nameof(AiChatToolCallContentBackground);

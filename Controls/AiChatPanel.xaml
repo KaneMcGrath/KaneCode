@@ -272,6 +272,11 @@
                                                   Margin="0,0,0,4"
                                                   Foreground="{DynamicResource AiChatForeground}"
                                                   ToolTip="Expand tool call sections by default when they are shown." />
+                                        <CheckBox x:Name="AutoExpandContextCheckBox"
+                                                  Content="Auto expand context"
+                                                  Margin="0,0,0,4"
+                                                  Foreground="{DynamicResource AiChatForeground}"
+                                                  ToolTip="Expand context sections by default when they are shown." />
                                         <CheckBox x:Name="RemoveVerticalWhitespaceCheckBox"
                                                   Content="Remove vertical whitespace"
                                                   IsChecked="True"
@@ -339,15 +344,14 @@
             </StackPanel>
         </Border>
 
-        <!-- Reference bar -->
+        <!-- Reference bar (Add/Paste buttons only; context is shown inline) -->
         <Border DockPanel.Dock="Bottom"
                 Background="{DynamicResource AiChatInputBackground}"
                 Padding="4,3"
                 BorderThickness="0,1,0,0"
                 BorderBrush="{DynamicResource AiChatBorder}">
-            <DockPanel>
+            <StackPanel Orientation="Horizontal">
                 <Button x:Name="AddReferenceButton"
-                        DockPanel.Dock="Left"
                         Content="&#x1F4CE; Add"
                         Click="AddReferenceButton_Click"
                         Padding="6,2"
@@ -358,7 +362,6 @@
                         Cursor="Hand"
                         VerticalAlignment="Center" />
                 <Button x:Name="PasteImageButton"
-                        DockPanel.Dock="Left"
                         Content="&#x1F5BC;&#xFE0F; Paste"
                         Click="PasteImageButton_Click"
                         Padding="6,2"
@@ -370,10 +373,7 @@
                         Cursor="Hand"
                         VerticalAlignment="Center"
                         ToolTip="Paste an image from the clipboard as vision context for the next message." />
-                <WrapPanel x:Name="ReferenceTagsPanel"
-                           Orientation="Horizontal"
-                           Margin="4,0,0,0" />
-            </DockPanel>
+            </StackPanel>
         </Border>
 
         <!-- Input area -->

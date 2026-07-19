@@ -181,6 +181,12 @@
     <SolidColorBrush x:Key="AiChatRefTagBackground" Color="#3D1A10" />
     <SolidColorBrush x:Key="AiChatRefTagForeground" Color="#FFB4A4" />
 
+    <!-- AI Chat context blocks (subtle blue tones) -->
+    <SolidColorBrush x:Key="AiChatContextBackground" Color="#1A2530" />
+    <SolidColorBrush x:Key="AiChatContextContentBackground" Color="#15202B" />
+    <SolidColorBrush x:Key="AiChatContextBorder" Color="#2A4055" />
+    <SolidColorBrush x:Key="AiChatContextForeground" Color="#88B4D8" />
+
     <!-- AI Chat tool-call blocks (warm yellow tones) -->
     <SolidColorBrush x:Key="AiChatToolCallBackground" Color="#3A3020" />
     <SolidColorBrush x:Key="AiChatToolCallContentBackground" Color="#2A2218" />
