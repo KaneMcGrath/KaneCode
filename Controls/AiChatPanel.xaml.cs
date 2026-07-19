@@ -5462,12 +5462,20 @@ public partial class AiChatPanel : UserControl
             (string.Equals(block.ToolName, "draw_svg", StringComparison.Ordinal) ||
              string.Equals(block.ToolName, "edit_last_svg", StringComparison.Ordinal)))
         {
-            AppendSvgImage(block.Section.Root, result.SvgContent);
-
             // If the provider supports images and the "Add SVG to context" checkbox
-            // is enabled, also add the rendered SVG as a vision reference so the
-            // model can "see" the result in subsequent conversation turns.
-            if (_provider?.SupportsImages == true && SvgToContextCheckBox.IsChecked == true)
+            // is enabled, add the rendered SVG as a vision reference so the model
+            // can "see" the result in subsequent turns. In that case the context
+            // section itself shows the image, so skip the inline preview to avoid
+            // showing the image twice.
+            bool shouldAddToContext = _provider?.SupportsImages == true
+                && SvgToContextCheckBox.IsChecked == true;
+
+            if (!shouldAddToContext)
+            {
+                AppendSvgImage(block.Section.Root, result.SvgContent);
+            }
+
+            if (shouldAddToContext)
             {
                 TryAddSvgAsImageReference(result.SvgContent);
             }
@@ -5825,23 +5833,10 @@ public partial class AiChatPanel : UserControl
                 reference.Content = string.Empty;
             }
 
-            AiConversation conversation = EnsureActiveConversation();
-
-            // Don't add duplicate SVG references
-            if (conversation.References.Any(
-                    existingReference => AreSameReference(existingReference, reference)))
-            {
-                return;
-            }
-
-            conversation.References.Add(reference);
-            TouchConversation(conversation);
-
-            // Append the image inline (like a pasted image)
-            AppendInlineImage(reference);
-
-            RenderReferenceTags();
-            SavePersistedConversation();
+            // Use AddReference so the image appears as a proper blue-tinted
+            // context section (collapsible, with pinned header support) instead
+            // of a bare inline image.
+            AddReference(reference);
         }
         catch (Exception)
         {
