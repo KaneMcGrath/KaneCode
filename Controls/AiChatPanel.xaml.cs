@@ -1,6 +1,7 @@
 using KaneCode.Models;
 using KaneCode.Services;
 using KaneCode.Services.Ai;
+using KaneCode.Services.Ai.Agents;
 using KaneCode.Services.Ai.Modes;
 using KaneCode.Theming;
 using System.Diagnostics;
@@ -46,6 +47,7 @@ public partial class AiChatPanel : UserControl
     private AiChatModeRegistry? _modeRegistry;
     private AiDebugLogService? _debugLogService;
     private ExternalContextDirectoryRegistry? _externalContextDirectoryRegistry;
+    private Services.Ai.Agents.AgentOrchestrator? _agentOrchestrator;
     private IAiChatMode? _activeMode;
     private AiConversation? _activeConversation;
     private readonly List<ModeDropdownPresetItem> _presetDropdownItems = [];
@@ -546,6 +548,16 @@ public partial class AiChatPanel : UserControl
         ArgumentNullException.ThrowIfNull(debugLogService);
 
         _debugLogService = debugLogService;
+    }
+
+    /// <summary>
+    /// Sets the multi-agent orchestrator. When configured, <c>spawn_agent</c> tool calls
+    /// are delegated to the orchestrator instead of being handled inline.
+    /// </summary>
+    internal void SetOrchestrator(Services.Ai.Agents.AgentOrchestrator orchestrator)
+    {
+        ArgumentNullException.ThrowIfNull(orchestrator);
+        _agentOrchestrator = orchestrator;
     }
 
     /// <summary>
@@ -3837,6 +3849,14 @@ public partial class AiChatPanel : UserControl
                         {
                             result = ToolCallResult.Fail($"Unknown or disallowed tool: {toolCall.FunctionName}");
                         }
+                        // Delegate spawn_agent to the multi-agent orchestrator
+                        else if (string.Equals(toolCall.FunctionName, "spawn_agent", StringComparison.Ordinal) &&
+                                 _agentOrchestrator is not null)
+                        {
+                            result = await ExecuteSpawnAgentViaOrchestratorAsync(
+                                toolCall.ArgumentsJson,
+                                effectiveToolCt).ConfigureAwait(false);
+                        }
                         else
                         {
                             try
@@ -4036,6 +4056,202 @@ public partial class AiChatPanel : UserControl
         }
 
         return "…" + flat[^maxLength..];
+    }
+
+    private async Task<ToolCallResult> ExecuteSpawnAgentViaOrchestratorAsync(
+        string argumentsJson,
+        CancellationToken cancellationToken)
+    {
+        if (_agentOrchestrator is null)
+        {
+            return ToolCallResult.Fail("The multi-agent orchestrator is not initialized.");
+        }
+
+        // Ensure a root agent exists (lazy initialization)
+        if (_agentOrchestrator.RootAgent is null)
+        {
+            IAiProvider? provider = _provider ?? _providerRegistry?.ActiveProvider;
+            if (provider is null || _activeMode is null)
+            {
+                return ToolCallResult.Fail("No AI provider or mode configured — cannot create root agent.");
+            }
+
+            string model = _model ?? provider.AvailableModels.FirstOrDefault() ?? "default";
+            string rootId = $"root_{Guid.NewGuid():N}";
+            _agentOrchestrator.CreateRootAgent(
+                rootId,
+                "Main Chat",
+                provider,
+                model,
+                _activeMode);
+        }
+
+        // Parse arguments to get the task
+        string? task = null;
+        IAgent? rootAgent = _agentOrchestrator.RootAgent;
+
+        try
+        {
+            using JsonDocument? argumentsDocument = string.IsNullOrWhiteSpace(argumentsJson)
+                ? null
+                : AgentToolArgumentsParser.Parse("spawn_agent", argumentsJson);
+
+            if (argumentsDocument is not null &&
+                argumentsDocument.RootElement.TryGetProperty("task", out JsonElement taskElement) &&
+                taskElement.ValueKind == JsonValueKind.String)
+            {
+                task = taskElement.GetString();
+            }
+        }
+        catch (Exception ex)
+        {
+            return ToolCallResult.Fail($"Failed to parse spawn_agent arguments: {ex.Message}");
+        }
+
+        if (string.IsNullOrWhiteSpace(task))
+        {
+            return ToolCallResult.Fail("The 'task' parameter is required for spawn_agent.");
+        }
+
+        // Use the orchestrator's internal spawn logic by calling the spawn_agent tool on the root agent.
+        // The orchestrator intercepts spawn_agent and handles sub-agent lifecycle.
+        // We do this by calling the orchestrator's tool execution directly.
+        IAgentTool? spawnTool = _toolRegistry?.Get("spawn_agent");
+        if (spawnTool is null)
+        {
+            return ToolCallResult.Fail("The spawn_agent tool is not registered.");
+        }
+
+        // The orchestrator handles spawn_agent via its ToolExecutionInterceptor,
+        // so we need to route through the orchestrator. We'll create a temporary
+        // Agent wrapper to trigger the orchestrator's spawn logic.
+        // 
+        // Actually, the simplest approach: parse the args and directly use the
+        // orchestrator's SpawnSubAgent + RunAsync pattern.
+        return await ExecuteSpawnAgentInternalAsync(task, argumentsJson, cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Directly spawns and runs a sub-agent via the orchestrator.
+    /// </summary>
+    private async Task<ToolCallResult> ExecuteSpawnAgentInternalAsync(
+        string task,
+        string argumentsJson,
+        CancellationToken cancellationToken)
+    {
+        if (_agentOrchestrator is null || _agentOrchestrator.RootAgent is null)
+        {
+            return ToolCallResult.Fail("The multi-agent orchestrator is not ready.");
+        }
+
+        IAgent rootAgent = _agentOrchestrator.RootAgent;
+
+        // Parse optional parameters
+        string? displayName = null;
+        string? providerId = null;
+        string? modelOverride = null;
+        string? modeId = null;
+        string? systemPrompt = null;
+        int maxIterations = 50;
+
+        try
+        {
+            using JsonDocument? document = string.IsNullOrWhiteSpace(argumentsJson)
+                ? null
+                : AgentToolArgumentsParser.Parse("spawn_agent", argumentsJson);
+
+            if (document is not null)
+            {
+                JsonElement root = document.RootElement;
+                if (root.TryGetProperty("displayName", out JsonElement nameEl) && nameEl.ValueKind == JsonValueKind.String)
+                    displayName = nameEl.GetString();
+                if (root.TryGetProperty("provider", out JsonElement provEl) && provEl.ValueKind == JsonValueKind.String)
+                    providerId = provEl.GetString();
+                if (root.TryGetProperty("model", out JsonElement modelEl) && modelEl.ValueKind == JsonValueKind.String)
+                    modelOverride = modelEl.GetString();
+                if (root.TryGetProperty("mode", out JsonElement modeEl) && modeEl.ValueKind == JsonValueKind.String)
+                    modeId = modeEl.GetString();
+                if (root.TryGetProperty("systemPrompt", out JsonElement promptEl) && promptEl.ValueKind == JsonValueKind.String)
+                    systemPrompt = promptEl.GetString();
+                if (root.TryGetProperty("maxIterations", out JsonElement iterEl) && iterEl.ValueKind == JsonValueKind.Number)
+                    maxIterations = Math.Clamp(iterEl.GetInt32(), 1, 200);
+            }
+        }
+        catch
+        {
+            // Use defaults if parsing fails
+        }
+
+        // Resolve provider
+        IAiProvider? provider = rootAgent.Provider;
+        if (!string.IsNullOrWhiteSpace(providerId) && _providerRegistry is not null)
+        {
+            IAiProvider? found = _providerRegistry.Providers
+                .FirstOrDefault(p => string.Equals(p.ProviderId, providerId, StringComparison.OrdinalIgnoreCase));
+            if (found is not null)
+            {
+                provider = found;
+            }
+        }
+
+        // Resolve mode
+        IAiChatMode? mode = rootAgent.Mode;
+        if (!string.IsNullOrWhiteSpace(modeId) && _modeRegistry is not null)
+        {
+            IAiChatMode? found = _modeRegistry.Get(modeId);
+            if (found is not null)
+            {
+                mode = found;
+            }
+        }
+
+        string effectiveModel = modelOverride ?? rootAgent.Model;
+        string effectiveDisplayName = !string.IsNullOrWhiteSpace(displayName)
+            ? displayName
+            : $"Sub-agent for: {Truncate(task, 60)}";
+
+        try
+        {
+            IAgent subAgent = _agentOrchestrator.SpawnSubAgent(
+                rootAgent.Id,
+                effectiveDisplayName,
+                provider,
+                effectiveModel,
+                mode,
+                systemPrompt);
+
+            JsonElement toolsDef = subAgent.Mode.ToolsEnabled && _toolRegistry is not null
+                ? _toolRegistry.SerializeToolDefinitions(subAgent.Mode.AllowedTools)
+                : default;
+
+            AgentRunResult result = await subAgent.RunAsync(
+                task,
+                toolsDef,
+                _toolRegistry ?? new AgentToolRegistry(),
+                _agentOrchestrator.FileLockManager,
+                _agentOrchestrator,
+                maxIterations,
+                cancellationToken).ConfigureAwait(false);
+
+            // Report back to parent
+            rootAgent.ReceiveChildResult(subAgent.Id, result);
+
+            // Clean up
+            _agentOrchestrator.RemoveAgent(subAgent.Id);
+
+            return result.Success
+                ? ToolCallResult.Ok($"Sub-agent completed: {result.Summary}")
+                : ToolCallResult.Fail($"Sub-agent failed: {result.Summary}");
+        }
+        catch (OperationCanceledException)
+        {
+            return ToolCallResult.Fail("Sub-agent execution was cancelled.");
+        }
+        catch (Exception ex)
+        {
+            return ToolCallResult.Fail($"Sub-agent execution error: {ex.Message}");
+        }
     }
 
     private async Task LogToolFailureAsync(string toolName, string toolCallId, string? argumentsJson, ToolCallResult result)

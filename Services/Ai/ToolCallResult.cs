@@ -41,4 +41,14 @@ internal sealed record ToolCallResult
 
     /// <summary>Creates a failed result with the given error message.</summary>
     public static ToolCallResult Fail(string error) => new() { Success = false, Error = error };
+
+    /// <summary>
+    /// Creates a conflict result indicating that a file lock could not be acquired.
+    /// This signals to the model that it should wait and retry the operation.
+    /// </summary>
+    public static ToolCallResult Conflict(string message) => new()
+    {
+        Success = false,
+        Error = $"[CONFLICT] {message}"
+    };
 }

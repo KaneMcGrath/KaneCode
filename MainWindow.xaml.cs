@@ -38,6 +38,7 @@ public partial class MainWindow : Window
     private readonly AiProviderRegistry _aiProviderRegistry = new();
     private readonly AgentToolRegistry _agentToolRegistry = new();
     private readonly AiChatModeRegistry _aiChatModeRegistry = new();
+    private readonly Services.Ai.Agents.AgentOrchestrator _agentOrchestrator;
     private readonly AiDebugLogService _aiDebugLogService = new();
     private readonly ExternalContextDirectoryRegistry _externalContextDirectoryRegistry = new();
     private readonly PresentationService _presentationService = new();
@@ -51,6 +52,10 @@ public partial class MainWindow : Window
     {
         InitializeComponent();
         DataContext = _viewModel;
+
+        // Initialize the multi-agent orchestrator (before modes/tools so spawn_agent can be registered)
+        _agentOrchestrator = new Services.Ai.Agents.AgentOrchestrator(
+            _agentToolRegistry, _aiProviderRegistry, _aiChatModeRegistry);
 
         // Fix maximize covering the taskbar when using custom WindowChrome
         WindowMaximizeHelper.Attach(this);
@@ -409,6 +414,7 @@ public partial class MainWindow : Window
             ?? _viewModel.ProjectItems.FirstOrDefault()?.FullPath);
         AiChatPanel.SetToolRegistry(_agentToolRegistry);
         AiChatPanel.SetModeRegistry(_aiChatModeRegistry);
+        AiChatPanel.SetOrchestrator(_agentOrchestrator);
         AiChatPanel.SetExternalContextDirectoryRegistry(_externalContextDirectoryRegistry);
         AiDebugPanel.ToolFailures = _aiDebugLogService.ToolFailures;
         AiDebugPanel.SetDebugLogService(_aiDebugLogService);
@@ -527,6 +533,9 @@ public partial class MainWindow : Window
         _agentToolRegistry.Register(new NuGetListInstalledTool(projectRoot));
         _agentToolRegistry.Register(new NuGetInstallTool(projectRoot));
         _agentToolRegistry.Register(new NuGetUninstallTool(projectRoot));
+
+        // ── Multi-agent tools ────────────────────────────────────────
+        _agentToolRegistry.Register(new Services.Ai.Agents.SpawnAgentTool());
     }
 
     private AiContextDocumentSnapshot? GetCurrentDocumentSnapshot()
