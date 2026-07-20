@@ -5242,15 +5242,25 @@ public partial class AiChatPanel : UserControl
             return;
         }
 
-        TextBlock tb = new()
+        TextBox tb = new()
         {
             Text = text,
             TextWrapping = TextWrapping.Wrap,
             FontStyle = FontStyles.Italic,
             Foreground = FindBrush("AiChatSecondaryForeground"),
             FontSize = 12,
-            Margin = new Thickness(8, 4, 8, 4)
+            Margin = new Thickness(8, 4, 8, 4),
+            Background = System.Windows.Media.Brushes.Transparent,
+            BorderThickness = new Thickness(0),
+            Padding = new Thickness(0),
+            IsReadOnly = true,
+            IsReadOnlyCaretVisible = false,
+            IsInactiveSelectionHighlightEnabled = true,
+            Focusable = true
         };
+
+        // Suppress the default focus rectangle so selected text is the only visual cue
+        tb.FocusVisualStyle = null;
 
         MessagePanel.Children.Add(tb);
         MessageScroller.ScrollToEnd();
