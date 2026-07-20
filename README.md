@@ -95,4 +95,3 @@ KaneCode's AI agent uses any OpenAI-compatible API provider, and uses a variety 
 # Requirements
 
 - **.NET 8 SDK** (or later)
-- Windows (WPF application targeting `net8.0-windows7.0`)
