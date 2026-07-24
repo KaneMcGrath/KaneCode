@@ -48,6 +48,28 @@ public partial class AiChatPanel : UserControl
     private AiDebugLogService? _debugLogService;
     private ExternalContextDirectoryRegistry? _externalContextDirectoryRegistry;
     private Services.Ai.Agents.AgentOrchestrator? _agentOrchestrator;
+
+    /// <summary>
+    /// When non-null, the chat panel is displaying the conversation of a specific
+    /// agent (identified by this ID) rather than the normal <see cref="AiConversation"/>.
+    /// Set to null to restore the normal conversation view.
+    /// </summary>
+    private string? _viewingAgentId;
+
+    /// <summary>
+    /// Guard flag to prevent <see cref="AgentSessionSelector_SelectionChanged"/>
+    /// from triggering view switches during programmatic refreshes of the dropdown.
+    /// </summary>
+    private bool _isUpdatingAgentSessions;
+
+    /// <summary>
+    /// When the user switches to an agent view while streaming is active, the root
+    /// conversation's <see cref="MessagePanel"/> children are saved here so they can
+    /// be restored when the user switches back without re-rendering (which would
+    /// cancel the stream).
+    /// </summary>
+    private List<UIElement>? _savedRootMessageChildren;
+
     private IAiChatMode? _activeMode;
     private AiConversation? _activeConversation;
     private readonly List<ModeDropdownPresetItem> _presetDropdownItems = [];
@@ -553,11 +575,109 @@ public partial class AiChatPanel : UserControl
     /// <summary>
     /// Sets the multi-agent orchestrator. When configured, <c>spawn_agent</c> tool calls
     /// are delegated to the orchestrator instead of being handled inline.
+    /// Also subscribes to agent lifecycle events to populate the agent session dropdown.
     /// </summary>
     internal void SetOrchestrator(Services.Ai.Agents.AgentOrchestrator orchestrator)
     {
         ArgumentNullException.ThrowIfNull(orchestrator);
+
+        // Unsubscribe from previous orchestrator if any
+        if (_agentOrchestrator is not null)
+        {
+            _agentOrchestrator.AgentChanged -= Orchestrator_AgentChanged;
+        }
+
         _agentOrchestrator = orchestrator;
+        _agentOrchestrator.AgentChanged += Orchestrator_AgentChanged;
+
+        // Populate the dropdown with existing agents
+        RefreshAgentSessions();
+    }
+
+    /// <summary>
+    /// Handles agent lifecycle events from the orchestrator.
+    /// Refreshes the agent session dropdown when agents are created or removed.
+    /// </summary>
+    private void Orchestrator_AgentChanged(object? sender, Services.Ai.Agents.AgentEventArgs e)
+    {
+        // Dispatch to UI thread since this event may come from a background context
+        Dispatcher.BeginInvoke(() => RefreshAgentSessions());
+    }
+
+    /// <summary>
+    /// Populates the agent session selector dropdown with all current agents
+    /// from the orchestrator, showing the root agent and any sub-agents.
+    /// Preserves the currently viewed agent selection across refreshes.
+    /// </summary>
+    private void RefreshAgentSessions()
+    {
+        if (_agentOrchestrator is null)
+        {
+            AgentSessionSelector.ItemsSource = null;
+            AgentSessionSelector.IsEnabled = false;
+            AgentSessionSelector.ToolTip = "Agent orchestrator not initialized";
+            return;
+        }
+
+        IReadOnlyCollection<Services.Ai.Agents.IAgent> agents = _agentOrchestrator.GetAllAgents();
+
+        if (agents.Count == 0)
+        {
+            AgentSessionSelector.ItemsSource = null;
+            AgentSessionSelector.IsEnabled = false;
+            AgentSessionSelector.ToolTip = "No active agents";
+            return;
+        }
+
+        // Build display items, ordering root first then sub-agents by depth
+        List<AgentSessionItem> items = agents
+            .OrderBy(a => a.Role)
+            .ThenBy(a => a.Id)
+            .Select(a => new AgentSessionItem(a))
+            .ToList();
+
+        // Remember the currently selected agent ID before rebinding
+        string? previouslySelectedId = (AgentSessionSelector.SelectedItem as AgentSessionItem)?.Agent.Id;
+
+        _isUpdatingAgentSessions = true;
+        try
+        {
+            AgentSessionSelector.ItemsSource = items;
+            AgentSessionSelector.IsEnabled = true;
+            AgentSessionSelector.ToolTip = "Select an agent session";
+
+            // Restore the previously selected agent if it still exists
+            if (previouslySelectedId is not null)
+            {
+                AgentSessionItem? previousItem = items.FirstOrDefault(
+                    i => string.Equals(i.Agent.Id, previouslySelectedId, StringComparison.Ordinal));
+                if (previousItem is not null)
+                {
+                    AgentSessionSelector.SelectedItem = previousItem;
+                    return;
+                }
+
+                // The previously selected agent was removed — switch back to normal view
+                if (_viewingAgentId is not null)
+                {
+                    SwitchToNormalView();
+                }
+            }
+
+            // Auto-select the root agent if nothing is selected
+            if (AgentSessionSelector.SelectedItem is null)
+            {
+                AgentSessionItem? rootItem = items.FirstOrDefault(i => i.Agent.Role == Services.Ai.Agents.AgentRole.Root);
+                if (rootItem is not null)
+                {
+                    AgentSessionSelector.SelectedItem = rootItem;
+                }
+            }
+        }
+        finally
+        {
+            _isUpdatingAgentSessions = false;
+        }
     }
 
     /// <summary>
@@ -1323,6 +1443,10 @@ public partial class AiChatPanel : UserControl
 
     private void TryLoadPersistedConversation()
     {
+        // Clear any sub-agents from a previous session
+        RemoveAllSubAgents();
+        SwitchToNormalView();
+
         string? key = _projectConversationKeyProvider?.Invoke();
         if (string.IsNullOrWhiteSpace(key))
         {
@@ -2134,6 +2258,10 @@ public partial class AiChatPanel : UserControl
 
     private void NewConversationButton_Click(object sender, RoutedEventArgs e)
     {
+        // Remove all sub-agents from the previous conversation
+        RemoveAllSubAgents();
+        SwitchToNormalView();
+
         AiConversation conversation = CreateConversation();
         _conversationState.Conversations.Insert(0, conversation);
         _conversationState.ActiveConversationId = conversation.Id;
@@ -2143,6 +2271,305 @@ public partial class AiChatPanel : UserControl
         RenderActiveConversation();
         SavePersistedConversation();
         RefreshToolsCheckboxPanel();
+    }
+
+    /// <summary>
+    /// Handles selection changes on the agent session selector dropdown.
+    /// Switches the chat panel to display the selected agent's conversation.
+    /// </summary>
+    private void AgentSessionSelector_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        // Don't react to programmatic selection changes during dropdown refreshes
+        if (_isUpdatingAgentSessions)
+        {
+            return;
+        }
+
+        if (AgentSessionSelector.SelectedItem is not AgentSessionItem selectedItem)
+        {
+            return;
+        }
+
+        Services.Ai.Agents.IAgent agent = selectedItem.Agent;
+
+        // If selecting the root agent, restore the normal conversation view
+        if (agent.Role == Services.Ai.Agents.AgentRole.Root)
+        {
+            SwitchToNormalView();
+            return;
+        }
+
+        // Switching to a sub-agent — render its conversation
+        SwitchToAgentView(agent);
+    }
+
+    /// <summary>
+    /// Restores the normal conversation view (the root agent / AiConversation).
+    /// Re-enables the input panel. If streaming is still active (e.g. a sub-agent
+    /// is running), the root conversation's saved UI elements are restored rather
+    /// than re-rendering (which would cancel the stream).
+    /// </summary>
+    private void SwitchToNormalView()
+    {
+        _viewingAgentId = null;
+
+        // Restore the input area
+        SetInputEnabled(true);
+
+        // Restore normal Send button behavior
+        SendButton.Content = _isStreaming ? "⏹ Stop" : "Send";
+        SendButton.Click -= BackToChatButton_Click;
+        SendButton.Click -= StopButton_Click;
+        SendButton.Click -= SendButton_Click;
+
+        if (_isStreaming)
+        {
+            SendButton.Click += StopButton_Click;
+        }
+        else
+        {
+            SendButton.Click += SendButton_Click;
+        }
+
+        // Restore the root conversation view
+        if (_isStreaming && _savedRootMessageChildren is not null)
+        {
+            // Restore the root conversation's UI elements that were saved
+            // when the user switched to the agent view.
+            _streamSections.Clear();
+            _inlineImageBorders.Clear();
+            _inlineContextSections.Clear();
+            PinnedSectionPanel.Children.Clear();
+            PinnedSectionPanel.Visibility = Visibility.Collapsed;
+            MessagePanel.Children.Clear();
+
+            foreach (UIElement child in _savedRootMessageChildren)
+            {
+                MessagePanel.Children.Add(child);
+            }
+
+            _savedRootMessageChildren = null;
+        }
+        else
+        {
+            // Streaming not active — safe to fully re-render the conversation
+            _savedRootMessageChildren = null;
+            RenderActiveConversation();
+        }
+
+        // Re-select the root agent in the dropdown if needed
+        if (_agentOrchestrator?.RootAgent is { } rootAgent)
+        {
+            foreach (object item in AgentSessionSelector.Items)
+            {
+                if (item is AgentSessionItem agentItem &&
+                    string.Equals(agentItem.Agent.Id, rootAgent.Id, StringComparison.Ordinal))
+                {
+                    AgentSessionSelector.SelectedItem = item;
+                    break;
+                }
+            }
+        }
+    }
+
+    /// <summary>
+    /// Switches the chat panel to display the specified agent's conversation.
+    /// Disables the input panel and shows a "◀ Back" button to return to the
+    /// normal conversation view.
+    /// </summary>
+    private void SwitchToAgentView(Services.Ai.Agents.IAgent agent)
+    {
+        ArgumentNullException.ThrowIfNull(agent);
+
+        _viewingAgentId = agent.Id;
+
+        // Disable the input area — the user cannot send messages to a sub-agent
+        SetInputEnabled(false);
+
+        // Change Send button to "◀ Back"
+        SendButton.Content = "◀ Back";
+        SendButton.Click -= SendButton_Click;
+        SendButton.Click -= StopButton_Click;
+        SendButton.Click += BackToChatButton_Click;
+
+        // Do NOT cancel streaming — the sub-agent (or root loop) is still running
+        // on a background thread and should continue uninterrupted.
+
+        // If streaming is active, save the root conversation's UI children before
+        // clearing the panel so they can be restored when the user switches back.
+        if (_isStreaming)
+        {
+            _savedRootMessageChildren = MessagePanel.Children.Cast<UIElement>().ToList();
+        }
+        else
+        {
+            _savedRootMessageChildren = null;
+        }
+
+        // Clear and re-render using the agent's current messages.
+        // Live updates will be dispatched via the agent's IterationCallback
+        // (set up in ExecuteSpawnAgentInternalAsync).
+        RefreshAgentViewMessages(agent);
+    }
+
+    /// <summary>
+    /// Clears the message panel and re-renders the agent's current messages.
+    /// Unlike <see cref="RenderAgentMessages"/>, this also updates the stats bar.
+    /// Called both on initial switch and from the agent's iteration callback
+    /// for live progress updates.
+    /// </summary>
+    private void RefreshAgentViewMessages(Services.Ai.Agents.IAgent agent)
+    {
+        _streamSections.Clear();
+        _inlineImageBorders.Clear();
+        _inlineContextSections.Clear();
+        MessagePanel.Children.Clear();
+        PinnedSectionPanel.Children.Clear();
+        PinnedSectionPanel.Visibility = Visibility.Collapsed;
+
+        RenderAgentMessages(agent.Messages);
+
+        // Update stats bar for the agent
+        int messageCount = agent.Messages.Count;
+        int toolCallCount = agent.Messages.Count(m => m.Role == AiChatRole.Tool);
+        StatsBar.Text = $"{messageCount} msgs · {toolCallCount} tool results";
+        ContextWindowBar.Text = $"agent: {agent.DisplayName}  •  model: {agent.Model}";
+    }
+
+    /// <summary>
+    /// Renders a list of AI chat messages into the message panel.
+    /// This is a standalone version of <see cref="RebuildNormalConversation"/>
+    /// that operates directly on a message list instead of an <see cref="AiConversation"/>.
+    /// </summary>
+    private void RenderAgentMessages(IReadOnlyList<AiChatMessage> messages)
+    {
+        ArgumentNullException.ThrowIfNull(messages);
+
+        Dictionary<string, ToolCallSectionVisual> toolCallBlocks = new(StringComparer.Ordinal);
+        StackPanel? lastAssistantContainer = null;
+        RichTextBox? lastAssistantBlock = null;
+
+        foreach (AiChatMessage message in messages)
+        {
+            switch (message.Role)
+            {
+                case AiChatRole.System:
+                    AppendSystemMessage(message.Content);
+                    lastAssistantContainer = null;
+                    lastAssistantBlock = null;
+                    break;
+                case AiChatRole.User:
+                    AppendUserMessage(message.Content);
+                    lastAssistantContainer = null;
+                    lastAssistantBlock = null;
+                    break;
+                case AiChatRole.Assistant:
+                    (lastAssistantContainer, lastAssistantBlock) = CreateAssistantMessageBlock();
+
+                    if (!string.IsNullOrWhiteSpace(message.ThinkingContent))
+                    {
+                        (StreamSectionVisual thinkingSection, ChunkedTextPresenter thinkingPresenter) = CreateThinkingSection(
+                            lastAssistantContainer, lastAssistantBlock);
+                        thinkingPresenter.ReplaceAll(FormatDisplayedAssistantContent(
+                            message.ThinkingContent, ShouldRemoveVerticalWhitespace()));
+                        SetInlineSectionHeader(thinkingSection, "Thought");
+                    }
+
+                    if (message.ToolCalls is not null)
+                    {
+                        foreach (AiToolCallRequest toolCall in message.ToolCalls)
+                        {
+                            ToolCallSectionVisual block = CreateToolCallBlock(
+                                toolCall.FunctionName, toolCall.ArgumentsJson,
+                                lastAssistantContainer, lastAssistantBlock);
+                            toolCallBlocks[toolCall.Id] = block;
+                        }
+                    }
+
+                    RenderAssistantContent(lastAssistantBlock, message.Content);
+                    break;
+                case AiChatRole.Tool:
+                    if (message.ToolCallId is not null &&
+                        toolCallBlocks.TryGetValue(message.ToolCallId, out ToolCallSectionVisual? toolCallBlock))
+                    {
+                        TryParseToolResult(message.Content, out bool success, out string resultText);
+                        ToolCallResult toolCallResult = success
+                            ? ToolCallResult.Ok(resultText)
+                            : ToolCallResult.Fail(resultText);
+                        FinalizeToolCallBlock(toolCallBlock, toolCallResult);
+                    }
+                    else
+                    {
+                        AppendSystemMessage($"Tool result: {message.Content}");
+                    }
+
+                    break;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Enables or disables the chat input controls.
+    /// When disabled (e.g. viewing a completed sub-agent), the user cannot
+    /// send new messages but can still scroll through the conversation.
+    /// </summary>
+    private void SetInputEnabled(bool enabled)
+    {
+        InputBox.IsEnabled = enabled;
+        ExpandButton.IsEnabled = enabled;
+        AddReferenceButton.IsEnabled = enabled;
+        PasteImageButton.IsEnabled = enabled;
+        ModeSelector.IsEnabled = enabled;
+        SettingsOptionsButton.IsEnabled = enabled;
+        FormattingOptionsButton.IsEnabled = enabled;
+        ModelPickerButton.IsEnabled = enabled;
+        ConversationSelector.IsEnabled = enabled;
+        NewConversationButton.IsEnabled = enabled;
+        ClearButton.IsEnabled = enabled;
+
+        // When the input is disabled, change its background to visually
+        // indicate it cannot accept input.
+        if (enabled)
+        {
+            InputBox.Background = FindBrush("AiChatInputBackground");
+        }
+        else
+        {
+            InputBox.Background = FindBrush("AiChatHeaderBackground");
+        }
+    }
+
+    /// <summary>
+    /// Handler for the "◀ Back" button shown when viewing a sub-agent.
+    /// Returns the chat panel to the normal conversation view.
+    /// </summary>
+    private void BackToChatButton_Click(object sender, RoutedEventArgs e)
+    {
+        SwitchToNormalView();
+    }
+
+    /// <summary>
+    /// Removes all sub-agents from the orchestrator, keeping the root agent
+    /// if one exists. Called when clearing the conversation or starting a new one.
+    /// </summary>
+    private void RemoveAllSubAgents()
+    {
+        if (_agentOrchestrator is null)
+        {
+            return;
+        }
+
+        IReadOnlyCollection<Services.Ai.Agents.IAgent> allAgents = _agentOrchestrator.GetAllAgents();
+
+        foreach (Services.Ai.Agents.IAgent agent in allAgents)
+        {
+            if (agent.Role == Services.Ai.Agents.AgentRole.Root)
+            {
+                continue;
+            }
+
+            _agentOrchestrator.RemoveAgent(agent.Id);
+        }
     }
 
     private void ConversationSelector_SelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -2156,6 +2583,10 @@ public partial class AiChatPanel : UserControl
         {
             return;
         }
+
+        // Remove sub-agents from the old conversation and reset view
+        RemoveAllSubAgents();
+        SwitchToNormalView();
 
         _activeConversation = selectedConversation;
         _conversationState.ActiveConversationId = selectedConversation.Id;
@@ -2702,6 +3133,12 @@ public partial class AiChatPanel : UserControl
 
     private void RenderActiveConversation()
     {
+        // Guard: if viewing a sub-agent, don't overwrite with conversation content
+        if (_viewingAgentId is not null)
+        {
+            return;
+        }
+
         AiConversation conversation = EnsureActiveConversation();
         CancelStreaming();
         _pendingSelectionContext = null;
@@ -2728,6 +3165,11 @@ public partial class AiChatPanel : UserControl
     private void ClearButton_Click(object sender, RoutedEventArgs e)
     {
         CancelStreaming();
+
+        // Remove all sub-agents (keep root if it exists)
+        RemoveAllSubAgents();
+        SwitchToNormalView();
+
         AiConversation conversation = EnsureActiveConversation();
         conversation.Messages.Clear();
         conversation.References.Clear();
@@ -3236,6 +3678,12 @@ public partial class AiChatPanel : UserControl
 
     private async Task SendMessageAsync()
     {
+        // Guard: prevent sending messages while viewing a sub-agent's conversation
+        if (_viewingAgentId is not null)
+        {
+            return;
+        }
+
         string? text = InputBox.Text?.Trim();
         if (string.IsNullOrEmpty(text))
         {
@@ -4003,19 +4451,26 @@ public partial class AiChatPanel : UserControl
             await Dispatcher.InvokeAsync(() =>
             {
                 _isStreaming = false;
-                SendButton.Content = "Send";
-                SendButton.IsEnabled = true;
-                SendButton.Click -= StopButton_Click;
-                SendButton.Click += SendButton_Click;
 
-                UpdateStatsBarFinal(reasoningTokenCount, contentTokenCount, streamStopwatch);
-                RefreshContextWindowDisplay();
-
-                // If raw mode is enabled, rebuild the display from captured payloads
-                // now that streaming has fully completed and the state is settled.
-                if (IsRawTextModeEnabled() && _rawRequestPayloads.Count > 0)
+                // Only restore the Send button and update stats if the user isn't
+                // viewing a sub-agent. If they are, keep the "◀ Back" button,
+                // disabled input, and the agent-specific stats bar.
+                if (_viewingAgentId is null)
                 {
-                    RebuildConversationDisplay();
+                    SendButton.Content = "Send";
+                    SendButton.IsEnabled = true;
+                    SendButton.Click -= StopButton_Click;
+                    SendButton.Click += SendButton_Click;
+
+                    UpdateStatsBarFinal(reasoningTokenCount, contentTokenCount, streamStopwatch);
+                    RefreshContextWindowDisplay();
+
+                    // If raw mode is enabled, rebuild the display from captured payloads
+                    // now that streaming has fully completed and the state is settled.
+                    if (IsRawTextModeEnabled() && _rawRequestPayloads.Count > 0)
+                    {
+                        RebuildConversationDisplay();
+                    }
                 }
             });
         }
@@ -4211,15 +4666,41 @@ public partial class AiChatPanel : UserControl
             ? displayName
             : $"Sub-agent for: {Truncate(task, 60)}";
 
+        IAgent? subAgent = null;
+
         try
         {
-            IAgent subAgent = _agentOrchestrator.SpawnSubAgent(
+            subAgent = _agentOrchestrator.SpawnSubAgent(
                 rootAgent.Id,
                 effectiveDisplayName,
                 provider,
                 effectiveModel,
                 mode,
                 systemPrompt);
+
+            // Wire up live-update callbacks so the UI can display the sub-agent's
+            // progress in real time when the user switches to its view.
+            if (subAgent is Services.Ai.Agents.Agent agentImpl)
+            {
+                // Capture the dispatcher and agent reference for the callbacks.
+                // The callbacks are invoked on background threads, so we must
+                // dispatch UI updates to the main thread.
+                System.Windows.Threading.Dispatcher dispatcher = Dispatcher;
+                string agentId = agentImpl.Id;
+
+                agentImpl.IterationCallback = async (_, _) =>
+                {
+                    // Dispatch a re-render of the agent's messages if the user
+                    // is currently viewing this agent.
+                    await dispatcher.InvokeAsync(() =>
+                    {
+                        if (_viewingAgentId == agentId && _agentOrchestrator?.GetAgent(agentId) is { } currentAgent)
+                        {
+                            RefreshAgentViewMessages(currentAgent);
+                        }
+                    });
+                };
+            }
 
             JsonElement toolsDef = subAgent.Mode.ToolsEnabled && _toolRegistry is not null
                 ? _toolRegistry.SerializeToolDefinitions(subAgent.Mode.AllowedTools)
@@ -4234,11 +4715,25 @@ public partial class AiChatPanel : UserControl
                 maxIterations,
                 cancellationToken).ConfigureAwait(false);
 
+            // Dispatch a final refresh so the agent view shows the completed
+            // state (the IterationCallback only fires at the start of each
+            // iteration, not after the last one).
+            await Dispatcher.InvokeAsync(() =>
+            {
+                if (_viewingAgentId == subAgent.Id &&
+                    _agentOrchestrator?.GetAgent(subAgent.Id) is { } finalAgent)
+                {
+                    RefreshAgentViewMessages(finalAgent);
+                }
+            });
+
             // Report back to parent
             rootAgent.ReceiveChildResult(subAgent.Id, result);
 
-            // Clean up
-            _agentOrchestrator.RemoveAgent(subAgent.Id);
+            // Release file locks so other agents can edit the same files.
+            // The agent remains in the tree so the user can inspect its
+            // conversation via the agent session dropdown.
+            _agentOrchestrator.FileLockManager.ReleaseAll(subAgent.Id);
 
             return result.Success
                 ? ToolCallResult.Ok($"Sub-agent completed: {result.Summary}")
@@ -4246,10 +4741,31 @@ public partial class AiChatPanel : UserControl
         }
         catch (OperationCanceledException)
         {
+            if (subAgent is not null)
+            {
+                _agentOrchestrator.FileLockManager.ReleaseAll(subAgent.Id);
+
+                // Refresh the view one last time so the user sees the partial result
+                string agentId = subAgent.Id;
+                await Dispatcher.InvokeAsync(() =>
+                {
+                    if (_viewingAgentId == agentId &&
+                        _agentOrchestrator?.GetAgent(agentId) is { } cancelledAgent)
+                    {
+                        RefreshAgentViewMessages(cancelledAgent);
+                    }
+                });
+            }
+
             return ToolCallResult.Fail("Sub-agent execution was cancelled.");
         }
         catch (Exception ex)
         {
+            if (subAgent is not null)
+            {
+                _agentOrchestrator.FileLockManager.ReleaseAll(subAgent.Id);
+            }
+
             return ToolCallResult.Fail($"Sub-agent execution error: {ex.Message}");
         }
     }
@@ -6738,6 +7254,68 @@ public partial class AiChatPanel : UserControl
         catch (Exception ex)
         {
             AppendSystemMessage($"Failed to save conversation: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Display model for the agent session selector dropdown.
+    /// Wraps an <see cref="Services.Ai.Agents.IAgent"/> with UI-friendly
+    /// display properties.
+    /// </summary>
+    private sealed class AgentSessionItem
+    {
+        public Services.Ai.Agents.IAgent Agent { get; }
+
+        /// <summary>
+        /// Glyph indicating the agent's role: 👑 for Root, 🔧 for SubAgent.
+        /// </summary>
+        public string RoleGlyph => Agent.Role switch
+        {
+            Services.Ai.Agents.AgentRole.Root => "\U0001F451",    // 👑 crown
+            Services.Ai.Agents.AgentRole.SubAgent => "\U0001F527", // 🔧 wrench
+            _ => "\U0001F916"                                      // 🤖 robot fallback
+        };
+
+        /// <summary>
+        /// First line in the dropdown: display name with role badge.
+        /// </summary>
+        public string DisplayLabel
+        {
+            get
+            {
+                string roleLabel = Agent.Role switch
+                {
+                    Services.Ai.Agents.AgentRole.Root => "",
+                    Services.Ai.Agents.AgentRole.SubAgent => "[sub] ",
+                    _ => ""
+                };
+
+                return $"{roleLabel}{Agent.DisplayName}";
+            }
+        }
+
+        /// <summary>
+        /// Second line in the dropdown: model and provider info.
+        /// </summary>
+        public string Subtitle
+        {
+            get
+            {
+                string modelInfo = $"{Agent.Provider.DisplayName} · {Agent.Model}";
+                int messageCount = Agent.Messages.Count;
+
+                if (Agent.ChildIds.Count > 0)
+                {
+                    return $"{modelInfo} · {messageCount} msgs · {Agent.ChildIds.Count} children";
+                }
+
+                return $"{modelInfo} · {messageCount} msgs";
+            }
+        }
+
+        public AgentSessionItem(Services.Ai.Agents.IAgent agent)
+        {
+            Agent = agent ?? throw new ArgumentNullException(nameof(agent));
         }
     }
 }

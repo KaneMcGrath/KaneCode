@@ -363,8 +363,10 @@ internal sealed class AgentOrchestrator : IDisposable
                 parentAgent.Id,
                 result));
 
-            // Clean up the sub-agent (release locks, remove from tree)
-            RemoveAgent(subAgent.Id);
+            // Release the sub-agent's file locks so other agents can edit the same files.
+            // The agent remains in the tree so the user can inspect its conversation
+            // via the agent session dropdown.
+            FileLockManager.ReleaseAll(subAgent.Id);
 
             return result.Success
                 ? ToolCallResult.Ok($"Sub-agent completed: {result.Summary}")
@@ -372,12 +374,12 @@ internal sealed class AgentOrchestrator : IDisposable
         }
         catch (OperationCanceledException)
         {
-            RemoveAgent(subAgent.Id);
+            FileLockManager.ReleaseAll(subAgent.Id);
             return ToolCallResult.Fail("Sub-agent execution was cancelled.");
         }
         catch (Exception ex)
         {
-            RemoveAgent(subAgent.Id);
+            FileLockManager.ReleaseAll(subAgent.Id);
             return ToolCallResult.Fail($"Sub-agent execution error: {ex.Message}");
         }
     }

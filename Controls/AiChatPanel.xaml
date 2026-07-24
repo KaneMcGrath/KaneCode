@@ -18,8 +18,8 @@
                     <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
                 <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
                 </Grid.ColumnDefinitions>
                 <StackPanel Grid.Row="0"
                             Grid.Column="0"
@@ -70,19 +70,81 @@
                             BorderThickness="1"
                             Cursor="Hand"
                             ToolTip="Start a new AI conversation" />
+                    <Button x:Name="ClearButton"
+                            Content="Clear"
+                            Click="ClearButton_Click"
+                            Padding="6,2"
+                            Margin="6,0,0,0"
+                            FontSize="11"
+                            VerticalAlignment="Center"
+                            Foreground="{DynamicResource AiChatForeground}"
+                            Background="{DynamicResource AiChatInputBackground}"
+                            BorderBrush="{DynamicResource AiChatBorder}"
+                            BorderThickness="1"
+                            Cursor="Hand"
+                            ToolTip="Clear the current conversation" />
                 </StackPanel>
-                <Button x:Name="ClearButton"
-                        Grid.Row="0"
-                        Grid.Column="1"
-                        Content="Clear"
-                        Click="ClearButton_Click"
-                        Padding="6,2"
-                        FontSize="11"
-                        Foreground="{DynamicResource AiChatForeground}"
-                        Background="{DynamicResource AiChatInputBackground}"
-                        BorderBrush="{DynamicResource AiChatBorder}"
-                        BorderThickness="1"
-                        Cursor="Hand" />
+                <ComboBox x:Name="AgentSessionSelector"
+                          Grid.Row="0"
+                          Grid.Column="1"
+                          SelectionChanged="AgentSessionSelector_SelectionChanged"
+                          FontSize="11"
+                          MinWidth="140"
+                          HorizontalAlignment="Stretch"
+                          VerticalAlignment="Center"
+                          Foreground="{DynamicResource AiChatForeground}"
+                          Background="{DynamicResource AiChatInputBackground}"
+                          BorderBrush="{DynamicResource AiChatBorder}"
+                          BorderThickness="1"
+                          ToolTip="Select an agent session (temporary — will be replaced by proper agent management UI)">
+                    <ComboBox.ItemTemplate>
+                        <DataTemplate>
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0"
+                                           Text="{Binding RoleGlyph}"
+                                           FontSize="11"
+                                           Margin="0,0,6,0"
+                                           VerticalAlignment="Center"
+                                           Foreground="{DynamicResource AiChatSecondaryForeground}" />
+                                <StackPanel Grid.Column="1"
+                                            Orientation="Vertical">
+                                    <TextBlock Text="{Binding DisplayLabel}"
+                                               FontSize="11"
+                                               TextTrimming="CharacterEllipsis"
+                                               Foreground="{DynamicResource AiChatForeground}" />
+                                    <TextBlock Text="{Binding Subtitle}"
+                                               FontSize="9"
+                                               TextTrimming="CharacterEllipsis"
+                                               Foreground="{DynamicResource AiChatSecondaryForeground}" />
+                                </StackPanel>
+                            </Grid>
+                        </DataTemplate>
+                    </ComboBox.ItemTemplate>
+                    <ComboBox.Resources>
+                        <SolidColorBrush x:Key="{x:Static SystemColors.WindowBrushKey}"
+                                         Color="{Binding Color, Source={DynamicResource AiChatInputBackground}}" />
+                        <SolidColorBrush x:Key="{x:Static SystemColors.ControlBrushKey}"
+                                         Color="{Binding Color, Source={DynamicResource AiChatInputBackground}}" />
+                        <Style TargetType="ComboBoxItem">
+                            <Setter Property="Background" Value="{DynamicResource AiChatInputBackground}" />
+                            <Setter Property="Foreground" Value="{DynamicResource AiChatForeground}" />
+                            <Style.Triggers>
+                                <Trigger Property="IsHighlighted" Value="True">
+                                    <Setter Property="Background" Value="{DynamicResource ButtonMouseOverBackground}" />
+                                    <Setter Property="Foreground" Value="{DynamicResource AiChatSendButtonForeground}" />
+                                </Trigger>
+                                <Trigger Property="IsSelected" Value="True">
+                                    <Setter Property="Background" Value="{DynamicResource ButtonPressedBackground}" />
+                                    <Setter Property="Foreground" Value="{DynamicResource AiChatSendButtonForeground}" />
+                                </Trigger>
+                            </Style.Triggers>
+                        </Style>
+                    </ComboBox.Resources>
+                </ComboBox>
                 <DockPanel Grid.Row="1"
                            Grid.ColumnSpan="2"
                            Margin="0,4,0,0">
