@@ -70,6 +70,13 @@ public partial class AiChatPanel : UserControl
     /// </summary>
     private List<UIElement>? _savedRootMessageChildren;
 
+    /// <summary>
+    /// Per-agent streaming state used by <see cref="RenderAgentStreamToken"/> to
+    /// incrementally render sub-agent responses as they arrive via the agent's
+    /// <see cref="Agent.TokenCallback"/>. Keyed by agent ID.
+    /// </summary>
+    private readonly Dictionary<string, AgentStreamingState> _agentStreamingStates = new();
+
     private IAiChatMode? _activeMode;
     private AiConversation? _activeConversation;
     private readonly List<ModeDropdownPresetItem> _presetDropdownItems = [];
@@ -174,6 +181,28 @@ public partial class AiChatPanel : UserControl
         /// tool's execution without stopping the entire agent loop.
         /// </summary>
         public CancellationTokenSource? ToolCancellation { get; set; }
+    }
+
+    /// <summary>
+    /// Tracks the streaming state for a sub-agent being viewed in the chat panel.
+    /// Holds references to the UI elements being updated as tokens arrive, plus
+    /// accumulated text builders so incremental updates can be rendered efficiently
+    /// without re-rendering the entire message panel on every token.
+    /// </summary>
+    private sealed class AgentStreamingState
+    {
+        public StringBuilder ResponseBuilder { get; } = new();
+        public StringBuilder ReasoningBuilder { get; } = new();
+        public StackPanel? AssistantContainer;
+        public RichTextBox? AssistantBlock;
+        public StreamSectionVisual? ThinkingSection;
+        public ChunkedTextPresenter? ThinkingPresenter;
+        public readonly Dictionary<int, ToolCallSectionVisual> ToolCallBlocks = new();
+        public int ReasoningTokenCount;
+        public int ContentTokenCount;
+        public readonly Stopwatch Stopwatch = Stopwatch.StartNew();
+        public bool HasContent;
+        public bool HasThinking;
     }
 
     /// <summary>
@@ -2509,6 +2538,141 @@ public partial class AiChatPanel : UserControl
     }
 
     /// <summary>
+    /// Renders a streaming token from a sub-agent's <see cref="Agent.RunAsync"/> loop
+    /// to the message panel, enabling real-time text streaming when viewing a sub-agent.
+    ///
+    /// This method is invoked via the agent's <see cref="Agent.TokenCallback"/> (set in
+    /// <see cref="ExecuteSpawnAgentInternalAsync"/>). The callback is dispatched to the
+    /// UI thread via <see cref="Dispatcher.BeginInvoke"/>, so this method always runs
+    /// on the UI thread. It accumulates token text in an <see cref="AgentStreamingState"/>
+    /// and renders it incrementally — mirroring the streaming behavior of the main
+    /// <see cref="SendMessageAsync"/> loop.
+    ///
+    /// The streaming state is cleared by <see cref="RefreshAgentViewMessages"/> (called
+    /// from the <see cref="Agent.IterationCallback"/> at the start of each iteration,
+    /// from the final refresh after <see cref cref="Agent.RunAsync"/> completes, and from
+    /// <see cref="SwitchToAgentView"/>). This ensures that between streaming sessions,
+    /// the panel is re-rendered from the agent's <see cref="IAgent.Messages"/> list
+    /// (which contains the completed assistant message), and the next streaming session
+    /// starts with fresh UI elements.
+    /// </summary>
+    private void RenderAgentStreamToken(string agentId, AiStreamToken token)
+    {
+        if (_viewingAgentId != agentId)
+        {
+            return;
+        }
+
+        if (!_agentStreamingStates.TryGetValue(agentId, out AgentStreamingState? state))
+        {
+            state = new AgentStreamingState();
+            _agentStreamingStates[agentId] = state;
+        }
+
+        // If the panel was cleared (e.g., by RefreshAgentViewMessages or SwitchToAgentView),
+        // the assistant container may no longer be in the panel. Reset the streaming state
+        // so new UI elements are created for the current streaming session.
+        if (state.AssistantContainer is not null &&
+            !MessagePanel.Children.Contains(state.AssistantContainer))
+        {
+            state.AssistantContainer = null;
+            state.AssistantBlock = null;
+            state.ThinkingSection = null;
+            state.ThinkingPresenter = null;
+            state.ToolCallBlocks.Clear();
+            state.HasContent = false;
+            state.HasThinking = false;
+        }
+
+        bool toolsEnabled = _activeMode?.ToolsEnabled == true;
+
+        switch (token.Type)
+        {
+            case AiStreamTokenType.Content:
+                state.ResponseBuilder.Append(token.Text);
+                state.ContentTokenCount++;
+
+                if (!state.HasContent)
+                {
+                    state.HasContent = true;
+                    (state.AssistantContainer, state.AssistantBlock) = CreateAssistantMessageBlock();
+                }
+
+                string displayedContent = GetVisibleAssistantContent(state.ResponseBuilder.ToString(), toolsEnabled);
+                RenderAssistantContent(state.AssistantBlock!, displayedContent);
+                UpdateStatsBar(state.ReasoningTokenCount + state.ContentTokenCount, state.Stopwatch);
+
+                if (IsMessageScrollerNearBottom())
+                {
+                    MessageScroller.ScrollToEnd();
+                }
+                break;
+
+            case AiStreamTokenType.Reasoning:
+                state.ReasoningBuilder.Append(token.Text);
+                state.ReasoningTokenCount++;
+
+                if (!state.HasThinking)
+                {
+                    state.HasThinking = true;
+                    if (state.AssistantContainer is null)
+                    {
+                        (state.AssistantContainer, state.AssistantBlock) = CreateAssistantMessageBlock();
+                    }
+
+                    (state.ThinkingSection, state.ThinkingPresenter) = CreateThinkingSection(
+                        state.AssistantContainer, state.AssistantBlock);
+                }
+
+                state.ThinkingPresenter!.Append(token.Text);
+                SetInlineSectionHeaderNoPinnedUpdate(
+                    state.ThinkingSection!,
+                    $"Thinking ({state.ReasoningTokenCount:N0} tokens)...");
+                UpdateStreamingContentPreview(state.ThinkingSection!, state.ReasoningBuilder.ToString());
+                UpdateStatsBar(state.ReasoningTokenCount + state.ContentTokenCount, state.Stopwatch);
+
+                if (IsMessageScrollerNearBottom())
+                {
+                    MessageScroller.ScrollToEnd();
+                }
+                break;
+
+            case AiStreamTokenType.ToolCall:
+                if (token.ToolCall is null)
+                {
+                    break;
+                }
+
+                AiStreamToolCall toolCall = token.ToolCall;
+
+                if (!state.ToolCallBlocks.TryGetValue(toolCall.Index, out ToolCallSectionVisual? block))
+                {
+                    if (state.AssistantContainer is null)
+                    {
+                        (state.AssistantContainer, state.AssistantBlock) = CreateAssistantMessageBlock();
+                    }
+
+                    block = CreateToolCallBlock(
+                        toolCall.FunctionName,
+                        toolCall.ArgumentsJson,
+                        state.AssistantContainer,
+                        state.AssistantBlock);
+                    state.ToolCallBlocks[toolCall.Index] = block;
+                }
+                else
+                {
+                    UpdateToolCallBlock(block, toolCall.FunctionName, toolCall.ArgumentsJson);
+                }
+
+                if (IsMessageScrollerNearBottom())
+                {
+                    MessageScroller.ScrollToEnd();
+                }
+                break;
+        }
+    }
+
+    /// <summary>
     /// Enables or disables the chat input controls.
     /// When disabled (e.g. viewing a completed sub-agent), the user cannot
     /// send new messages but can still scroll through the conversation.
@@ -4691,14 +4855,35 @@ public partial class AiChatPanel : UserControl
                 agentImpl.IterationCallback = async (_, _) =>
                 {
                     // Dispatch a re-render of the agent's messages if the user
-                    // is currently viewing this agent.
+                    // is currently viewing this agent. Clear the streaming state
+                    // first so the TokenCallback creates fresh UI elements for
+                    // the new iteration's streaming response.
                     await dispatcher.InvokeAsync(() =>
                     {
                         if (_viewingAgentId == agentId && _agentOrchestrator?.GetAgent(agentId) is { } currentAgent)
                         {
+                            _agentStreamingStates.Remove(agentId);
                             RefreshAgentViewMessages(currentAgent);
                         }
                     });
+                };
+
+                // Wire up the token callback so that sub-agent responses are
+                // streamed to the UI in real time, matching the behavior of the
+                // main chat loop. The Agent.RunAsync method already streams
+                // tokens via Provider.StreamCompletionAsync and invokes this
+                // callback for each token — we just need to render them.
+                agentImpl.TokenCallback = (agent, token) =>
+                {
+                    dispatcher.BeginInvoke(() =>
+                    {
+                        if (_viewingAgentId == agentId)
+                        {
+                            RenderAgentStreamToken(agentId, token);
+                        }
+                    });
+
+                    return Task.CompletedTask;
                 };
             }
 
@@ -4717,12 +4902,14 @@ public partial class AiChatPanel : UserControl
 
             // Dispatch a final refresh so the agent view shows the completed
             // state (the IterationCallback only fires at the start of each
-            // iteration, not after the last one).
+            // iteration, not after the last one). Clear the streaming state
+            // so the re-render from _messages is authoritative.
             await Dispatcher.InvokeAsync(() =>
             {
                 if (_viewingAgentId == subAgent.Id &&
                     _agentOrchestrator?.GetAgent(subAgent.Id) is { } finalAgent)
                 {
+                    _agentStreamingStates.Remove(subAgent.Id);
                     RefreshAgentViewMessages(finalAgent);
                 }
             });
@@ -4752,6 +4939,7 @@ public partial class AiChatPanel : UserControl
                     if (_viewingAgentId == agentId &&
                         _agentOrchestrator?.GetAgent(agentId) is { } cancelledAgent)
                     {
+                        _agentStreamingStates.Remove(agentId);
                         RefreshAgentViewMessages(cancelledAgent);
                     }
                 });
