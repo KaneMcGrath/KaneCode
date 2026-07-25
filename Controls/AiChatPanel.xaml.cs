@@ -2379,24 +2379,49 @@ public partial class AiChatPanel : UserControl
 
             _savedRootMessageChildren = null;
         }
-        else
+        else if (!_isStreaming)
         {
             // Streaming not active — safe to fully re-render the conversation
             _savedRootMessageChildren = null;
             RenderActiveConversation();
         }
+        else
+        {
+            // Streaming is active but saved children are null. This can happen
+            // if the user switched to an agent view when streaming was not active,
+            // or if the saved children were already consumed by a prior call.
+            // Do NOT call RenderActiveConversation() here — it would call
+            // CancelStreaming() and kill the in-progress root conversation.
+            // The streaming loop's finally block will handle the UI update
+            // when it completes (if _viewingAgentId is null at that point).
+            _savedRootMessageChildren = null;
+        }
 
-        // Re-select the root agent in the dropdown if needed
+        // Re-select the root agent in the dropdown if needed.
+        // Wrap in _isUpdatingAgentSessions to suppress the SelectionChanged
+        // handler — without this, setting SelectedItem fires
+        // AgentSessionSelector_SelectionChanged, which calls SwitchToNormalView()
+        // a second time. In that second call _savedRootMessageChildren is already
+        // null, so it falls through to RenderActiveConversation() → CancelStreaming(),
+        // killing the root conversation mid-stream.
         if (_agentOrchestrator?.RootAgent is { } rootAgent)
         {
-            foreach (object item in AgentSessionSelector.Items)
+            _isUpdatingAgentSessions = true;
+            try
             {
-                if (item is AgentSessionItem agentItem &&
-                    string.Equals(agentItem.Agent.Id, rootAgent.Id, StringComparison.Ordinal))
+                foreach (object item in AgentSessionSelector.Items)
                 {
-                    AgentSessionSelector.SelectedItem = item;
-                    break;
+                    if (item is AgentSessionItem agentItem &&
+                        string.Equals(agentItem.Agent.Id, rootAgent.Id, StringComparison.Ordinal))
+                    {
+                        AgentSessionSelector.SelectedItem = item;
+                        break;
+                    }
                 }
+            }
+            finally
+            {
+                _isUpdatingAgentSessions = false;
             }
         }
     }
