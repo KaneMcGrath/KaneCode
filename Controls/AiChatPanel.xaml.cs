@@ -2763,7 +2763,8 @@ public partial class AiChatPanel : UserControl
 
     /// <summary>
     /// Finalizes a spawn_agent inline section after the sub-agent completes.
-    /// Updates the header to show the final token count and the completion status.
+    /// Updates the header to show the final token count and the completion status,
+    /// and applies green/red coloring matching the regular tool-call convention.
     /// </summary>
     private void FinalizeSpawnAgentSection(SpawnAgentInlineContext ctx, bool success)
     {
@@ -2773,6 +2774,10 @@ public partial class AiChatPanel : UserControl
             : $"Sub-agent: {ctx.DisplayName}  •  {status}";
 
         SetInlineSectionHeaderNoPinnedUpdate(ctx.Section, header);
+
+        // Apply success/failure coloring to the section header
+        Brush resultForeground = FindBrush(GetToolCallHeaderForegroundKey(success));
+        SetInlineSectionForeground(ctx.Section, resultForeground);
 
         // Finalize thinking header if present
         if (ctx.ThinkingSection is not null && ctx.HasThinking)
@@ -4259,6 +4264,7 @@ public partial class AiChatPanel : UserControl
                 Dictionary<int, AiStreamToolCall> streamedToolCalls = new();
                 Dictionary<int, ToolCallSectionVisual> toolCallBlocks = new();
                 Dictionary<int, TextBlock> rawToolCallBlocks = new();
+                Dictionary<int, SpawnAgentInlineContext> spawnSections = new();
 
                 // UI element creation must happen on the dispatcher thread.
                 // After the first iteration, we may be on a thread-pool thread
@@ -4368,10 +4374,24 @@ public partial class AiChatPanel : UserControl
                                     return;
                                 }
 
-                                // spawn_agent gets a dedicated inline section in Phase 1;
-                                // skip creating a regular tool-call block during streaming
+                                // Create a spawn_agent section immediately during streaming
+                                // so the user sees the tool call being built, just like
+                                // regular tool calls. The section transitions to showing
+                                // the sub-agent's live conversation once execution starts.
                                 if (string.Equals(toolCall.FunctionName, "spawn_agent", StringComparison.Ordinal))
                                 {
+                                    string headerText = FormatToolCallHeader(toolCall.FunctionName, toolCall.ArgumentsJson);
+                                    SpawnAgentInlineContext ctx = CreateSpawnAgentSection(
+                                        headerText, "agent", assistantContainer, assistantBlock);
+
+                                    // Show the streaming arguments in the content area
+                                    string formattedArgs = FormatToolCallBody("spawn_agent", toolCall.ArgumentsJson);
+                                    if (!string.IsNullOrWhiteSpace(formattedArgs))
+                                    {
+                                        ctx.ResponsePresenter.ReplaceAll(formattedArgs);
+                                    }
+
+                                    spawnSections[toolCall.Index] = ctx;
                                     return;
                                 }
 
@@ -4400,7 +4420,25 @@ public partial class AiChatPanel : UserControl
                                     return;
                                 }
 
-                                // spawn_agent has no visual block during streaming
+                                // Update spawn_agent section header and arguments during streaming
+                                if (spawnSections.TryGetValue(toolCall.Index, out SpawnAgentInlineContext? spawnCtx))
+                                {
+                                    spawnCtx.Section.HeaderText.Text = FormatToolCallHeader(
+                                        toolCall.FunctionName, toolCall.ArgumentsJson);
+                                    string formattedArgs = FormatToolCallBody("spawn_agent", toolCall.ArgumentsJson);
+                                    if (!string.IsNullOrWhiteSpace(formattedArgs))
+                                    {
+                                        spawnCtx.ResponsePresenter.ReplaceAll(formattedArgs);
+                                    }
+
+                                    if (shouldStickToBottom)
+                                    {
+                                        MessageScroller.ScrollToEnd();
+                                    }
+
+                                    return;
+                                }
+
                                 if (!toolCallBlocks.TryGetValue(toolCall.Index, out ToolCallSectionVisual? block))
                                 {
                                     return;
@@ -4698,12 +4736,11 @@ public partial class AiChatPanel : UserControl
                                         $"Tool Call ({toolCall.FunctionName})", formattedArgs);
                                 }
                             }
-                            // Create a special spawn_agent inline section with gray background
-                            // that streams the sub-agent's conversation directly into the tool area.
-                            // Remove any regular tool-call block that may have been created during
-                            // streaming (the streaming phase now skips spawn_agent, but guard anyway).
+                            // Use the spawn_agent section created during streaming (if any),
+                            // or create one fresh. Update the header with the display name.
                             else if (string.Equals(toolCall.FunctionName, "spawn_agent", StringComparison.Ordinal))
                             {
+                                // Remove any regular tool-call block that may have leaked
                                 if (toolCallBlocks.Remove(toolCall.Index, out ToolCallSectionVisual? existingBlock))
                                 {
                                     RemoveInlineSection(existingBlock.Section);
@@ -4736,11 +4773,24 @@ public partial class AiChatPanel : UserControl
                                 }
                                 catch { }
 
-                                spawnContext = CreateSpawnAgentSection(
-                                    FormatToolCallHeader(toolCall.FunctionName, toolCall.ArgumentsJson),
-                                    spawnDisplayName,
-                                    assistantContainer,
-                                    assistantBlock);
+                                // Reuse the section created during streaming, or create fresh
+                                if (spawnSections.TryGetValue(toolCall.Index, out SpawnAgentInlineContext? existingCtx))
+                                {
+                                    spawnContext = existingCtx;
+                                    spawnContext.DisplayName = spawnDisplayName;
+                                    SetInlineSectionHeader(spawnContext.Section, $"Sub-agent: {spawnDisplayName}");
+                                    // Clear the streaming arguments from the content area so
+                                    // the sub-agent's response can replace them
+                                    spawnContext.ResponsePresenter.ReplaceAll(string.Empty);
+                                }
+                                else
+                                {
+                                    spawnContext = CreateSpawnAgentSection(
+                                        FormatToolCallHeader(toolCall.FunctionName, toolCall.ArgumentsJson),
+                                        spawnDisplayName,
+                                        assistantContainer,
+                                        assistantBlock);
+                                }
 
                                 // Set up per-tool cancellation
                                 toolCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
@@ -5321,7 +5371,7 @@ public partial class AiChatPanel : UserControl
         public StringBuilder ReasoningBuilder { get; } = new();
         public StreamSectionVisual? ThinkingSection { get; set; }
         public ChunkedTextPresenter? ThinkingPresenter { get; set; }
-        public string DisplayName { get; }
+        public string DisplayName { get; set; }
         public int ReasoningTokenCount { get; set; }
         public int ContentTokenCount { get; set; }
         public bool HasContent { get; set; }
