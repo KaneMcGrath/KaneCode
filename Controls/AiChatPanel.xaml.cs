@@ -4282,6 +4282,13 @@ public partial class AiChatPanel : UserControl
                                     return;
                                 }
 
+                                // spawn_agent gets a dedicated inline section in Phase 1;
+                                // skip creating a regular tool-call block during streaming
+                                if (string.Equals(toolCall.FunctionName, "spawn_agent", StringComparison.Ordinal))
+                                {
+                                    return;
+                                }
+
                                 ToolCallSectionVisual block = CreateToolCallBlock(
                                     toolCall.FunctionName,
                                     toolCall.ArgumentsJson,
@@ -4307,7 +4314,12 @@ public partial class AiChatPanel : UserControl
                                     return;
                                 }
 
-                                ToolCallSectionVisual block = toolCallBlocks[toolCall.Index];
+                                // spawn_agent has no visual block during streaming
+                                if (!toolCallBlocks.TryGetValue(toolCall.Index, out ToolCallSectionVisual? block))
+                                {
+                                    return;
+                                }
+
                                 UpdateToolCallBlock(block, toolCall.FunctionName, toolCall.ArgumentsJson);
 
                                 if (shouldStickToBottom)
@@ -4601,9 +4613,16 @@ public partial class AiChatPanel : UserControl
                                 }
                             }
                             // Create a special spawn_agent inline section with gray background
-                            // that streams the sub-agent's conversation directly into the tool area
+                            // that streams the sub-agent's conversation directly into the tool area.
+                            // Remove any regular tool-call block that may have been created during
+                            // streaming (the streaming phase now skips spawn_agent, but guard anyway).
                             else if (string.Equals(toolCall.FunctionName, "spawn_agent", StringComparison.Ordinal))
                             {
+                                if (toolCallBlocks.Remove(toolCall.Index, out ToolCallSectionVisual? existingBlock))
+                                {
+                                    RemoveInlineSection(existingBlock.Section);
+                                }
+
                                 string spawnDisplayName = "agent";
                                 try
                                 {
@@ -6696,6 +6715,22 @@ public partial class AiChatPanel : UserControl
             insertBefore,
             streamingContentForeground: streamForeground,
             stopButton: null);
+
+        // Give the spawn section a fixed viewing window so the sub-agent's
+        // streaming conversation doesn't take over the main chat vertically
+        const double spawnSectionMaxHeight = 260;
+        section.ContentBorder.MaxHeight = spawnSectionMaxHeight;
+
+        // Wrap the content panel in a ScrollViewer so overflow content can be
+        // scrolled when the sub-agent's response exceeds the fixed height
+        section.ContentBorder.Child = null;
+        ScrollViewer scrollViewer = new()
+        {
+            Content = section.ContentPanel,
+            VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+            HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled
+        };
+        section.ContentBorder.Child = scrollViewer;
 
         // Response block for streaming the sub-agent's reply text
         TextBlock responsePlaceholder = new()
