@@ -258,44 +258,30 @@ internal sealed class Agent : IAgent
             _messages.Add(toolCallingAssistantMessage);
             requestHistory.Add(toolCallingAssistantMessage);
 
-            // Step 6: Execute each tool call
-            foreach (AiStreamToolCall toolCall in pendingToolCalls)
+            // Step 6: Execute all tool calls in parallel
+            List<Task<(ToolCallResult Result, int Index, string ToolCallId)>> toolTasks = new(pendingToolCalls.Count);
+
+            for (int i = 0; i < pendingToolCalls.Count; i++)
             {
+                AiStreamToolCall toolCall = pendingToolCalls[i];
                 cancellationToken.ThrowIfCancellationRequested();
 
                 string toolCallId = string.IsNullOrWhiteSpace(toolCall.Id)
                     ? $"tool_call_{toolCall.Index}"
                     : toolCall.Id;
 
-                ToolCallResult result;
+                int capturedIndex = i;
+                toolTasks.Add(ExecuteSingleToolCallAsync(
+                    toolCall, toolCallId, capturedIndex, toolRegistry, fileLockManager, orchestrator, cancellationToken));
+            }
 
-                if (ToolExecutionInterceptor is not null)
-                {
-                    // Let the orchestrator handle execution (for file-lock integration, etc.)
-                    using JsonDocument? argumentsDocument = string.IsNullOrWhiteSpace(toolCall.ArgumentsJson)
-                        ? null
-                        : AgentToolArgumentsParser.Parse(toolCall.FunctionName, toolCall.ArgumentsJson);
+            (ToolCallResult Result, int Index, string ToolCallId)[] toolResults =
+                await Task.WhenAll(toolTasks).ConfigureAwait(false);
+            totalToolCallCount += toolResults.Length;
 
-                    JsonElement args = argumentsDocument is null
-                        ? default
-                        : argumentsDocument.RootElement;
-
-                    result = await ToolExecutionInterceptor(this, toolCall.FunctionName, args, cancellationToken)
-                        .ConfigureAwait(false);
-                }
-                else
-                {
-                    result = await ExecuteToolInternal(
-                        toolCall.FunctionName,
-                        toolCall.ArgumentsJson,
-                        toolRegistry,
-                        fileLockManager,
-                        orchestrator,
-                        cancellationToken).ConfigureAwait(false);
-                }
-
-                totalToolCallCount++;
-
+            // Add tool result messages in the original order
+            foreach ((ToolCallResult result, int index, string toolCallId) in toolResults.OrderBy(r => r.Index))
+            {
                 string resultContent = result.Success
                     ? result.Output
                     : $"Error: {result.Error}";
@@ -458,6 +444,60 @@ internal sealed class Agent : IAgent
         catch (Exception ex)
         {
             return ToolCallResult.Fail($"Tool execution error: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Executes a single tool call and returns its result along with index/ID
+    /// metadata. Used by <see cref="RunWithHistoryAsync"/> to execute all tool
+    /// calls from a single iteration in parallel via <see cref="Task.WhenAll"/>.
+    /// </summary>
+    private async Task<(ToolCallResult Result, int Index, string ToolCallId)> ExecuteSingleToolCallAsync(
+        AiStreamToolCall toolCall,
+        string toolCallId,
+        int index,
+        AgentToolRegistry toolRegistry,
+        FileLockManager fileLockManager,
+        AgentOrchestrator orchestrator,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            ToolCallResult result;
+
+            if (ToolExecutionInterceptor is not null)
+            {
+                using JsonDocument? argumentsDocument = string.IsNullOrWhiteSpace(toolCall.ArgumentsJson)
+                    ? null
+                    : AgentToolArgumentsParser.Parse(toolCall.FunctionName, toolCall.ArgumentsJson);
+
+                JsonElement args = argumentsDocument is null
+                    ? default
+                    : argumentsDocument.RootElement;
+
+                result = await ToolExecutionInterceptor(this, toolCall.FunctionName, args, cancellationToken)
+                    .ConfigureAwait(false);
+            }
+            else
+            {
+                result = await ExecuteToolInternal(
+                    toolCall.FunctionName,
+                    toolCall.ArgumentsJson,
+                    toolRegistry,
+                    fileLockManager,
+                    orchestrator,
+                    cancellationToken).ConfigureAwait(false);
+            }
+
+            return (result, index, toolCallId);
+        }
+        catch (OperationCanceledException)
+        {
+            return (ToolCallResult.Fail("Tool execution was cancelled."), index, toolCallId);
+        }
+        catch (Exception ex)
+        {
+            return (ToolCallResult.Fail($"Tool execution error: {ex.Message}"), index, toolCallId);
         }
     }
 

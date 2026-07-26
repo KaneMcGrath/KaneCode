@@ -4465,23 +4465,25 @@ public partial class AiChatPanel : UserControl
                     };
                     AddMessageToHistories(requestConversationHistory, toolCallingAssistantMessage);
 
-                    // Execute each tool call and append results
-                    foreach (AiStreamToolCall toolCall in pendingToolCalls)
+                    // ── Phase 1: Create all tool call blocks on the UI thread ──
+                    // Each entry holds the tool-call metadata, UI block, and per-tool
+                    // cancellation source so we can execute all tools in parallel.
+                    List<ToolExecutionItem> executionItems = new(pendingToolCalls.Count);
+
+                    await Dispatcher.InvokeAsync(() =>
                     {
-                        ct.ThrowIfCancellationRequested();
-
-                        string toolCallId = string.IsNullOrWhiteSpace(toolCall.Id)
-                            ? $"tool_call_{toolCall.Index}"
-                            : toolCall.Id;
-
-                        ToolCallSectionVisual? toolCallBlock = null;
-                        await Dispatcher.InvokeAsync(() =>
+                        for (int i = 0; i < pendingToolCalls.Count; i++)
                         {
+                            AiStreamToolCall toolCall = pendingToolCalls[i];
+                            string toolCallId = string.IsNullOrWhiteSpace(toolCall.Id)
+                                ? $"tool_call_{toolCall.Index}"
+                                : toolCall.Id;
+
+                            ToolCallSectionVisual? toolCallBlock = null;
+                            CancellationTokenSource? toolCts = null;
+
                             if (rawTextMode)
                             {
-                                /* Update the existing placeholder or create a new entry with properly formatted arguments.
-                                 * The FormatToolArgs call here is safe — streaming has completed, so this is a single
-                                 * JSON parse (not per-token). */
                                 string formattedArgs = FormatToolArgs(toolCall.FunctionName, toolCall.ArgumentsJson);
                                 if (!rawToolCallBlocks.TryGetValue(toolCall.Index, out TextBlock? rawBlock))
                                 {
@@ -4494,144 +4496,105 @@ public partial class AiChatPanel : UserControl
                                 }
                                 else
                                 {
-                                    rawBlock.Text = FormatRawTranscriptEntry($"Tool Call ({toolCall.FunctionName})", formattedArgs);
+                                    rawBlock.Text = FormatRawTranscriptEntry(
+                                        $"Tool Call ({toolCall.FunctionName})", formattedArgs);
                                 }
-
-                                return;
-                            }
-
-                            if (!toolCallBlocks.TryGetValue(toolCall.Index, out ToolCallSectionVisual? block))
-                            {
-                                block = CreateToolCallBlock(
-                                    toolCall.FunctionName,
-                                    toolCall.ArgumentsJson,
-                                    assistantContainer,
-                                    assistantBlock);
-                                toolCallBlocks[toolCall.Index] = block;
                             }
                             else
                             {
-                                /* Update the header only — arguments text is set once in
-                                 * FinalizeToolCallBlock to avoid O(n²) WPF text-layout work. */
-                                UpdateToolCallBlock(block, toolCall.FunctionName, toolCall.ArgumentsJson);
-                            }
-
-                            toolCallBlock = block;
-                        });
-
-                        // ── Per-tool cancellation for long-running tools ──────
-                        // Create a linked CTS so the stop button cancels only this
-                        // tool's execution, not the entire agent loop.
-                        CancellationToken effectiveToolCt = ct;
-                        if (toolCallBlock is not null &&
-                            !rawTextMode &&
-                            toolCallBlock.Section.StopButton is not null)
-                        {
-                            CancellationTokenSource toolCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-                            toolCallBlock.ToolCancellation = toolCts;
-                            effectiveToolCt = toolCts.Token;
-
-                            // Wire the stop button on the dispatcher thread
-                            Button capturedStopButton = toolCallBlock.Section.StopButton;
-                            await Dispatcher.InvokeAsync(() =>
-                            {
-                                capturedStopButton.Click += (_, _) =>
+                                if (!toolCallBlocks.TryGetValue(toolCall.Index, out toolCallBlock))
                                 {
-                                    try
+                                    toolCallBlock = CreateToolCallBlock(
+                                        toolCall.FunctionName,
+                                        toolCall.ArgumentsJson,
+                                        assistantContainer,
+                                        assistantBlock);
+                                    toolCallBlocks[toolCall.Index] = toolCallBlock;
+                                }
+                                else
+                                {
+                                    UpdateToolCallBlock(
+                                        toolCallBlock, toolCall.FunctionName, toolCall.ArgumentsJson);
+                                }
+
+                                // Set up per-tool cancellation with stop button
+                                if (toolCallBlock.Section.StopButton is not null)
+                                {
+                                    toolCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                                    toolCallBlock.ToolCancellation = toolCts;
+                                    Button capturedStopButton = toolCallBlock.Section.StopButton;
+                                    capturedStopButton.Click += (_, _) =>
                                     {
-                                        toolCts.Cancel();
-                                    }
-                                    catch (ObjectDisposedException)
-                                    {
-                                        // CTS already disposed — ignore
-                                    }
-                                };
-                            });
+                                        try
+                                        {
+                                            toolCts.Cancel();
+                                        }
+                                        catch (ObjectDisposedException)
+                                        {
+                                            // CTS already disposed — ignore
+                                        }
+                                    };
+                                }
+                            }
+
+                            executionItems.Add(new ToolExecutionItem(
+                                toolCall,
+                                toolCallId,
+                                i,
+                                toolCallBlock,
+                                toolCts,
+                                rawTextMode
+                                    ? rawToolCallBlocks.GetValueOrDefault(toolCall.Index)
+                                    : null));
                         }
+                    });
 
-                        IAgentTool? tool = IsConversationToolAllowed(toolCall.FunctionName)
-                            ? _toolRegistry.Get(toolCall.FunctionName)
-                            : null;
-                        ToolCallResult result;
+                    // ── Phase 2: Execute all tools in parallel ──
+                    List<Task<ToolExecutionResult>> toolTasks = new(executionItems.Count);
 
-                        if (tool is null)
+                    foreach (ToolExecutionItem item in executionItems)
+                    {
+                        ct.ThrowIfCancellationRequested();
+
+                        CancellationToken effectiveToolCt = item.ToolCancellation?.Token ?? ct;
+
+                        toolTasks.Add(ExecuteToolAndCaptureResultAsync(
+                            item, effectiveToolCt, ct));
+                    }
+
+                    ToolExecutionResult[] toolResults = await Task.WhenAll(toolTasks)
+                        .ConfigureAwait(false);
+
+                    // ── Phase 3: Finalize blocks and add to history (in order) ──
+                    await Dispatcher.InvokeAsync(() =>
+                    {
+                        foreach (ToolExecutionResult execResult in toolResults.OrderBy(r => r.Index))
                         {
-                            result = ToolCallResult.Fail($"Unknown or disallowed tool: {toolCall.FunctionName}");
-                        }
-                        // Delegate spawn_agent to the multi-agent orchestrator with UI callbacks
-                        else if (string.Equals(toolCall.FunctionName, "spawn_agent", StringComparison.Ordinal) &&
-                                 _agentOrchestrator is not null)
-                        {
-                            result = await ExecuteSpawnAgentViaOrchestratorAsync(
-                                toolCall.ArgumentsJson,
-                                effectiveToolCt).ConfigureAwait(false);
-                        }
-                        // Route all other tools through the orchestrator for file-lock awareness
-                        else if (_agentOrchestrator is not null && GetRootAgentId() is string rootId)
-                        {
-                            try
-                            {
-                                using JsonDocument? argumentsDocument = string.IsNullOrWhiteSpace(toolCall.ArgumentsJson)
-                                    ? null
-                                    : AgentToolArgumentsParser.Parse(toolCall.FunctionName, toolCall.ArgumentsJson);
+                            ToolExecutionItem item = executionItems[execResult.Index];
+                            ToolCallResult result = execResult.Result;
 
-                                JsonElement args = argumentsDocument is null
-                                    ? default
-                                    : argumentsDocument.RootElement;
-
-                                result = await _agentOrchestrator.ExecuteToolAsync(
-                                    rootId,
-                                    toolCall.FunctionName,
-                                    args,
-                                    effectiveToolCt).ConfigureAwait(false);
-                            }
-                            catch (OperationCanceledException) when (ct.IsCancellationRequested)
+                            if (rawTextMode)
                             {
-                                // Global stream cancellation — stop the whole loop
-                                throw;
+                                AppendRawTranscriptEntry(
+                                    $"Tool Result ({item.ToolCall.FunctionName})",
+                                    result.Success ? result.Output : result.Error ?? "Unknown error",
+                                    result.Success
+                                        ? FindBrush(ThemeResourceKeys.AiChatToolCallSuccessForeground)
+                                        : FindBrush(ThemeResourceKeys.AiChatToolCallErrorForeground),
+                                    assistantContainer);
                             }
-                            catch (OperationCanceledException)
+                            else if (item.ToolCallBlock is not null)
                             {
-                                // Per-tool cancellation (e.g. user clicked stop on "run")
-                                result = ToolCallResult.Fail("Tool execution was cancelled.");
-                            }
-                            catch (Exception ex)
-                            {
-                                result = ToolCallResult.Fail($"Tool execution error: {ex.Message}");
+                                FinalizeToolCallBlock(item.ToolCallBlock, result);
                             }
                         }
-                        else
-                        {
-                            // Fallback: direct tool execution (no orchestrator)
-                            try
-                            {
-                                using JsonDocument? argumentsDocument = string.IsNullOrWhiteSpace(toolCall.ArgumentsJson)
-                                    ? null
-                                    : AgentToolArgumentsParser.Parse(toolCall.FunctionName, toolCall.ArgumentsJson);
+                    });
 
-                                JsonElement args = argumentsDocument is null
-                                    ? default
-                                    : argumentsDocument.RootElement;
-
-                                result = await tool.ExecuteAsync(args, effectiveToolCt).ConfigureAwait(false);
-                            }
-                            catch (OperationCanceledException) when (ct.IsCancellationRequested)
-                            {
-                                // Global stream cancellation — stop the whole loop
-                                throw;
-                            }
-                            catch (OperationCanceledException)
-                            {
-                                // Per-tool cancellation (e.g. user clicked stop on "run")
-                                result = ToolCallResult.Fail("Tool execution was cancelled.");
-                            }
-                            catch (Exception ex)
-                            {
-                                result = ToolCallResult.Fail($"Tool execution error: {ex.Message}");
-                            }
-                        }
-
-                        await LogToolFailureAsync(toolCall.FunctionName, toolCallId, toolCall.ArgumentsJson, result);
+                    // ── Phase 4: Add result messages to history and handle SVG ──
+                    foreach (ToolExecutionResult execResult in toolResults.OrderBy(r => r.Index))
+                    {
+                        ToolExecutionItem item = executionItems[execResult.Index];
+                        ToolCallResult result = execResult.Result;
 
                         string resultContent = result.Success
                             ? result.Output
@@ -4644,11 +4607,11 @@ public partial class AiChatPanel : UserControl
                         List<AiChatImagePart>? toolMessageImages = null;
                         if (result.Success &&
                             !string.IsNullOrWhiteSpace(result.SvgContent) &&
-                            (string.Equals(toolCall.FunctionName, "draw_svg", StringComparison.Ordinal) ||
-                             string.Equals(toolCall.FunctionName, "edit_last_svg", StringComparison.Ordinal)))
+                            (string.Equals(item.ToolCall.FunctionName, "draw_svg", StringComparison.Ordinal) ||
+                             string.Equals(item.ToolCall.FunctionName, "edit_last_svg", StringComparison.Ordinal)))
                         {
-                            bool addToContext = await Dispatcher.InvokeAsync(() =>
-                                _provider?.SupportsImages == true && SvgToContextCheckBox.IsChecked == true);
+                            bool addToContext = _provider?.SupportsImages == true &&
+                                SvgToContextCheckBox.IsChecked == true;
                             if (addToContext)
                             {
                                 AiChatImagePart? imagePart = RenderSvgToImagePart(result.SvgContent);
@@ -4661,27 +4624,10 @@ public partial class AiChatPanel : UserControl
 
                         AiChatMessage toolMessage = new(AiChatRole.Tool, resultContent)
                         {
-                            ToolCallId = toolCallId,
+                            ToolCallId = item.ToolCallId,
                             Images = toolMessageImages
                         };
                         AddMessageToHistories(requestConversationHistory, toolMessage);
-
-                        await Dispatcher.InvokeAsync(() =>
-                        {
-                            if (rawTextMode)
-                            {
-                                AppendRawTranscriptEntry(
-                                    $"Tool Result ({toolCall.FunctionName})",
-                                    result.Success ? result.Output : result.Error ?? "Unknown error",
-                                    result.Success
-                                        ? FindBrush(ThemeResourceKeys.AiChatToolCallSuccessForeground)
-                                        : FindBrush(ThemeResourceKeys.AiChatToolCallErrorForeground),
-                                    assistantContainer);
-                                return;
-                            }
-
-                            FinalizeToolCallBlock(toolCallBlock!, result);
-                        });
                     }
 
                     // If this iteration generated no text content (only thinking/tool calls),
@@ -5060,6 +5006,121 @@ public partial class AiChatPanel : UserControl
 
             return ToolCallResult.Fail($"Sub-agent execution error: {ex.Message}");
         }
+    }
+
+    /// <summary>
+    /// Holds the per-tool metadata and UI state needed to execute a tool call
+    /// in parallel with others during a single iteration.
+    /// </summary>
+    private sealed class ToolExecutionItem(
+        AiStreamToolCall toolCall,
+        string toolCallId,
+        int index,
+        ToolCallSectionVisual? toolCallBlock,
+        CancellationTokenSource? toolCancellation,
+        TextBlock? rawTextBlock)
+    {
+        public AiStreamToolCall ToolCall { get; } = toolCall;
+        public string ToolCallId { get; } = toolCallId;
+        public int Index { get; } = index;
+        public ToolCallSectionVisual? ToolCallBlock { get; } = toolCallBlock;
+        public CancellationTokenSource? ToolCancellation { get; } = toolCancellation;
+        public TextBlock? RawTextBlock { get; } = rawTextBlock;
+    }
+
+    /// <summary>
+    /// Result of executing a single tool call, captured for parallel execution.
+    /// </summary>
+    private sealed record ToolExecutionResult(int Index, ToolCallResult Result);
+
+    /// <summary>
+    /// Executes a single tool call and returns its result. Used by
+    /// <see cref="SendMessageAsync"/> to run all tool calls from one iteration
+    /// in parallel.
+    /// </summary>
+    private async Task<ToolExecutionResult> ExecuteToolAndCaptureResultAsync(
+        ToolExecutionItem item,
+        CancellationToken effectiveToolCt,
+        CancellationToken globalCt)
+    {
+        IAgentTool? tool = IsConversationToolAllowed(item.ToolCall.FunctionName)
+            ? _toolRegistry!.Get(item.ToolCall.FunctionName)
+            : null;
+
+        ToolCallResult result;
+
+        if (tool is null)
+        {
+            result = ToolCallResult.Fail($"Unknown or disallowed tool: {item.ToolCall.FunctionName}");
+        }
+        else if (string.Equals(item.ToolCall.FunctionName, "spawn_agent", StringComparison.Ordinal) &&
+                 _agentOrchestrator is not null)
+        {
+            result = await ExecuteSpawnAgentViaOrchestratorAsync(
+                item.ToolCall.ArgumentsJson,
+                effectiveToolCt).ConfigureAwait(false);
+        }
+        else if (_agentOrchestrator is not null && GetRootAgentId() is string rootId)
+        {
+            try
+            {
+                using JsonDocument? argumentsDocument = string.IsNullOrWhiteSpace(item.ToolCall.ArgumentsJson)
+                    ? null
+                    : AgentToolArgumentsParser.Parse(item.ToolCall.FunctionName, item.ToolCall.ArgumentsJson);
+
+                JsonElement args = argumentsDocument is null
+                    ? default
+                    : argumentsDocument.RootElement;
+
+                result = await _agentOrchestrator.ExecuteToolAsync(
+                    rootId,
+                    item.ToolCall.FunctionName,
+                    args,
+                    effectiveToolCt).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (globalCt.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch (OperationCanceledException)
+            {
+                result = ToolCallResult.Fail("Tool execution was cancelled.");
+            }
+            catch (Exception ex)
+            {
+                result = ToolCallResult.Fail($"Tool execution error: {ex.Message}");
+            }
+        }
+        else
+        {
+            try
+            {
+                using JsonDocument? argumentsDocument = string.IsNullOrWhiteSpace(item.ToolCall.ArgumentsJson)
+                    ? null
+                    : AgentToolArgumentsParser.Parse(item.ToolCall.FunctionName, item.ToolCall.ArgumentsJson);
+
+                JsonElement args = argumentsDocument is null
+                    ? default
+                    : argumentsDocument.RootElement;
+
+                result = await tool.ExecuteAsync(args, effectiveToolCt).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (globalCt.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch (OperationCanceledException)
+            {
+                result = ToolCallResult.Fail("Tool execution was cancelled.");
+            }
+            catch (Exception ex)
+            {
+                result = ToolCallResult.Fail($"Tool execution error: {ex.Message}");
+            }
+        }
+
+        await LogToolFailureAsync(item.ToolCall.FunctionName, item.ToolCallId, item.ToolCall.ArgumentsJson, result);
+        return new ToolExecutionResult(item.Index, result);
     }
 
     private async Task LogToolFailureAsync(string toolName, string toolCallId, string? argumentsJson, ToolCallResult result)

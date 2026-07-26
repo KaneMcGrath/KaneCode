@@ -146,23 +146,13 @@ MainWindow
 ## Tool Call Flow for `spawn_agent`
 
 ```
-1. Model emits: spawn_agent(task: "analyze this code", model: "claude-3")
-2. AiChatPanel.SendMessageAsync() tool loop intercepts "spawn_agent"
-3. ExecuteSpawnAgentViaOrchestratorAsync()
-   a. Ensures root agent exists (created with chat panel's provider/model/mode)
-   b. Parses arguments (task, displayName, provider, model, mode, etc.)
-   c. Calls AgentOrchestrator.SpawnSubAgent(rootId, ...)
-      - Creates Agent with AgentRole.SubAgent
-      - Sets parent/child links
-      - Returns the new IAgent
-   d. Calls subAgent.RunAsync(task, toolsDef, toolRegistry, fileLockManager, orchestrator, maxIterations, ct)
-      - Agent runs its own tool-calling loop independently
-      - Each write tool acquires file locks before executing
-      - Locks released on completion
-   e. rootAgent.ReceiveChildResult(subAgent.Id, result)
-   f. orchestrator.RemoveAgent(subAgent.Id) — cleanup + release locks
-   g. Returns ToolCallResult.Ok(summary) or ToolCallResult.Fail(error)
-4. Tool result fed back to model in the main chat loop
+1. Model emits: spawn_agent(task="analyze this code"), spawn_agent(task="list xaml files"), write(file="notes.txt")
+2. All three tools execute simultaneously via Task.WhenAll:
+   a. spawn_agent("analyze this code") → sub-agent runs in parallel
+   b. spawn_agent("list xaml files") → sub-agent runs in parallel
+   c. write("notes.txt") → writes file in parallel
+3. Results are collected and added to conversation in the original order
+4. Model receives all three tool results in the next iteration
 ```
 
 ---
@@ -188,11 +178,10 @@ MainWindow
 ## What's Not Done Yet (Future UI Work)
 
 1. **Agent tree visualization** — a panel showing the agent hierarchy, their status (idle/running/done), and live output from sub-agents.
-2. **Parallel sub-agent spawning** — currently `spawn_agent` runs sub-agents sequentially (blocks until done). Parallel execution would let the model spawn multiple sub-agents at once and collect results.
-3. **Agent lifecycle panel** — a debug/log panel showing agent creation, completion, file-lock activity.
-4. **Replacing the inline tool loop** — the `AiChatPanel.SendMessageAsync()` still uses its own inline loop for UI streaming. The extracted `Agent.RunWithHistoryAsync()` is available as the single backend loop; the UI would need to be reworked to use `TokenCallback` + `IterationCallback` for streaming display.
-5. **Cross-agent messaging beyond parent↔child** — the current pattern limits communication to the tree structure. A message bus could allow arbitrary agent-to-agent communication.
-6. **Agent state persistence** — sub-agents are ephemeral (created and destroyed during a single `spawn_agent` call). Long-lived sub-agents that persist across sessions could be added.
+2. **Agent lifecycle panel** — a debug/log panel showing agent creation, completion, file-lock activity.
+3. **Replacing the inline tool loop** — the `AiChatPanel.SendMessageAsync()` still uses its own inline loop for UI streaming. The extracted `Agent.RunWithHistoryAsync()` is available as the single backend loop; the UI would need to be reworked to use `TokenCallback` + `IterationCallback` for streaming display.
+4. **Cross-agent messaging beyond parent↔child** — the current pattern limits communication to the tree structure. A message bus could allow arbitrary agent-to-agent communication.
+5. **Agent state persistence** — sub-agents are ephemeral (created and destroyed during a single `spawn_agent` call). Long-lived sub-agents that persist across sessions could be added.
 
 ## Completed Since Original Implementation
 
@@ -200,6 +189,10 @@ MainWindow
 2. ✅ **Tool execution unified** — all tool calls from the main chat go through `AgentOrchestrator.ExecuteToolAsync()`, giving the main chat file-locking and consistent tool interception.
 3. ✅ **`RunWithHistoryAsync()` added** — the tool-calling loop is extracted into a single method used by both `RunAsync()` and (in the future) the main chat's streaming loop.
 4. ✅ **File-lock attribution fixed** — locks are attributed to the correct agent ID instead of hardcoded `"orchestrator"`.
+5. ✅ **Parallel tool execution** — all tool calls within a single iteration now execute concurrently via `Task.WhenAll()` in both `Agent.RunWithHistoryAsync()` and `AiChatPanel.SendMessageAsync()`. Results are collected and added to the conversation in the original order.
+   - **Backend** (`Agent.cs`): `ExecuteSingleToolCallAsync()` helper captures each tool's result independently; results are ordered by index before adding to history.
+   - **Frontend** (`AiChatPanel.cs`): Phase 1 creates all UI blocks upfront, Phase 2 runs all tools in parallel, Phase 3 finalizes blocks in order, Phase 4 adds results to conversation history.
+   - **Thread safety**: `FileLockManager` (`ConcurrentDictionary`) and `AgentOrchestrator._spawnLock` already guard concurrent access; per-tool `CancellationTokenSource` instances allow individual cancellation within the parallel batch.
 
 ---
 
@@ -210,6 +203,8 @@ MainWindow
 3. Ensure "spawn_agent" appears in the tools list (under the "Agent" category)
 4. Send a message like: "Use spawn_agent to create a sub-agent that lists all files in the project"
 5. The sub-agent should run, list files, and report back
+6. To test parallel execution: "Use spawn_agent to create two sub-agents — one that lists .cs files and another that lists .xaml files"
+7. Both sub-agents should run simultaneously, and results should appear in order
 
 ---
 
@@ -218,5 +213,6 @@ MainWindow
 - **Each agent is independent**: different provider, model, mode, and context window. This lets the root agent use a fast/cheap model while sub-agents use more capable models for complex tasks.
 - **Parent-child communication only by default**: keeps the architecture simple and prevents chaotic message routing. Can be relaxed later.
 - **File-lock manager is shared**: all agents in an orchestrator share one `FileLockManager` to prevent conflicting edits regardless of tree position.
-- **Lazy root agent creation**: the root agent isn't created until the first `spawn_agent` call, so existing chat functionality is completely unaffected until sub-agents are used.
+- **Eager root agent creation**: the root agent is created at startup so it's always available for tool execution routing and session display.
+- **Parallel tool execution**: all tool calls from a single model response execute concurrently via `Task.WhenAll`. Results are ordered by their original tool-call index before being added to the conversation. This means multiple `spawn_agent` calls (or a mix of `spawn_agent`, `read`, `write`, etc.) run simultaneously.
 - **Tool loop extracted but not yet used for root**: the `Agent.RunAsync()` method contains the full tool-calling loop, but `AiChatPanel` still uses its own inline loop. This was intentional to minimize risk — the extracted loop is battle-tested by sub-agents first.
