@@ -4356,7 +4356,8 @@ public partial class AiChatPanel : UserControl
                             continue;
                         }
 
-                        bool isFirstBlockForIndex = !toolCallBlocks.ContainsKey(toolCall.Index);
+                        bool isFirstBlockForIndex = !toolCallBlocks.ContainsKey(toolCall.Index)
+                            && !spawnSections.ContainsKey(toolCall.Index);
 
                         if (isFirstBlockForIndex)
                         {
