@@ -484,6 +484,59 @@ public partial class AiChatPanel : UserControl
         _provider = provider;
         _model = model;
         UpdateSvgToContextCheckBox();
+        SyncRootAgentConfig();
+    }
+
+    /// <summary>
+    /// Synchronizes the root agent with the chat panel's current provider, model,
+    /// and mode. Recreates the root agent if any of these have changed. Called
+    /// whenever the user switches provider, model, or mode.
+    /// </summary>
+    private void SyncRootAgentConfig()
+    {
+        if (_agentOrchestrator is null)
+        {
+            return;
+        }
+
+        Services.Ai.Agents.IAgent? currentRoot = _agentOrchestrator.RootAgent;
+        IAiProvider? provider = _provider ?? _providerRegistry?.ActiveProvider;
+        IAiChatMode? mode = _activeMode ?? _modeRegistry?.Default;
+        string model = _model ?? provider?.AvailableModels.FirstOrDefault() ?? "default";
+
+        if (provider is null || !provider.IsConfigured || mode is null)
+        {
+            return;
+        }
+
+        // Check if the current root agent already matches
+        if (currentRoot is not null &&
+            ReferenceEquals(currentRoot.Provider, provider) &&
+            string.Equals(currentRoot.Model, model, StringComparison.Ordinal) &&
+            ReferenceEquals(currentRoot.Mode, mode))
+        {
+            return;
+        }
+
+        // Remove the old root agent (and its descendants)
+        if (currentRoot is not null)
+        {
+            if (_viewingAgentId is not null)
+            {
+                SwitchToNormalView();
+            }
+
+            _agentOrchestrator.RemoveAgent(currentRoot.Id);
+        }
+
+        // Create a new root agent with the current config
+        string rootId = $"root_{Guid.NewGuid():N}";
+        _agentOrchestrator.CreateRootAgent(
+            rootId,
+            "Main Chat",
+            provider,
+            model,
+            mode);
     }
 
     /// <summary>
@@ -631,6 +684,21 @@ public partial class AiChatPanel : UserControl
     {
         // Dispatch to UI thread since this event may come from a background context
         Dispatcher.BeginInvoke(() => RefreshAgentSessions());
+    }
+
+    /// <summary>
+    /// Returns the root agent ID if the orchestrator has a root agent, or null.
+    /// Used by <see cref="SendMessageAsync"/> to delegate tool execution to the
+    /// orchestrator (file-locking, spawn_agent interception).
+    /// </summary>
+    private string? GetRootAgentId()
+    {
+        if (_agentOrchestrator?.RootAgent is { } rootAgent)
+        {
+            return rootAgent.Id;
+        }
+
+        return null;
     }
 
     /// <summary>
@@ -1351,6 +1419,7 @@ public partial class AiChatPanel : UserControl
         AppendSystemMessage($"Switched to {mode.DisplayName} mode.");
         RefreshToolsCheckboxPanel();
         RefreshContextWindowDisplay();
+        SyncRootAgentConfig();
     }
 
     /// <summary>
@@ -3493,6 +3562,7 @@ public partial class AiChatPanel : UserControl
 
         _model = selectedModel;
         UpdateModelPickerButtonText();
+        SyncRootAgentConfig();
 
         if (_provider is not null && _providerRegistry is not null)
         {
@@ -3802,6 +3872,7 @@ public partial class AiChatPanel : UserControl
             AppendSystemMessage($"Switched to {mode.DisplayName} mode.");
             RefreshToolsCheckboxPanel();
             RefreshContextWindowDisplay();
+            SyncRootAgentConfig();
         }
         else if (ModeSelector.SelectedItem is ModeDropdownPresetItem presetItem)
         {
@@ -3810,6 +3881,7 @@ public partial class AiChatPanel : UserControl
             AppendSystemMessage($"Switched to preset \"{presetItem.Preset.Name}\" mode.");
             RefreshToolsCheckboxPanel();
             RefreshContextWindowDisplay();
+            SyncRootAgentConfig();
         }
         else if (ModeSelector.SelectedItem is ModeDropdownActionItem actionItem)
         {
@@ -4486,7 +4558,7 @@ public partial class AiChatPanel : UserControl
                         {
                             result = ToolCallResult.Fail($"Unknown or disallowed tool: {toolCall.FunctionName}");
                         }
-                        // Delegate spawn_agent to the multi-agent orchestrator
+                        // Delegate spawn_agent to the multi-agent orchestrator with UI callbacks
                         else if (string.Equals(toolCall.FunctionName, "spawn_agent", StringComparison.Ordinal) &&
                                  _agentOrchestrator is not null)
                         {
@@ -4494,8 +4566,43 @@ public partial class AiChatPanel : UserControl
                                 toolCall.ArgumentsJson,
                                 effectiveToolCt).ConfigureAwait(false);
                         }
+                        // Route all other tools through the orchestrator for file-lock awareness
+                        else if (_agentOrchestrator is not null && GetRootAgentId() is string rootId)
+                        {
+                            try
+                            {
+                                using JsonDocument? argumentsDocument = string.IsNullOrWhiteSpace(toolCall.ArgumentsJson)
+                                    ? null
+                                    : AgentToolArgumentsParser.Parse(toolCall.FunctionName, toolCall.ArgumentsJson);
+
+                                JsonElement args = argumentsDocument is null
+                                    ? default
+                                    : argumentsDocument.RootElement;
+
+                                result = await _agentOrchestrator.ExecuteToolAsync(
+                                    rootId,
+                                    toolCall.FunctionName,
+                                    args,
+                                    effectiveToolCt).ConfigureAwait(false);
+                            }
+                            catch (OperationCanceledException) when (ct.IsCancellationRequested)
+                            {
+                                // Global stream cancellation — stop the whole loop
+                                throw;
+                            }
+                            catch (OperationCanceledException)
+                            {
+                                // Per-tool cancellation (e.g. user clicked stop on "run")
+                                result = ToolCallResult.Fail("Tool execution was cancelled.");
+                            }
+                            catch (Exception ex)
+                            {
+                                result = ToolCallResult.Fail($"Tool execution error: {ex.Message}");
+                            }
+                        }
                         else
                         {
+                            // Fallback: direct tool execution (no orchestrator)
                             try
                             {
                                 using JsonDocument? argumentsDocument = string.IsNullOrWhiteSpace(toolCall.ArgumentsJson)
@@ -4711,28 +4818,15 @@ public partial class AiChatPanel : UserControl
             return ToolCallResult.Fail("The multi-agent orchestrator is not initialized.");
         }
 
-        // Ensure a root agent exists (lazy initialization)
+        // The root agent is created eagerly by MainWindow.EnsureRootAgent().
+        // If it doesn't exist, something went wrong during initialization.
         if (_agentOrchestrator.RootAgent is null)
         {
-            IAiProvider? provider = _provider ?? _providerRegistry?.ActiveProvider;
-            if (provider is null || _activeMode is null)
-            {
-                return ToolCallResult.Fail("No AI provider or mode configured — cannot create root agent.");
-            }
-
-            string model = _model ?? provider.AvailableModels.FirstOrDefault() ?? "default";
-            string rootId = $"root_{Guid.NewGuid():N}";
-            _agentOrchestrator.CreateRootAgent(
-                rootId,
-                "Main Chat",
-                provider,
-                model,
-                _activeMode);
+            return ToolCallResult.Fail("Root agent not initialized. Ensure an AI provider is configured.");
         }
 
         // Parse arguments to get the task
         string? task = null;
-        IAgent? rootAgent = _agentOrchestrator.RootAgent;
 
         try
         {
@@ -4757,21 +4851,6 @@ public partial class AiChatPanel : UserControl
             return ToolCallResult.Fail("The 'task' parameter is required for spawn_agent.");
         }
 
-        // Use the orchestrator's internal spawn logic by calling the spawn_agent tool on the root agent.
-        // The orchestrator intercepts spawn_agent and handles sub-agent lifecycle.
-        // We do this by calling the orchestrator's tool execution directly.
-        IAgentTool? spawnTool = _toolRegistry?.Get("spawn_agent");
-        if (spawnTool is null)
-        {
-            return ToolCallResult.Fail("The spawn_agent tool is not registered.");
-        }
-
-        // The orchestrator handles spawn_agent via its ToolExecutionInterceptor,
-        // so we need to route through the orchestrator. We'll create a temporary
-        // Agent wrapper to trigger the orchestrator's spawn logic.
-        // 
-        // Actually, the simplest approach: parse the args and directly use the
-        // orchestrator's SpawnSubAgent + RunAsync pattern.
         return await ExecuteSpawnAgentInternalAsync(task, argumentsJson, cancellationToken)
             .ConfigureAwait(false);
     }

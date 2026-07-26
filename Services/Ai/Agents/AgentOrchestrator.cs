@@ -201,7 +201,7 @@ internal sealed class AgentOrchestrator : IDisposable
         }
 
         // Acquire file locks for write tools
-        FileLockResult? lockResult = AcquireFileLockIfNeeded(toolName, args);
+        FileLockResult? lockResult = AcquireFileLockIfNeeded(toolName, args, agent.Id);
         if (lockResult is not null && !lockResult.Acquired)
         {
             return ToolCallResult.Conflict(
@@ -223,6 +223,30 @@ internal sealed class AgentOrchestrator : IDisposable
         {
             return ToolCallResult.Fail($"Tool execution error: {ex.Message}");
         }
+    }
+
+    /// <summary>
+    /// Public entry point for tool execution used by the main AI chat panel.
+    /// Delegates to <see cref="OnToolExecution"/> for file-locking and
+    /// spawn_agent interception. The <paramref name="agentId"/> is used to
+    /// look up the agent whose mode/permissions apply.
+    /// </summary>
+    public async Task<ToolCallResult> ExecuteToolAsync(
+        string agentId,
+        string toolName,
+        JsonElement args,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(agentId);
+
+        IAgent? agent = GetAgent(agentId);
+        if (agent is not Agent agentImpl)
+        {
+            return ToolCallResult.Fail($"Agent '{agentId}' not found or is not an Agent instance.");
+        }
+
+        return await OnToolExecution(agentImpl, toolName, args, cancellationToken)
+            .ConfigureAwait(false);
     }
 
     // ── spawn_agent tool ────────────────────────────────────────────
@@ -491,7 +515,7 @@ internal sealed class AgentOrchestrator : IDisposable
         }
     }
 
-    private FileLockResult? AcquireFileLockIfNeeded(string toolName, JsonElement args)
+    private FileLockResult? AcquireFileLockIfNeeded(string toolName, JsonElement args, string agentId)
     {
         string? filePath = ExtractFilePath(toolName, args);
         if (filePath is null)
@@ -499,7 +523,7 @@ internal sealed class AgentOrchestrator : IDisposable
             return null;
         }
 
-        return FileLockManager.TryAcquireWriteLockWithResult(filePath, "orchestrator");
+        return FileLockManager.TryAcquireWriteLockWithResult(filePath, agentId);
     }
 
     private static string? ExtractFilePath(string toolName, JsonElement args)

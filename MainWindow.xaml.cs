@@ -418,6 +418,50 @@ public partial class MainWindow : Window
         AiChatPanel.SetExternalContextDirectoryRegistry(_externalContextDirectoryRegistry);
         AiDebugPanel.ToolFailures = _aiDebugLogService.ToolFailures;
         AiDebugPanel.SetDebugLogService(_aiDebugLogService);
+
+        // Create the root agent eagerly so the main AI chat session is always
+        // backed by the orchestrator. This ensures tool execution (file-locking,
+        // spawn_agent interception) is consistent between the main chat and
+        // sub-agents.
+        EnsureRootAgent();
+    }
+
+    /// <summary>
+    /// Creates the root agent in the orchestrator if it doesn't already exist.
+    /// Called whenever the provider or model changes so the root agent always
+    /// mirrors the chat panel's current configuration.
+    /// </summary>
+    private void EnsureRootAgent()
+    {
+        IAiProvider? provider = _aiProviderRegistry.ActiveProvider;
+        if (provider is null || !provider.IsConfigured)
+        {
+            return;
+        }
+
+        // If the root agent already exists, synchronize its config with the panel
+        if (_agentOrchestrator.RootAgent is not null)
+        {
+            return;
+        }
+
+        // Use the default mode (Application) for the initial root agent.
+        // The panel's SwitchToMode will update this when a mode is selected.
+        IAiChatMode defaultMode = _aiChatModeRegistry.Default
+            ?? _aiChatModeRegistry.Get("application")
+            ?? _aiChatModeRegistry.Modes.FirstOrDefault()
+            ?? throw new InvalidOperationException("No AI chat modes registered.");
+
+        AiProviderSettings? settings = _aiProviderRegistry.GetSettings(provider);
+        string model = Controls.AiChatPanel.SelectModel(provider.AvailableModels, settings?.SelectedModel) ?? "default";
+        string rootId = $"root_{Guid.NewGuid():N}";
+
+        _agentOrchestrator.CreateRootAgent(
+            rootId,
+            "Main Chat",
+            provider,
+            model,
+            defaultMode);
     }
 
     /// <summary>

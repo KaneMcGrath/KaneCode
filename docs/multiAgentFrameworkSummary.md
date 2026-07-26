@@ -12,6 +12,8 @@ This branch introduces a multi-agent / sub-agent framework backend for KaneCode.
 
 The framework is wired into the existing `AiChatPanel` and `MainWindow` so that `spawn_agent` tool calls are intercepted and delegated to the orchestrator without breaking the existing chat flow.
 
+**The root agent is now created eagerly** when the AI provider is configured, and **all tool execution from the main chat panel is routed through the `AgentOrchestrator`**. This ensures file-locking and tool interception apply consistently to the main chat and all sub-agents.
+
 ---
 
 ## Files Created
@@ -97,18 +99,26 @@ public static ToolCallResult Conflict(string message) => new()
 ```
 This allows write tools to report file-lock conflicts back to the model with a distinctive prefix so the model can recognize and retry.
 
+### `Services/Ai/Agents/IAgent.cs`
+Added `RunWithHistoryAsync()` method — runs the tool-calling loop on a pre-built conversation history without adding a user message or building initial request history. This is the single backend used by both `RunAsync()` and the main AI chat panel.
+
+### `Services/Ai/Agents/Agent.cs`
+- **Refactored `RunAsync()`** to delegate to `RunWithHistoryAsync()`, eliminating duplicated tool-loop logic.
+- **Implemented `RunWithHistoryAsync()`** — the canonical tool-calling loop that accepts a pre-built `List<AiChatMessage>`. Messages are appended to both the internal `_messages` list and the provided request history.
+
+### `Services/Ai/Agents/AgentOrchestrator.cs`
+- **Added `ExecuteToolAsync()`** — public entry point for tool execution used by `AiChatPanel.SendMessageAsync()`. Delegates to `OnToolExecution()` for file-locking and spawn_agent interception.
+- **Fixed `AcquireFileLockIfNeeded()`** — now accepts the agent ID instead of a hardcoded `"orchestrator"` string, so file locks are correctly attributed to the calling agent.
+
 ### `MainWindow.xaml.cs`
-Three changes:
-1. **New field**: `AgentOrchestrator _agentOrchestrator` — initialized in the constructor after the provider/tool/mode registries.
-2. **SpawnAgentTool registration**: added `_agentToolRegistry.Register(new SpawnAgentTool())` at the end of `RegisterAgentTools()`.
-3. **Wiring**: `AiChatPanel.SetOrchestrator(_agentOrchestrator)` called in `ConfigureAiChatPanel()`.
+- **Added `EnsureRootAgent()`** — creates the root agent eagerly in `ConfigureAiChatPanel()` so it exists before any chat messages are sent. Uses the default mode and active provider/model.
+- **Removed lazy root agent creation** from the chat flow (was previously in `ExecuteSpawnAgentViaOrchestratorAsync`).
 
 ### `Controls/AiChatPanel.xaml.cs`
-Four changes:
-1. **New field**: `AgentOrchestrator? _agentOrchestrator` — nullable; set via `SetOrchestrator()`.
-2. **`SetOrchestrator()` method**: stores the orchestrator reference.
-3. **Interception in `SendMessageAsync()`**: in the tool-execution path, `spawn_agent` calls are detected and routed to `ExecuteSpawnAgentViaOrchestratorAsync()` instead of normal tool execution.
-4. **`ExecuteSpawnAgentViaOrchestratorAsync()` + `ExecuteSpawnAgentInternalAsync()`**: these methods lazily create a root agent (using the chat panel's current provider/model/mode), parse the spawn arguments, call `SpawnSubAgent()` + `RunAsync()` on the orchestrator, feed the result back to the root agent, and clean up the sub-agent.
+- **Added `GetRootAgentId()`** helper — returns the orchestrator's root agent ID for tool execution routing.
+- **Added `SyncRootAgentConfig()`** — recreates the root agent when provider, model, or mode changes. Called from `Configure()`, `ModeSelector_SelectionChanged`, `SwitchToMode()`, and `ModelListBox_SelectionChanged`.
+- **Updated `SendMessageAsync()` tool execution** — all non-spawn_agent tool calls now route through `_agentOrchestrator.ExecuteToolAsync()` instead of direct `tool.ExecuteAsync()`. This gives the main chat file-lock awareness consistent with sub-agents.
+- **Simplified `ExecuteSpawnAgentViaOrchestratorAsync()`** — removed the lazy root agent creation block since the root now exists eagerly.
 
 ---
 
@@ -118,14 +128,16 @@ Four changes:
 MainWindow
   ├── AgentOrchestrator
   │     ├── FileLockManager (shared)
-  │     ├── RootAgent (lazy, mirrors AiChatPanel config)
+  │     ├── RootAgent (eager, mirrors AiChatPanel config)
   │     │     └── SubAgent (spawned on demand)
   │     │           └── SubAgent (nested, if needed)
-  │     └── AgentToolRegistry (shared)
+  │     ├── AgentToolRegistry (shared)
+  │     └── ExecuteToolAsync() — public entry for main chat tool execution
   │
   └── AiChatPanel
         ├── AgentOrchestrator reference
-        ├── Existing tool loop (unchanged, still works)
+        ├── Existing chat loop (preserved for UI streaming)
+        ├── Tool execution → delegates to AgentOrchestrator.ExecuteToolAsync()
         └── spawn_agent interception → delegates to orchestrator
 ```
 
@@ -178,9 +190,16 @@ MainWindow
 1. **Agent tree visualization** — a panel showing the agent hierarchy, their status (idle/running/done), and live output from sub-agents.
 2. **Parallel sub-agent spawning** — currently `spawn_agent` runs sub-agents sequentially (blocks until done). Parallel execution would let the model spawn multiple sub-agents at once and collect results.
 3. **Agent lifecycle panel** — a debug/log panel showing agent creation, completion, file-lock activity.
-4. **Replacing the inline tool loop** — the `AiChatPanel.SendMessageAsync()` still uses its own tool loop. Eventually the root agent's `RunAsync()` could replace it entirely, but this is a larger refactor.
+4. **Replacing the inline tool loop** — the `AiChatPanel.SendMessageAsync()` still uses its own inline loop for UI streaming. The extracted `Agent.RunWithHistoryAsync()` is available as the single backend loop; the UI would need to be reworked to use `TokenCallback` + `IterationCallback` for streaming display.
 5. **Cross-agent messaging beyond parent↔child** — the current pattern limits communication to the tree structure. A message bus could allow arbitrary agent-to-agent communication.
 6. **Agent state persistence** — sub-agents are ephemeral (created and destroyed during a single `spawn_agent` call). Long-lived sub-agents that persist across sessions could be added.
+
+## Completed Since Original Implementation
+
+1. ✅ **Root agent created eagerly** — the root agent now exists from startup, not just when `spawn_agent` is first called.
+2. ✅ **Tool execution unified** — all tool calls from the main chat go through `AgentOrchestrator.ExecuteToolAsync()`, giving the main chat file-locking and consistent tool interception.
+3. ✅ **`RunWithHistoryAsync()` added** — the tool-calling loop is extracted into a single method used by both `RunAsync()` and (in the future) the main chat's streaming loop.
+4. ✅ **File-lock attribution fixed** — locks are attributed to the correct agent ID instead of hardcoded `"orchestrator"`.
 
 ---
 

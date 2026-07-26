@@ -113,6 +113,31 @@ internal sealed class Agent : IAgent
         // Build the request history (with system prompt if configured)
         List<AiChatMessage> requestHistory = BuildInitialRequestHistory(toolsDef);
 
+        return await RunWithHistoryAsync(
+            requestHistory, toolsDef, toolRegistry, fileLockManager, orchestrator, maxIterations, cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    /// <inheritdoc />
+    public async Task<AgentRunResult> RunWithHistoryAsync(
+        List<AiChatMessage> requestHistory,
+        JsonElement toolsDef,
+        AgentToolRegistry toolRegistry,
+        FileLockManager fileLockManager,
+        AgentOrchestrator orchestrator,
+        int maxIterations,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(requestHistory);
+        ArgumentNullException.ThrowIfNull(toolRegistry);
+        ArgumentNullException.ThrowIfNull(fileLockManager);
+        ArgumentNullException.ThrowIfNull(orchestrator);
+
+        if (maxIterations < 1)
+        {
+            throw new ArgumentOutOfRangeException(nameof(maxIterations), "Max iterations must be at least 1.");
+        }
+
         int totalToolCallCount = 0;
         AiUsageStats? mergedUsageStats = null;
 
@@ -130,7 +155,7 @@ internal sealed class Agent : IAgent
             System.Text.StringBuilder reasoningBuilder = new();
             Dictionary<int, AiStreamToolCall> streamedToolCalls = new();
 
-            bool streamResponses = true; // Default to streaming; sub-agents may want to disable
+            bool streamResponses = true;
 
             await foreach (AiStreamToken token in Provider.StreamCompletionAsync(
                 requestHistory,

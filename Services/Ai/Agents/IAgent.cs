@@ -87,6 +87,37 @@ internal interface IAgent
         CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Runs the agent's tool-calling loop with a pre-built conversation history.
+    /// Unlike <see cref="RunAsync"/>, this does not add a user message or build
+    /// an initial request history — the caller provides the full history.
+    /// Messages (assistant, tool) are appended to both the internal
+    /// <see cref="Messages"/> list and the provided <paramref name="requestHistory"/>.
+    ///
+    /// This is used by the main AI chat panel so that context-window trimming,
+    /// system-prompt merging, and image injection happen once in the caller, then
+    /// the agent handles only the tool-calling loop.
+    /// </summary>
+    /// <param name="requestHistory">
+    /// The full conversation history to send. Must end with a user message.
+    /// Mutated in-place — assistant and tool messages are appended during the loop.
+    /// </param>
+    /// <param name="toolsDef">Pre-serialized tool definitions to send.</param>
+    /// <param name="toolRegistry">The tool registry for executing tool calls.</param>
+    /// <param name="fileLockManager">The shared file lock manager for concurrent edits.</param>
+    /// <param name="orchestrator">The orchestrator (for spawning sub-agents).</param>
+    /// <param name="maxIterations">Maximum number of tool-call loop iterations.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>The result of the agent run.</returns>
+    Task<AgentRunResult> RunWithHistoryAsync(
+        List<AiChatMessage> requestHistory,
+        JsonElement toolsDef,
+        AgentToolRegistry toolRegistry,
+        FileLockManager fileLockManager,
+        AgentOrchestrator orchestrator,
+        int maxIterations,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Adds a message to this agent's conversation history.
     /// </summary>
     void AddMessage(AiChatMessage message);
