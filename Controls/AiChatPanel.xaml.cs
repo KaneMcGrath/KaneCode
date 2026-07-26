@@ -2710,16 +2710,52 @@ public partial class AiChatPanel : UserControl
                 break;
 
             case AiStreamTokenType.ToolCall:
-                // Sub-agent tool calls are rendered in the content area when
-                // the tool completes; during streaming we just note it in the header.
-                if (token.ToolCall is { } toolCall)
+                // Create a mini tool-call section for each sub-agent tool call
+                if (token.ToolCall is { } toolCall && !string.IsNullOrWhiteSpace(toolCall.FunctionName))
                 {
-                    string note = !string.IsNullOrWhiteSpace(toolCall.FunctionName)
-                        ? $"  •  {toolCall.FunctionName}..."
-                        : "  •  tool call...";
-                    SetInlineSectionHeaderNoPinnedUpdate(
-                        ctx.Section,
-                        $"Sub-agent: {ctx.DisplayName}{note}");
+                    if (!ctx.SubToolCallBlocks.TryGetValue(toolCall.Index, out ToolCallSectionVisual? subBlock))
+                    {
+                        Brush toolBg = FindBrush(ThemeResourceKeys.AiChatToolCallBackground);
+                        Brush toolContentBg = FindBrush(ThemeResourceKeys.AiChatToolCallContentBackground);
+                        Brush toolFg = FindBrush(ThemeResourceKeys.AiChatToolCallForeground);
+                        Brush toolBorder = FindBrush(ThemeResourceKeys.AiChatToolCallBorder);
+
+                        StreamSectionVisual section = CreateInlineSection(
+                            $"🔧 {toolCall.FunctionName}...",
+                            toolBg,
+                            toolContentBg,
+                            toolFg,
+                            toolBorder,
+                            ctx.Section.ContentPanel,
+                            insertBefore: null,
+                            streamingContentForeground: FindBrush("AiChatStreamingContentForeground"),
+                            stopButton: null);
+
+                        TextBlock argsBlock = new()
+                        {
+                            TextWrapping = TextWrapping.Wrap,
+                            Foreground = toolFg,
+                            FontSize = 10,
+                            FontFamily = new FontFamily("Cascadia Code, Consolas, Courier New")
+                        };
+                        section.ContentPanel.Children.Add(argsBlock);
+
+                        ChunkedTextPresenter argsPresenter = new(
+                            section.ContentPanel,
+                            toolFg,
+                            new FontFamily("Cascadia Code, Consolas, Courier New"),
+                            10);
+
+                        subBlock = new ToolCallSectionVisual(section, argsPresenter, argsBlock, toolCall.FunctionName, toolCall.ArgumentsJson);
+                        ctx.SubToolCallBlocks[toolCall.Index] = subBlock;
+
+                        SetInlineSectionExpanded(section, isExpanded: false);
+                    }
+                    else
+                    {
+                        // Update the streaming arguments
+                        UpdateToolCallBlock(subBlock, toolCall.FunctionName, toolCall.ArgumentsJson);
+                    }
                 }
                 break;
         }
@@ -2747,6 +2783,56 @@ public partial class AiChatPanel : UserControl
                     ? $"Thought for {ctx.ReasoningTokenCount:N0} tokens"
                     : "Thought");
         }
+
+        // Finalize any pending sub-tool-call blocks
+        foreach (ToolCallSectionVisual block in ctx.SubToolCallBlocks.Values)
+        {
+            if (block.Section.HeaderText.Text.EndsWith("...", StringComparison.Ordinal))
+            {
+                SetInlineSectionHeaderNoPinnedUpdate(
+                    block.Section,
+                    block.Section.HeaderText.Text.Replace("...", " ✓", StringComparison.Ordinal));
+            }
+        }
+    }
+
+    /// <summary>
+    /// Called at the start of each sub-agent iteration to preserve the
+    /// previous thinking/tool-call sections and reset for the new iteration.
+    /// </summary>
+    private void BeginSpawnAgentIteration(SpawnAgentInlineContext ctx)
+    {
+        // Finalize the previous thinking section header
+        if (ctx.ThinkingSection is not null && ctx.HasThinking)
+        {
+            SetInlineSectionHeaderNoPinnedUpdate(
+                ctx.ThinkingSection,
+                ctx.ReasoningTokenCount > 0
+                    ? $"Thought for {ctx.ReasoningTokenCount:N0} tokens"
+                    : "Thought");
+        }
+
+        // Finalize any pending tool-call blocks (they completed in the previous iteration)
+        foreach (ToolCallSectionVisual block in ctx.SubToolCallBlocks.Values)
+        {
+            if (block.Section.HeaderText.Text.EndsWith("...", StringComparison.Ordinal))
+            {
+                SetInlineSectionHeaderNoPinnedUpdate(
+                    block.Section,
+                    block.Section.HeaderText.Text.Replace("...", " ✓", StringComparison.Ordinal));
+            }
+        }
+
+        // Reset for the new iteration
+        ctx.ThinkingSection = null;
+        ctx.ThinkingPresenter = null;
+        ctx.ReasoningBuilder.Clear();
+        ctx.ReasoningTokenCount = 0;
+        ctx.HasThinking = false;
+        ctx.ResponseBuilder.Clear();
+        ctx.ContentTokenCount = 0;
+        ctx.HasContent = false;
+        ctx.SubToolCallBlocks.Clear();
     }
 
     private void RenderAgentStreamToken(string agentId, AiStreamToken token)
@@ -5069,6 +5155,9 @@ public partial class AiChatPanel : UserControl
                 System.Windows.Threading.Dispatcher dispatcher = Dispatcher;
                 string agentId = agentImpl.Id;
 
+                // Capture the spawn context for inline iteration/token callbacks
+                SpawnAgentInlineContext? capturedSpawnContext = spawnContext;
+
                 agentImpl.IterationCallback = async (_, _) =>
                 {
                     // Dispatch a re-render of the agent's messages if the user
@@ -5082,6 +5171,13 @@ public partial class AiChatPanel : UserControl
                             _agentStreamingStates.Remove(agentId);
                             RefreshAgentViewMessages(currentAgent);
                         }
+
+                        // Reset the inline spawn section for the new iteration
+                        // (finalize previous thinking/tool-call headers, clear builders)
+                        if (capturedSpawnContext is not null)
+                        {
+                            BeginSpawnAgentIteration(capturedSpawnContext);
+                        }
                     });
                 };
 
@@ -5092,7 +5188,6 @@ public partial class AiChatPanel : UserControl
                 // callback for each token — we just need to render them.
                 // If an inline spawn context is provided, tokens are also
                 // streamed into the spawn_agent tool section in the main chat.
-                SpawnAgentInlineContext? capturedSpawnContext = spawnContext;
                 agentImpl.TokenCallback = (agent, token) =>
                 {
                     dispatcher.BeginInvoke(() =>
@@ -5231,6 +5326,9 @@ public partial class AiChatPanel : UserControl
         public int ContentTokenCount { get; set; }
         public bool HasContent { get; set; }
         public bool HasThinking { get; set; }
+
+        /// <summary>Sub-agent tool-call sections keyed by their stream index.</summary>
+        public Dictionary<int, ToolCallSectionVisual> SubToolCallBlocks { get; } = new();
 
         public SpawnAgentInlineContext(
             StreamSectionVisual section,
