@@ -277,6 +277,9 @@ public partial class MainWindow : Window
         GitChangesPanel.AcceptCurrentConflictRequested -= GitChangesPanel_AcceptCurrentConflictRequested;
         GitChangesPanel.AcceptIncomingConflictRequested -= GitChangesPanel_AcceptIncomingConflictRequested;
         GitChangesPanel.AcceptBothConflictRequested -= GitChangesPanel_AcceptBothConflictRequested;
+        AiChatPanel.AgentOrchestratorRequested -= AiChatPanel_AgentOrchestratorRequested;
+        AgentOrchestratorPanel.AgentSelected -= AgentOrchestratorPanel_AgentSelected;
+        _agentOrchestrator.Dispose();
         CloseQuickInfoPopup();
         _viewModel.Dispose();
         _templateEngine.Dispose();
@@ -323,6 +326,17 @@ public partial class MainWindow : Window
             // so the AI can inspect files, gather diagnostics, and make edits.
             AiChatPanel.SwitchToMode("agent");
         }
+    }
+
+    private void AiChatPanel_AgentOrchestratorRequested()
+    {
+        ShowLayoutAnchorable(AgentOrchestratorAnchorable);
+    }
+
+    private void AgentOrchestratorPanel_AgentSelected(Services.Ai.Agents.IAgent agent)
+    {
+        AiChatPanel.SelectAgentFromOrchestrator(agent);
+        ShowLayoutAnchorable(AiChatAnchorable);
     }
 
     private void ViewMenuPanel_Click(object? sender, RoutedEventArgs e)
@@ -415,6 +429,11 @@ public partial class MainWindow : Window
         AiChatPanel.SetToolRegistry(_agentToolRegistry);
         AiChatPanel.SetModeRegistry(_aiChatModeRegistry);
         AiChatPanel.SetOrchestrator(_agentOrchestrator);
+        AgentOrchestratorPanel.SetOrchestrator(_agentOrchestrator);
+        AiChatPanel.AgentOrchestratorRequested -= AiChatPanel_AgentOrchestratorRequested;
+        AiChatPanel.AgentOrchestratorRequested += AiChatPanel_AgentOrchestratorRequested;
+        AgentOrchestratorPanel.AgentSelected -= AgentOrchestratorPanel_AgentSelected;
+        AgentOrchestratorPanel.AgentSelected += AgentOrchestratorPanel_AgentSelected;
         AiChatPanel.SetExternalContextDirectoryRegistry(_externalContextDirectoryRegistry);
         AiDebugPanel.ToolFailures = _aiDebugLogService.ToolFailures;
         AiDebugPanel.SetDebugLogService(_aiDebugLogService);

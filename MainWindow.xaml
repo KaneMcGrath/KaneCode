@@ -128,6 +128,9 @@ ResizeMode="CanResizeWithGrip">
                 <MenuItem Header="_AI Chat"
                           Tag="{Binding ElementName=AiChatAnchorable}"
                           Click="ViewMenuPanel_Click" />
+                <MenuItem Header="_Agent Orchestrator"
+                          Tag="{Binding ElementName=AgentOrchestratorAnchorable}"
+                          Click="ViewMenuPanel_Click" />
                  <MenuItem Header="AI _Debug"
                            Tag="{Binding ElementName=AiDebugAnchorable}"
                            Click="ViewMenuPanel_Click" />
@@ -592,6 +595,13 @@ ResizeMode="CanResizeWithGrip">
                     </avalonDock:LayoutPanel>
 
                     <avalonDock:LayoutAnchorablePane DockWidth="1.5*">
+                        <avalonDock:LayoutAnchorable x:Name="AgentOrchestratorAnchorable" Title="Agent Orchestrator"
+                                                     CanClose="False"
+                                                     CanHide="True"
+                                                     CanAutoHide="True"
+                                                     ContentId="AgentOrchestratorPane">
+                            <controls:AgentOrchestratorPanel x:Name="AgentOrchestratorPanel" />
+                        </avalonDock:LayoutAnchorable>
                         <avalonDock:LayoutAnchorable x:Name="AiChatAnchorable" Title="AI Chat"
                                                      CanClose="False"
                                                      CanHide="True"

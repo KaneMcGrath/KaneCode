@@ -81,6 +81,7 @@ internal sealed class AgentOrchestrator : IDisposable
 
         RegisterAgent(agent);
         RootAgent = agent;
+        AgentChanged?.Invoke(this, new AgentEventArgs(agent, AgentEventType.Created));
         return agent;
     }
 

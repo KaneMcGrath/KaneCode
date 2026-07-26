@@ -49,6 +49,9 @@ public partial class AiChatPanel : UserControl
     private ExternalContextDirectoryRegistry? _externalContextDirectoryRegistry;
     private Services.Ai.Agents.AgentOrchestrator? _agentOrchestrator;
 
+    /// <summary>Raised when the chat requests that the orchestrator panel be shown.</summary>
+    internal event Action? AgentOrchestratorRequested;
+
     /// <summary>
     /// When non-null, the chat panel is displaying the conversation of a specific
     /// agent (identified by this ID) rather than the normal <see cref="AiConversation"/>.
@@ -2994,6 +2997,23 @@ public partial class AiChatPanel : UserControl
     private void BackToChatButton_Click(object sender, RoutedEventArgs e)
     {
         SwitchToNormalView();
+    }
+
+    private void AgentOrchestratorButton_Click(object sender, RoutedEventArgs e)
+    {
+        AgentOrchestratorRequested?.Invoke();
+    }
+
+    internal void SelectAgentFromOrchestrator(Services.Ai.Agents.IAgent agent)
+    {
+        ArgumentNullException.ThrowIfNull(agent);
+        if (agent.Role == Services.Ai.Agents.AgentRole.Root)
+        {
+            SwitchToNormalView();
+            return;
+        }
+
+        SwitchToAgentView(agent);
     }
 
     /// <summary>
