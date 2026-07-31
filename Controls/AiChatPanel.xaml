@@ -70,19 +70,6 @@
                             BorderThickness="1"
                             Cursor="Hand"
                             ToolTip="Start a new AI conversation" />
-                    <Button x:Name="AgentOrchestratorButton"
-                            Content="Agents"
-                            Click="AgentOrchestratorButton_Click"
-                            Padding="6,2"
-                            Margin="6,0,0,0"
-                            FontSize="11"
-                            VerticalAlignment="Center"
-                            Foreground="{DynamicResource AiChatForeground}"
-                            Background="{DynamicResource AiChatInputBackground}"
-                            BorderBrush="{DynamicResource AiChatBorder}"
-                            BorderThickness="1"
-                            Cursor="Hand"
-                            ToolTip="Show the Agent Orchestrator" />
                     <Button x:Name="ClearButton"
                             Content="Clear"
                             Click="ClearButton_Click"
@@ -98,6 +85,22 @@
                             ToolTip="Clear the current conversation" />
                 </StackPanel>
                 <ComboBox x:Name="AgentSessionSelector" Visibility="Collapsed" Grid.Row="0" Grid.Column="1" />
+                <Button x:Name="AgentOrchestratorButton"
+                        Grid.Row="0"
+                        Grid.Column="1"
+                        Content="Agents"
+                        Click="AgentOrchestratorButton_Click"
+                        Padding="6,2"
+                        Margin="0,0,8,0"
+                        HorizontalAlignment="Right"
+                        VerticalAlignment="Center"
+                        FontSize="11"
+                        Foreground="{DynamicResource AiChatForeground}"
+                        Background="{DynamicResource AiChatInputBackground}"
+                        BorderBrush="{DynamicResource AiChatBorder}"
+                        BorderThickness="1"
+                        Cursor="Hand"
+                        ToolTip="Show the Agent Orchestrator" />
                 <DockPanel Grid.Row="1"
                            Grid.ColumnSpan="2"
                            Margin="0,4,0,0">
