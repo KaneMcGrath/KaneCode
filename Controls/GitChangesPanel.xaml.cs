@@ -114,6 +114,9 @@ public partial class GitChangesPanel : UserControl
         set => SetValue(IsRepositoryOpenProperty, value);
     }
 
+    /// <summary>Raised when the user clicks the "+ Model" button to prepend the active AI model to the commit message.</summary>
+    public event EventHandler? AddModelRequested;
+
     /// <summary>Raised when the user clicks the Refresh button.</summary>
     public event EventHandler? RefreshRequested;
 
@@ -261,6 +264,11 @@ public partial class GitChangesPanel : UserControl
     private void RefreshButton_Click(object sender, RoutedEventArgs e)
     {
         RefreshRequested?.Invoke(this, EventArgs.Empty);
+    }
+
+    private void AddModelButton_Click(object sender, RoutedEventArgs e)
+    {
+        AddModelRequested?.Invoke(this, EventArgs.Empty);
     }
 
     private void BranchCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)

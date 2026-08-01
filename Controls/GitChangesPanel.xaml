@@ -64,13 +64,22 @@
                         VerticalContentAlignment="Top"
                         PreviewKeyDown="CommitMessageBox_PreviewKeyDown"
                         ToolTip="Commit message (Ctrl+Enter to commit)" />
-                <Button Grid.Column="1"
-                        Content="{Binding GitCommitButtonText}"
-                        Width="88"
-                        Height="28"
-                        Padding="12,4"
-                        VerticalAlignment="Center"
-                        Command="{Binding CommitGitChangesCommand}" />
+                <StackPanel Grid.Column="1"
+                            VerticalAlignment="Center">
+                    <Button x:Name="AddModelButton"
+                            Content="+ Model"
+                            Height="20"
+                            Padding="10,0"
+                            Margin="0,0,0,4"
+                            FontSize="11"
+                            ToolTip="Add the active AI model to the beginning of the commit message"
+                            Click="AddModelButton_Click" />
+                    <Button Content="{Binding GitCommitButtonText}"
+                            Width="88"
+                            Height="28"
+                            Padding="12,4"
+                            Command="{Binding CommitGitChangesCommand}" />
+                </StackPanel>
             </Grid>
         </Border>
 

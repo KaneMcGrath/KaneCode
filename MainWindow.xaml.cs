@@ -136,6 +136,7 @@ public partial class MainWindow : Window
         GitChangesPanel.AcceptCurrentConflictRequested += GitChangesPanel_AcceptCurrentConflictRequested;
         GitChangesPanel.AcceptIncomingConflictRequested += GitChangesPanel_AcceptIncomingConflictRequested;
         GitChangesPanel.AcceptBothConflictRequested += GitChangesPanel_AcceptBothConflictRequested;
+        GitChangesPanel.AddModelRequested += GitChangesPanel_AddModelRequested;
 
         // Initialize AI provider registry and configure the chat panel
         _aiProviderRegistry.Reload();
@@ -277,6 +278,7 @@ public partial class MainWindow : Window
         GitChangesPanel.AcceptCurrentConflictRequested -= GitChangesPanel_AcceptCurrentConflictRequested;
         GitChangesPanel.AcceptIncomingConflictRequested -= GitChangesPanel_AcceptIncomingConflictRequested;
         GitChangesPanel.AcceptBothConflictRequested -= GitChangesPanel_AcceptBothConflictRequested;
+        GitChangesPanel.AddModelRequested -= GitChangesPanel_AddModelRequested;
         AiChatPanel.AgentOrchestratorRequested -= AiChatPanel_AgentOrchestratorRequested;
         AgentOrchestratorPanel.AgentSelected -= AgentOrchestratorPanel_AgentSelected;
         _agentOrchestrator.Dispose();
@@ -1125,6 +1127,27 @@ public partial class MainWindow : Window
     private void GitChangesPanel_RefreshRequested(object? sender, EventArgs e)
     {
         _viewModel.RefreshGitStatusCommand.Execute(null);
+    }
+
+    private void GitChangesPanel_AddModelRequested(object? sender, EventArgs e)
+    {
+        string? model = AiChatPanel.CurrentModel;
+        if (string.IsNullOrWhiteSpace(model))
+        {
+            return;
+        }
+
+        string marker = $"(Model: {model})";
+        string current = _viewModel.GitCommitMessage;
+
+        // Prepend the model marker to the beginning, followed by a newline.
+        // Avoid duplicating a marker that is already the first line.
+        string firstLine = current.Split('\n')[0].Trim();
+        _viewModel.GitCommitMessage = string.Equals(firstLine, marker, StringComparison.Ordinal)
+            ? current
+            : string.IsNullOrEmpty(current)
+                ? marker
+                : marker + Environment.NewLine + current;
     }
 
     private void GitChangesPanel_FileOpenRequested(object? sender, GitChangesEntry entry)

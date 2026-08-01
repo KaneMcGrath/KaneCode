@@ -480,6 +480,23 @@ public partial class AiChatPanel : UserControl
     }
 
     /// <summary>
+    /// The model name currently selected in the chat panel, or null when no
+    /// provider/model is configured.
+    /// </summary>
+    public string? CurrentModel
+    {
+        get
+        {
+            if (!string.IsNullOrWhiteSpace(_model))
+            {
+                return _model;
+            }
+
+            return _provider?.AvailableModels.FirstOrDefault();
+        }
+    }
+
+    /// <summary>
     /// Configures the provider and model to use for chat completions.
     /// </summary>
     internal void Configure(IAiProvider? provider, string? model = null)
