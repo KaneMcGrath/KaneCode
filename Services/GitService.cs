@@ -1,6 +1,7 @@
 using System.IO;
 using KaneCode.Models;
 using LibGit2Sharp;
+using LibGit2Sharp.Handlers;
 
 namespace KaneCode.Services;
 
@@ -13,6 +14,12 @@ internal sealed class GitService : IDisposable
     private readonly Dictionary<string, FileStatus> _lastStatusByPath = new(StringComparer.OrdinalIgnoreCase);
 
     internal event Action<IReadOnlyList<GitFileStatusEntry>>? StatusChanged;
+
+    /// <summary>
+    /// Gets or sets the callback LibGit2Sharp uses when a remote requires credentials.
+    /// The callback should not persist secrets; it may return null to cancel authentication.
+    /// </summary>
+    internal CredentialsHandler? CredentialsProvider { get; set; }
 
     /// <summary>
     /// Gets a value indicating whether a repository is currently open.
@@ -992,6 +999,7 @@ FodyWeavers.xsd
 
         var pushOptions = new PushOptions
         {
+            CredentialsProvider = CredentialsProvider,
             OnPushTransferProgress = (current, total, bytes) =>
             {
                 progress?.Report($"Push progress: {current}/{total} objects, {bytes} bytes");
@@ -1061,6 +1069,51 @@ FodyWeavers.xsd
     }
 
     /// <summary>
+    /// Clones a remote repository into a new directory and opens the resulting repository.
+    /// </summary>
+    internal async Task CloneAsync(
+        string url,
+        string destinationPath,
+        IProgress<string>? progress = null,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(url))
+        {
+            throw new ArgumentException("Repository URL is required.", nameof(url));
+        }
+
+        if (string.IsNullOrWhiteSpace(destinationPath))
+        {
+            throw new ArgumentException("Clone destination is required.", nameof(destinationPath));
+        }
+
+        string fullDestinationPath = Path.GetFullPath(destinationPath.Trim());
+        if (Directory.Exists(fullDestinationPath) && Directory.EnumerateFileSystemEntries(fullDestinationPath).Any())
+        {
+            throw new InvalidOperationException("The clone destination must be empty or not yet exist.");
+        }
+
+        cancellationToken.ThrowIfCancellationRequested();
+        progress?.Report($"Cloning '{url.Trim()}'...");
+
+        CloneOptions options = new();
+        FetchOptions fetchOptions = BuildFetchOptions(progress, cancellationToken);
+        options.FetchOptions.CredentialsProvider = fetchOptions.CredentialsProvider;
+        options.FetchOptions.OnTransferProgress = fetchOptions.OnTransferProgress;
+        options.FetchOptions.OnProgress = fetchOptions.OnProgress;
+
+        await Task.Run(() => Repository.Clone(url.Trim(), fullDestinationPath, options), cancellationToken).ConfigureAwait(false);
+        cancellationToken.ThrowIfCancellationRequested();
+
+        if (!TryOpenRepository(fullDestinationPath))
+        {
+            throw new InvalidOperationException("The repository was cloned, but could not be opened.");
+        }
+
+        progress?.Report($"Cloned repository to '{fullDestinationPath}'.");
+    }
+
+    /// <summary>
     /// Closes the currently opened repository.
     /// </summary>
     internal void CloseRepository()
@@ -1115,10 +1168,11 @@ FodyWeavers.xsd
             || status.HasFlag(FileStatus.TypeChangeInIndex);
     }
 
-    private static FetchOptions BuildFetchOptions(IProgress<string>? progress, CancellationToken cancellationToken)
+    private FetchOptions BuildFetchOptions(IProgress<string>? progress, CancellationToken cancellationToken)
     {
         return new FetchOptions
         {
+            CredentialsProvider = CredentialsProvider,
             OnTransferProgress = stats =>
             {
                 progress?.Report($"Fetch progress: {stats.ReceivedObjects}/{stats.TotalObjects} objects ({stats.ReceivedBytes} bytes)");

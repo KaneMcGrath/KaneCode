@@ -1,0 +1,23 @@
+<Window x:Class="KaneCode.Controls.CloneRepositoryWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Clone Repository" Width="560" SizeToContent="Height" WindowStartupLocation="CenterOwner"
+        ResizeMode="NoResize" ShowInTaskbar="False">
+    <Grid Margin="18">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+        <Grid.ColumnDefinitions><ColumnDefinition Width="145"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+        <TextBlock Grid.Row="0" Grid.ColumnSpan="2" Text="Clone a Git repository" FontSize="18" FontWeight="SemiBold" Margin="0,0,0,14"/>
+        <TextBlock Grid.Row="1" Text="Repository URL:" VerticalAlignment="Center" Margin="0,0,8,8"/>
+        <TextBox x:Name="UrlTextBox" Grid.Row="1" Grid.Column="1" Margin="0,0,0,8"/>
+        <TextBlock Grid.Row="2" Text="Destination folder:" VerticalAlignment="Center" Margin="0,0,8,8"/>
+        <Grid Grid.Row="2" Grid.Column="1" Margin="0,0,0,8"><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+            <TextBox x:Name="DestinationTextBox" Margin="0,0,8,0"/><Button Content="Browse..." Width="82" Click="Browse_Click"/>
+        </Grid>
+        <TextBlock Grid.Row="3" Grid.ColumnSpan="2" Text="For GitHub HTTPS repositories, enter your GitHub username and a personal access token when prompted. Tokens are kept only in memory and are never written to the repository or saved by KaneCode." TextWrapping="Wrap" Foreground="Gray" Margin="0,2,0,14"/>
+        <TextBlock Grid.Row="4" Grid.ColumnSpan="2" Text="The destination must be empty or not yet exist. After cloning, KaneCode opens the first solution or project found in the repository." TextWrapping="Wrap" Foreground="Gray" Margin="0,0,0,14"/>
+        <StackPanel Grid.Row="5" Grid.ColumnSpan="2" Orientation="Horizontal" HorizontalAlignment="Right"><Button Content="Cancel" Width="90" IsCancel="True" Margin="0,0,8,0"/><Button Content="Clone" Width="90" IsDefault="True" Click="Clone_Click"/></StackPanel>
+    </Grid>
+</Window>

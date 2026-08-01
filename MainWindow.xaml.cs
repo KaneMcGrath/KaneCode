@@ -1,3 +1,4 @@
+using KaneCode.Controls;
 using KaneCode.Infrastructure;
 using KaneCode.Models;
 using KaneCode.Services;
@@ -6,6 +7,8 @@ using KaneCode.Services.Ai.Modes;
 using KaneCode.Services.Ai.Tools;
 using KaneCode.Theming;
 using KaneCode.ViewModels;
+using LibGit2Sharp;
+using LibGit2Sharp.Handlers;
 using ICSharpCode.AvalonEdit.Rendering;
 using Microsoft.TemplateEngine.Abstractions;
 using Microsoft.Win32;
@@ -52,6 +55,7 @@ public partial class MainWindow : Window
     {
         InitializeComponent();
         DataContext = _viewModel;
+        _viewModel.GitService.CredentialsProvider = RequestGitCredentials;
 
         // Initialize the multi-agent orchestrator (before modes/tools so spawn_agent can be registered)
         _agentOrchestrator = new Services.Ai.Agents.AgentOrchestrator(
@@ -1601,6 +1605,54 @@ public partial class MainWindow : Window
         {
             _renamePreviewPopup.IsOpen = false;
             _renamePreviewPopup = null;
+        }
+    }
+
+    private Credentials? RequestGitCredentials(string url, string usernameFromUrl, SupportedCredentialTypes types)
+    {
+        if ((types & SupportedCredentialTypes.UsernamePassword) == 0)
+        {
+            return null;
+        }
+
+        GitCredentialsWindow dialog = new() { Owner = this };
+        if (dialog.ShowDialog() != true)
+        {
+            return null;
+        }
+
+        return dialog.CredentialsProvider?.Invoke(url, usernameFromUrl, types);
+    }
+
+    private async void FileMenu_CloneRepository_Click(object sender, RoutedEventArgs e)
+    {
+        CloneRepositoryWindow dialog = new() { Owner = this };
+        if (dialog.ShowDialog() != true || dialog.RepositoryUrl is null || dialog.DestinationPath is null)
+        {
+            return;
+        }
+
+        try
+        {
+            await _viewModel.GitService.CloneAsync(dialog.RepositoryUrl, dialog.DestinationPath);
+            string? solution = Directory.EnumerateFiles(dialog.DestinationPath, "*.sln", SearchOption.TopDirectoryOnly).FirstOrDefault();
+            string? project = Directory.EnumerateFiles(dialog.DestinationPath, "*.csproj", SearchOption.TopDirectoryOnly).FirstOrDefault();
+            if (solution is not null)
+            {
+                await _viewModel.OpenSolutionByPathAsync(solution);
+            }
+            else if (project is not null)
+            {
+                await _viewModel.OpenProjectByPathAsync(project);
+            }
+            else
+            {
+                _viewModel.LoadProjectRoot(dialog.DestinationPath);
+            }
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(this, ex.Message, "Clone Repository", MessageBoxButton.OK, MessageBoxImage.Error);
         }
     }
 

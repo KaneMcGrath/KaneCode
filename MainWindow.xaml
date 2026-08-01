@@ -49,6 +49,7 @@ ResizeMode="CanResizeWithGrip">
             <MenuItem Header="_File">
                 <MenuItem Header="_New" Command="{Binding NewFileCommand}" />
                 <MenuItem Header="New _Project..." Click="FileMenu_NewProject_Click" />
+                <MenuItem Header="_Clone Repository..." Click="FileMenu_CloneRepository_Click" />
                 <MenuItem Header="_Open File" Command="{Binding OpenFileCommand}" />
                 <MenuItem Header="Open _Folder" Command="{Binding OpenFolderCommand}" />
                 <MenuItem Header="Open _Project or Solution..." Command="{Binding OpenProjectOrSolutionCommand}" />
