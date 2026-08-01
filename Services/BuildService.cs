@@ -96,9 +96,14 @@ internal sealed class BuildService : IDisposable
         string projectPath,
         string? programArguments = null,
         string? configuration = null,
+        string? workingDirectory = null,
+        IReadOnlyDictionary<string, string>? environmentVariables = null,
         CancellationToken cancellationToken = default)
     {
-        var directory = GetWorkingDirectory(projectPath);
+        string directory = string.IsNullOrWhiteSpace(workingDirectory)
+            ? GetWorkingDirectory(projectPath)
+            : Path.GetFullPath(workingDirectory);
+
         var args = new System.Text.StringBuilder();
         args.Append("run --project \"");
         args.Append(projectPath);
@@ -116,7 +121,7 @@ internal sealed class BuildService : IDisposable
             args.Append(programArguments);
         }
 
-        await RunDotnetAsync(args.ToString(), directory, cancellationToken).ConfigureAwait(false);
+        await RunDotnetAsync(args.ToString(), directory, cancellationToken, environmentVariables).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -193,7 +198,7 @@ internal sealed class BuildService : IDisposable
         }
     }
 
-    private async Task RunDotnetAsync(string arguments, string workingDirectory, CancellationToken cancellationToken)
+    private async Task RunDotnetAsync(string arguments, string workingDirectory, CancellationToken cancellationToken, IReadOnlyDictionary<string, string>? environmentVariables = null)
     {
         Cancel();
 
@@ -216,9 +221,17 @@ internal sealed class BuildService : IDisposable
 
         // MSBuildLocator sets these in the host process; if the child inherits them
         // it loads mismatched MSBuild assemblies and fails with MissingMethodException.
-        foreach (var key in s_msBuildEnvironmentVariables)
+        foreach (string key in s_msBuildEnvironmentVariables)
         {
             startInfo.Environment.Remove(key);
+        }
+
+        if (environmentVariables is not null)
+        {
+            foreach (KeyValuePair<string, string> variable in environmentVariables)
+            {
+                startInfo.Environment[variable.Key] = variable.Value;
+            }
         }
 
         var process = new Process { StartInfo = startInfo, EnableRaisingEvents = true };

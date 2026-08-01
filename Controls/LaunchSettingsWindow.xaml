@@ -1,0 +1,36 @@
+<Window x:Class="KaneCode.Controls.LaunchSettingsWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Customize Launch Settings" Width="780" Height="560" MinWidth="650" MinHeight="440"
+        WindowStartupLocation="CenterOwner" ShowInTaskbar="False"
+        Background="{DynamicResource WindowBackground}" Foreground="{DynamicResource WindowForeground}">
+    <Grid Margin="16">
+        <Grid.ColumnDefinitions><ColumnDefinition Width="190"/><ColumnDefinition Width="12"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+        <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+        <TextBlock Grid.Row="0" Grid.ColumnSpan="3" Text="Customize launch settings" FontSize="18" FontWeight="SemiBold" Margin="0,0,0,12"/>
+        <DockPanel Grid.Row="1" Grid.Column="0">
+            <Button DockPanel.Dock="Bottom" Content="Add Profile" Click="AddProfile_Click" Margin="0,8,0,0"/>
+            <ListBox x:Name="ProfilesList" DisplayMemberPath="Name" SelectionChanged="ProfilesList_SelectionChanged"/>
+        </DockPanel>
+        <ScrollViewer Grid.Row="1" Grid.Column="2" VerticalScrollBarVisibility="Auto">
+            <Grid x:Name="EditorGrid">
+                <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+                <Grid.ColumnDefinitions><ColumnDefinition Width="145"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                <TextBlock Text="Profile name:" VerticalAlignment="Center" Margin="0,0,8,8"/><TextBox x:Name="NameBox" Grid.Column="1" Margin="0,0,0,8" TextChanged="EditorChanged"/>
+                <TextBlock Grid.Row="1" Text="Command name:" VerticalAlignment="Center" Margin="0,0,8,8"/><ComboBox x:Name="CommandBox" Grid.Row="1" Grid.Column="1" Margin="0,0,0,8" SelectionChanged="EditorChanged"><ComboBoxItem Content="Project"/><ComboBoxItem Content="Executable"/><ComboBoxItem Content="IISExpress"/></ComboBox>
+                <TextBlock Grid.Row="2" Text="Arguments:" VerticalAlignment="Center" Margin="0,0,8,8"/><TextBox x:Name="ArgumentsBox" Grid.Row="2" Grid.Column="1" Margin="0,0,0,8" TextChanged="EditorChanged"/>
+                <TextBlock Grid.Row="3" Text="Working directory:" VerticalAlignment="Center" Margin="0,0,8,8"/><TextBox x:Name="WorkingDirectoryBox" Grid.Row="3" Grid.Column="1" Margin="0,0,0,8" TextChanged="EditorChanged"/>
+                <TextBlock Grid.Row="4" Text="Executable path:" VerticalAlignment="Center" Margin="0,0,8,8"/><TextBox x:Name="ExecutableBox" Grid.Row="4" Grid.Column="1" Margin="0,0,0,8" TextChanged="EditorChanged"/>
+                <TextBlock Grid.Row="5" Text="Launch URL:" VerticalAlignment="Center" Margin="0,0,8,8"/><TextBox x:Name="LaunchUrlBox" Grid.Row="5" Grid.Column="1" Margin="0,0,0,8" TextChanged="EditorChanged"/>
+                <StackPanel Grid.Row="6" Grid.ColumnSpan="2">
+                    <CheckBox x:Name="LaunchBrowserBox" Content="Launch browser" Margin="0,2,0,10" Checked="EditorChanged" Unchecked="EditorChanged"/>
+                    <TextBlock Text="Environment variables (one KEY=VALUE per line):" Margin="0,0,0,4"/>
+                    <TextBox x:Name="EnvironmentBox" AcceptsReturn="True" VerticalScrollBarVisibility="Auto" MinHeight="100" TextChanged="EditorChanged"/>
+                </StackPanel>
+            </Grid>
+        </ScrollViewer>
+        <StackPanel Grid.Row="2" Grid.ColumnSpan="3" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,12,0,0">
+            <Button Content="Delete Profile" Width="105" Margin="0,0,8,0" Click="DeleteProfile_Click"/><Button Content="Cancel" Width="90" IsCancel="True" Margin="0,0,8,0"/><Button Content="Save" Width="90" IsDefault="True" Click="Save_Click"/>
+        </StackPanel>
+    </Grid>
+</Window>

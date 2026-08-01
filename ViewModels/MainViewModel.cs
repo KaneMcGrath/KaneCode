@@ -4450,12 +4450,28 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
             return;
         }
 
+        LaunchProfile? profile = LaunchSettingsService.Load(runnableProjectPath).FirstOrDefault();
+        string? profileArguments = profile?.CommandLineArgs;
+        string? profileWorkingDirectory = profile?.WorkingDirectory;
+        if (!string.IsNullOrWhiteSpace(profileWorkingDirectory) && !Path.IsPathRooted(profileWorkingDirectory))
+        {
+            profileWorkingDirectory = Path.Combine(Path.GetDirectoryName(runnableProjectPath)!, profileWorkingDirectory);
+        }
+
         BeginBuildOperation(BuildOperation.Run, runnableProjectPath);
-        BuildSummary = $"Running ({_selectedConfiguration})...";
-        BuildOutputLines.Add($"> dotnet run --project \"{runnableProjectPath}\" --configuration {_selectedConfiguration}");
+        BuildSummary = string.IsNullOrWhiteSpace(profile?.Name)
+            ? $"Running ({_selectedConfiguration})..."
+            : $"Running {profile.Name} ({_selectedConfiguration})...";
+        BuildOutputLines.Add($"> dotnet run --project \"{runnableProjectPath}\" --configuration {_selectedConfiguration}"
+            + (string.IsNullOrWhiteSpace(profileArguments) ? string.Empty : $" -- {profileArguments}"));
         BuildOutputLines.Add(string.Empty);
 
-        await _buildService.RunProjectAsync(runnableProjectPath, configuration: _selectedConfiguration).ConfigureAwait(false);
+        await _buildService.RunProjectAsync(
+            runnableProjectPath,
+            programArguments: profileArguments,
+            configuration: _selectedConfiguration,
+            workingDirectory: profileWorkingDirectory,
+            environmentVariables: profile?.EnvironmentVariables).ConfigureAwait(false);
     }
 
     private string? ResolveRunnableProjectPath()

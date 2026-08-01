@@ -157,7 +157,7 @@ internal sealed class RunDotnetTool : IAgentTool
 
         try
         {
-            await _buildService.RunProjectAsync(projectPath, programArgs, configuration, effectiveToken).ConfigureAwait(false);
+            await _buildService.RunProjectAsync(projectPath, programArgs, configuration, cancellationToken: effectiveToken).ConfigureAwait(false);
         }
         finally
         {

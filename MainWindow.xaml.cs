@@ -360,6 +360,34 @@ public partial class MainWindow : Window
         ShowLayoutAnchorable(anchorable);
     }
 
+    private void CustomizeLaunchSettings_Click(object? sender, RoutedEventArgs e)
+    {
+        OpenLaunchSettingsDialog();
+    }
+
+    private void BuildMenu_CustomizeLaunchSettings_Click(object? sender, RoutedEventArgs e)
+    {
+        OpenLaunchSettingsDialog();
+    }
+
+    private void OpenLaunchSettingsDialog()
+    {
+        BuildTargetItem? target = _viewModel.SelectedBuildTarget;
+        string? projectPath = target?.IsProject == true
+            ? target.FullPath
+            : _viewModel.LoadedSolutionProjectPaths.FirstOrDefault();
+
+        if (string.IsNullOrWhiteSpace(projectPath) || !File.Exists(projectPath))
+        {
+            MessageBox.Show(this, "Open a .NET project or solution first to customize launch settings.",
+                "Launch Settings", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        LaunchSettingsWindow dialog = new(projectPath) { Owner = this };
+        dialog.ShowDialog();
+    }
+
     private void EditMenu_NuGetPackageManager_Click(object? sender, RoutedEventArgs e)
     {
         // Collect project paths from the loaded solution/project
