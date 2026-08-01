@@ -189,7 +189,7 @@ internal sealed class RunDotnetTool : IAgentTool
         string summary;
         if (wasTimedOut)
         {
-            summary = $"Program was killed after {timeoutSeconds} second timeout (exit code {exitCode}).";
+            summary = $"Program ran until the {timeoutSeconds} second timeout and was killed as expected (exit code {exitCode}).";
         }
         else if (exitCode == 0)
         {
@@ -201,7 +201,10 @@ internal sealed class RunDotnetTool : IAgentTool
         }
 
         var result = $"{summary}\n\n{output}";
-        return exitCode == 0 ? ToolCallResult.Ok(result) : ToolCallResult.Fail(result);
+        // Reaching the configured timeout is an expected outcome for long-running or
+        // interactive programs, not an error — report it as a success so the agent
+        // does not treat the kill as a failure.
+        return wasTimedOut || exitCode == 0 ? ToolCallResult.Ok(result) : ToolCallResult.Fail(result);
     }
 
     private static string FormatOutput(List<string> lines)
