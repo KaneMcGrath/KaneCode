@@ -1,4 +1,5 @@
 using KaneCode.Models;
+using KaneCode.Services;
 using KaneCode.ViewModels;
 
 namespace KaneCode.Tests.ViewModels;
@@ -280,6 +281,85 @@ public class MainViewModelTests
         MainViewModel.RestoreExpandedPaths(restoredRoot, expandedPaths);
 
         Assert.False(restoredFolder.IsExpanded);
+    }
+
+    [Fact]
+    public void WhenNoProfilesThenResolveSelectedProfileReturnsNull()
+    {
+        LaunchProfile? result = MainViewModel.ResolveSelectedProfile(
+            profiles: [],
+            selectedNamesByProject: null,
+            projectPath: @"C:\repo\App.csproj");
+
+        Assert.Null(result);
+    }
+
+    [Fact]
+    public void WhenNoSavedSelectionThenResolveSelectedProfileReturnsFirstProfile()
+    {
+        LaunchProfile first = new() { Name = "First" };
+        LaunchProfile second = new() { Name = "Second" };
+
+        LaunchProfile? result = MainViewModel.ResolveSelectedProfile(
+            profiles: [first, second],
+            selectedNamesByProject: null,
+            projectPath: @"C:\repo\App.csproj");
+
+        Assert.Same(first, result);
+    }
+
+    [Fact]
+    public void WhenSavedSelectionMatchesThenResolveSelectedProfileReturnsMatchingProfile()
+    {
+        LaunchProfile first = new() { Name = "First" };
+        LaunchProfile second = new() { Name = "Second" };
+        Dictionary<string, string> saved = new(StringComparer.OrdinalIgnoreCase)
+        {
+            [@"C:\repo\App.csproj"] = "Second"
+        };
+
+        LaunchProfile? result = MainViewModel.ResolveSelectedProfile(
+            profiles: [first, second],
+            selectedNamesByProject: saved,
+            projectPath: @"C:\repo\App.csproj");
+
+        Assert.Same(second, result);
+    }
+
+    [Fact]
+    public void WhenSavedSelectionDoesNotMatchThenResolveSelectedProfileFallsBackToFirst()
+    {
+        LaunchProfile first = new() { Name = "First" };
+        LaunchProfile second = new() { Name = "Second" };
+        Dictionary<string, string> saved = new(StringComparer.OrdinalIgnoreCase)
+        {
+            [@"C:\repo\App.csproj"] = "RemovedProfile"
+        };
+
+        LaunchProfile? result = MainViewModel.ResolveSelectedProfile(
+            profiles: [first, second],
+            selectedNamesByProject: saved,
+            projectPath: @"C:\repo\App.csproj");
+
+        Assert.Same(first, result);
+    }
+
+    [Fact]
+    public void WhenSavedSelectionMatchesCaseInsensitivelyThenResolveSelectedProfileReturnsMatchingProfile()
+    {
+        LaunchProfile first = new() { Name = "First" };
+        LaunchProfile second = new() { Name = "Second" };
+        Dictionary<string, string> saved = new(StringComparer.OrdinalIgnoreCase)
+        {
+            [@"C:\repo\App.csproj"] = "second"
+        };
+
+        LaunchProfile? result = MainViewModel.ResolveSelectedProfile(
+            profiles: [first, second],
+            selectedNamesByProject: saved,
+            projectPath: @"C:\repo\App.csproj");
+
+        Assert.Same(second, result);
     }
 
 }

@@ -360,11 +360,6 @@ public partial class MainWindow : Window
         ShowLayoutAnchorable(anchorable);
     }
 
-    private void CustomizeLaunchSettings_Click(object? sender, RoutedEventArgs e)
-    {
-        OpenLaunchSettingsDialog();
-    }
-
     private void BuildMenu_CustomizeLaunchSettings_Click(object? sender, RoutedEventArgs e)
     {
         OpenLaunchSettingsDialog();
@@ -386,6 +381,68 @@ public partial class MainWindow : Window
 
         LaunchSettingsWindow dialog = new(projectPath) { Owner = this };
         dialog.ShowDialog();
+
+        // The dialog may have added/removed/renamed profiles, so reload the
+        // dropdown and re-resolve the selection (falls back to the default
+        // when the previously selected profile no longer exists).
+        _viewModel.RefreshLaunchProfiles();
+    }
+
+    /// <summary>
+    /// Opens the run button's launch-profile dropdown. The dropdown lists every
+    /// configured profile for the current runnable project, marks the active
+    /// selection, and falls back to a "(Default)" entry when no profile is
+    /// available or launchSettings.json is missing/invalid.
+    /// </summary>
+    private void RunProfileDropdown_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not Button button)
+        {
+            return;
+        }
+
+        var menu = new ContextMenu();
+
+        foreach (RunProfileOption option in _viewModel.RunProfiles)
+        {
+            bool isSelected = ReferenceEquals(option, _viewModel.SelectedRunProfile);
+            var item = new MenuItem
+            {
+                Header = (isSelected ? "\u2714 " : "    ") + option.DisplayName,
+                IsCheckable = true,
+                IsChecked = isSelected,
+                Tag = option,
+                FontWeight = isSelected ? FontWeights.SemiBold : FontWeights.Normal,
+                ToolTip = option.IsDefaultFallback
+                    ? "Run with dotnet run (no launch profile settings applied)."
+                    : option.Profile?.CommandName.Equals("Project", StringComparison.OrdinalIgnoreCase) == true
+                        ? $"Run with the \"{option.DisplayName}\" launch profile."
+                        : $"Run with the \"{option.DisplayName}\" launch profile (command: {option.Profile?.CommandName})."
+            };
+            item.Click += RunProfileMenuItem_Click;
+            menu.Items.Add(item);
+        }
+
+        if (menu.Items.Count > 0)
+        {
+            menu.Items.Add(new Separator());
+        }
+
+        MenuItem customize = new() { Header = "Customize launch settings..." };
+        customize.Click += (_, _) => OpenLaunchSettingsDialog();
+        menu.Items.Add(customize);
+
+        menu.PlacementTarget = button;
+        menu.Placement = PlacementMode.Bottom;
+        menu.IsOpen = true;
+    }
+
+    private void RunProfileMenuItem_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is MenuItem { Tag: RunProfileOption option })
+        {
+            _viewModel.SelectRunProfile(option);
+        }
     }
 
     private void EditMenu_NuGetPackageManager_Click(object? sender, RoutedEventArgs e)

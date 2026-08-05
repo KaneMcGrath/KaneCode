@@ -132,6 +132,7 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
             {
                 OnPropertyChanged(nameof(BuildSelectedText));
                 CommandManager.InvalidateRequerySuggested();
+                RefreshLaunchProfiles();
             }
         }
     }
@@ -151,6 +152,13 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
     private bool _isOperationCancellationRequested;
     private bool _isProjectRunInProgress;
     private string? _runningProjectPath;
+
+    /// <summary>
+    /// Remembers the user's selected launch profile per runnable project path
+    /// (keyed case-insensitively) so each project keeps its own choice while the
+    /// IDE is open. The value is the profile name; removal means "use default".
+    /// </summary>
+    private readonly Dictionary<string, string> _selectedProfileNameByProject = new(StringComparer.OrdinalIgnoreCase);
 
     public MainViewModel()
     {
@@ -224,6 +232,10 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
         _buildService.OutputReceived += OnBuildOutputReceived;
         _buildService.ProcessExited += OnBuildProcessExited;
         _gitService.StatusChanged += OnGitStatusChanged;
+
+        // Seed the run profile dropdown with the default fallback entry so the
+        // run button always has something meaningful to display before a project loads.
+        RefreshLaunchProfiles();
     }
 
     public ICommand NewFileCommand { get; }
@@ -481,7 +493,143 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
 
     public string RunQuickButtonText => GetRunQuickButtonText(_isProjectRunInProgress);
 
-    public string RunCommandToolTip => GetRunCommandToolTip(_isProjectRunInProgress);
+    public string RunCommandToolTip
+    {
+        get
+        {
+            string baseText = GetRunCommandToolTip(_isProjectRunInProgress);
+            if (_isProjectRunInProgress)
+            {
+                return baseText;
+            }
+
+            return $"{baseText} - Profile: {RunProfileDisplayText}";
+        }
+    }
+
+    /// <summary>
+    /// Launch profiles available for the current runnable project, plus the
+    /// default fallback entry shown when no profile can be resolved. The first
+    /// entry is the default fallback whenever the project has no usable profiles.
+    /// </summary>
+    public ObservableCollection<RunProfileOption> RunProfiles { get; } = [];
+
+    private RunProfileOption? _selectedRunProfile;
+    /// <summary>
+    /// The launch profile currently selected for the run button. Null only before
+    /// <see cref="RefreshLaunchProfiles"/> has populated <see cref="RunProfiles"/>.
+    /// </summary>
+    public RunProfileOption? SelectedRunProfile
+    {
+        get => _selectedRunProfile;
+        private set
+        {
+            if (SetProperty(ref _selectedRunProfile, value))
+            {
+                OnPropertyChanged(nameof(RunProfileDisplayText));
+                OnPropertyChanged(nameof(RunCommandToolTip));
+            }
+        }
+    }
+
+    /// <summary>
+    /// Text shown on the run button identifying the active launch profile
+    /// (e.g. "MyProject" or "(Default)").
+    /// </summary>
+    public string RunProfileDisplayText => SelectedRunProfile?.DisplayName ?? "(Default)";
+
+    /// <summary>
+    /// Reloads the launch profiles for the current runnable project and restores
+    /// the previously selected profile, falling back to the first configured
+    /// profile or the default entry when nothing matches. Called when the build
+    /// target changes, after launch settings are edited, and before a run starts.
+    /// </summary>
+    public void RefreshLaunchProfiles()
+    {
+        RunProfiles.Clear();
+
+        string? runnableProjectPath = ResolveRunnableProjectPath();
+        if (runnableProjectPath is null)
+        {
+            RunProfiles.Add(RunProfileOption.CreateDefault());
+            SelectedRunProfile = RunProfiles[0];
+            return;
+        }
+
+        IReadOnlyList<LaunchProfile> profiles = LaunchSettingsService.Load(runnableProjectPath);
+        if (profiles.Count == 0)
+        {
+            RunProfiles.Add(RunProfileOption.CreateDefault());
+            SelectedRunProfile = RunProfiles[0];
+            return;
+        }
+
+        foreach (LaunchProfile profile in profiles)
+        {
+            RunProfiles.Add(new RunProfileOption(profile, profile.Name));
+        }
+
+        LaunchProfile? resolved = ResolveSelectedProfile(profiles, _selectedProfileNameByProject, runnableProjectPath);
+        RunProfileOption? match = resolved is null
+            ? null
+            : RunProfiles.FirstOrDefault(option => ReferenceEquals(option.Profile, resolved));
+
+        SelectedRunProfile = match ?? RunProfiles[0];
+    }
+
+    /// <summary>
+    /// Selects a launch profile from the run button dropdown and remembers the
+    /// choice for the current runnable project. Selecting the default fallback
+    /// clears the remembered choice.
+    /// </summary>
+    public void SelectRunProfile(RunProfileOption option)
+    {
+        string? runnableProjectPath = ResolveRunnableProjectPath();
+        if (runnableProjectPath is not null)
+        {
+            if (option.Profile is not null)
+            {
+                _selectedProfileNameByProject[runnableProjectPath] = option.Profile.Name;
+            }
+            else
+            {
+                _selectedProfileNameByProject.Remove(runnableProjectPath);
+            }
+        }
+
+        SelectedRunProfile = option;
+    }
+
+    /// <summary>
+    /// Resolves which launch profile should be used for a project, preferring the
+    /// previously selected profile name (stored in <paramref name="selectedNamesByProject"/>)
+    /// and falling back to the first configured profile. Returns null when no
+    /// profiles are configured so the caller falls back to the default run.
+    /// </summary>
+    internal static LaunchProfile? ResolveSelectedProfile(
+        IReadOnlyList<LaunchProfile> profiles,
+        IReadOnlyDictionary<string, string>? selectedNamesByProject,
+        string projectPath)
+    {
+        if (profiles.Count == 0)
+        {
+            return null;
+        }
+
+        if (selectedNamesByProject is not null
+            && selectedNamesByProject.TryGetValue(projectPath, out string? savedName)
+            && !string.IsNullOrWhiteSpace(savedName))
+        {
+            LaunchProfile? match = profiles.FirstOrDefault(profile =>
+                string.Equals(profile.Name, savedName, StringComparison.OrdinalIgnoreCase));
+            if (match is not null)
+            {
+                return match;
+            }
+        }
+
+        return profiles[0];
+    }
 
     public void AttachEditor(TextEditor editor)
     {
@@ -4450,9 +4598,17 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
             return;
         }
 
-        LaunchProfile? profile = LaunchSettingsService.Load(runnableProjectPath).FirstOrDefault();
-        string? profileArguments = profile?.CommandLineArgs;
-        string? profileWorkingDirectory = profile?.WorkingDirectory;
+        LaunchProfile? profile;
+        string? profileArguments;
+        string? profileWorkingDirectory;
+
+        // Refresh the profile selection so the run uses whichever profile the
+        // user picked in the run button dropdown (falling back to the first
+        // configured profile or the default when none is available).
+        RefreshLaunchProfiles();
+        profile = SelectedRunProfile?.Profile;
+        profileArguments = profile?.CommandLineArgs;
+        profileWorkingDirectory = profile?.WorkingDirectory;
         if (!string.IsNullOrWhiteSpace(profileWorkingDirectory) && !Path.IsPathRooted(profileWorkingDirectory))
         {
             profileWorkingDirectory = Path.Combine(Path.GetDirectoryName(runnableProjectPath)!, profileWorkingDirectory);
