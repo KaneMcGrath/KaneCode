@@ -808,6 +808,7 @@ public partial class AiChatPanel : UserControl
         ("Dotnet",         "Dotnet"),
         ("Drawing",        "Drawing"),
         ("Presentation",   "Presentation"),
+        ("Debug",          "Debug"),
     ];
 
     /// <summary>

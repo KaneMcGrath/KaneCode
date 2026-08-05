@@ -631,6 +631,12 @@ public partial class MainWindow : Window
         _agentToolRegistry.Register(new NuGetInstallTool(projectRoot));
         _agentToolRegistry.Register(new NuGetUninstallTool(projectRoot));
 
+        // ── Debug tools ──────────────────────────────────────────────
+        // Lets an advanced agent submit a request for a tool it expects to need
+        // but that does not exist yet. Requests are saved as text files under the
+        // KaneCode directory (ai-tool-requests) and have no immediate effect.
+        _agentToolRegistry.Register(new RequestTool());
+
         // ── Multi-agent tools ────────────────────────────────────────
         _agentToolRegistry.Register(new Services.Ai.Agents.SpawnAgentTool());
     }

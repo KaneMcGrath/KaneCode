@@ -56,6 +56,9 @@ internal sealed class AgentMode : IAiChatMode
         "nuget_list_installed",
         "nuget_search",
         "nuget_uninstall",
+
+        // Debug
+        "request_tool",
     };
 
     public string Id => "agent";

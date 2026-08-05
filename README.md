@@ -49,6 +49,7 @@ KaneCode's AI agent uses any OpenAI-compatible API provider, and uses a variety 
 | **NuGet** | `nuget_search`, `nuget_info`, `nuget_install`, `nuget_uninstall`, `nuget_list_installed` |
 | **Project** | `load_project`, `new_project` |
 | **Presentation** | `presentation_new`, `presentation_add_slide` |
+| **Debug** | `request_tool` — agents submit requests for missing tools (saved as .txt in the KaneCode `ai-tool-requests` folder; no immediate effect, only informs future versions) |
 | **Utility** | `run_dotnet` |
 
 ### AI modes
