@@ -1,5 +1,7 @@
 using System.Diagnostics;
 using System.IO;
+using System.Xml;
+using System.Xml.Linq;
 
 namespace KaneCode.Services;
 
@@ -101,7 +103,7 @@ internal sealed class BuildService : IDisposable
         CancellationToken cancellationToken = default)
     {
         string directory = string.IsNullOrWhiteSpace(workingDirectory)
-            ? GetWorkingDirectory(projectPath)
+            ? GetRunOutputDirectory(projectPath, configuration)
             : Path.GetFullPath(workingDirectory);
 
         var args = new System.Text.StringBuilder();
@@ -304,6 +306,66 @@ internal sealed class BuildService : IDisposable
 
             cts.Dispose();
             process.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// Gets the working directory used for a project launched without an explicit
+    /// launch-profile working directory.  This intentionally matches the directory
+    /// containing the built application rather than the project directory.  A
+    /// launched application normally starts with its output directory as its
+    /// current directory (and files copied to the output directory are commonly
+    /// accessed using relative paths).
+    /// </summary>
+    internal static string GetRunOutputDirectory(string projectPath, string? configuration)
+    {
+        string projectDirectory = GetWorkingDirectory(projectPath);
+        string? targetFramework = GetTargetFramework(projectPath);
+        if (string.IsNullOrWhiteSpace(targetFramework))
+        {
+            // Keep the old, safe fallback for projects whose target framework
+            // cannot be read.  dotnet will still report useful build errors.
+            return projectDirectory;
+        }
+
+        string outputDirectory = Path.Combine(
+            projectDirectory,
+            "bin",
+            string.IsNullOrWhiteSpace(configuration) ? "Debug" : configuration.Trim(),
+            targetFramework);
+
+        // ProcessStartInfo requires the working directory to exist before dotnet
+        // has a chance to build the project.
+        Directory.CreateDirectory(outputDirectory);
+        return outputDirectory;
+    }
+
+    private static string? GetTargetFramework(string projectPath)
+    {
+        if (!File.Exists(projectPath))
+        {
+            return null;
+        }
+
+        try
+        {
+            XDocument document = XDocument.Load(projectPath);
+            XElement? framework = document.Descendants()
+                .FirstOrDefault(element => element.Name.LocalName.Equals("TargetFramework", StringComparison.Ordinal));
+            if (!string.IsNullOrWhiteSpace(framework?.Value))
+            {
+                return framework.Value.Trim();
+            }
+
+            XElement? frameworks = document.Descendants()
+                .FirstOrDefault(element => element.Name.LocalName.Equals("TargetFrameworks", StringComparison.Ordinal));
+            return frameworks?.Value
+                .Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .FirstOrDefault();
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or XmlException)
+        {
+            return null;
         }
     }
 
