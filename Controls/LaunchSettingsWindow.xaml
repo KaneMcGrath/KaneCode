@@ -19,8 +19,16 @@
                 <TextBlock Text="Profile name:" VerticalAlignment="Center" Margin="0,0,8,8"/><TextBox x:Name="NameBox" Grid.Column="1" Margin="0,0,0,8" TextChanged="EditorChanged"/>
                 <TextBlock Grid.Row="1" Text="Command name:" VerticalAlignment="Center" Margin="0,0,8,8"/><ComboBox x:Name="CommandBox" Grid.Row="1" Grid.Column="1" Margin="0,0,0,8" SelectionChanged="EditorChanged"><ComboBoxItem Content="Project"/><ComboBoxItem Content="Executable"/><ComboBoxItem Content="IISExpress"/></ComboBox>
                 <TextBlock Grid.Row="2" Text="Arguments:" VerticalAlignment="Center" Margin="0,0,8,8"/><TextBox x:Name="ArgumentsBox" Grid.Row="2" Grid.Column="1" Margin="0,0,0,8" TextChanged="EditorChanged"/>
-                <TextBlock Grid.Row="3" Text="Working directory:" VerticalAlignment="Center" Margin="0,0,8,8"/><TextBox x:Name="WorkingDirectoryBox" Grid.Row="3" Grid.Column="1" Margin="0,0,0,8" TextChanged="EditorChanged"/>
-                <TextBlock Grid.Row="4" Text="Executable path:" VerticalAlignment="Center" Margin="0,0,8,8"/><TextBox x:Name="ExecutableBox" Grid.Row="4" Grid.Column="1" Margin="0,0,0,8" TextChanged="EditorChanged"/>
+                <TextBlock Grid.Row="3" Text="Working directory:" VerticalAlignment="Center" Margin="0,0,8,8"/>
+                <DockPanel Grid.Row="3" Grid.Column="1" Margin="0,0,0,8">
+                    <Button DockPanel.Dock="Right" Content="Browse..." Width="90" Margin="8,0,0,0" Click="BrowseWorkingDirectory_Click"/>
+                    <TextBox x:Name="WorkingDirectoryBox" TextChanged="EditorChanged"/>
+                </DockPanel>
+                <TextBlock Grid.Row="4" Text="Executable path:" VerticalAlignment="Center" Margin="0,0,8,8"/>
+                <DockPanel Grid.Row="4" Grid.Column="1" Margin="0,0,0,8">
+                    <Button DockPanel.Dock="Right" Content="Browse..." Width="90" Margin="8,0,0,0" Click="BrowseExecutable_Click"/>
+                    <TextBox x:Name="ExecutableBox" TextChanged="EditorChanged"/>
+                </DockPanel>
                 <TextBlock Grid.Row="5" Text="Launch URL:" VerticalAlignment="Center" Margin="0,0,8,8"/><TextBox x:Name="LaunchUrlBox" Grid.Row="5" Grid.Column="1" Margin="0,0,0,8" TextChanged="EditorChanged"/>
                 <StackPanel Grid.Row="6" Grid.ColumnSpan="2">
                     <CheckBox x:Name="LaunchBrowserBox" Content="Launch browser" Margin="0,2,0,10" Checked="EditorChanged" Unchecked="EditorChanged"/>

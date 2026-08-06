@@ -1,4 +1,6 @@
 using KaneCode.Services;
+using Microsoft.Win32;
+using System.IO;
 using System.Windows;
 using System.Windows.Controls;
 
@@ -78,6 +80,39 @@ public partial class LaunchSettingsWindow : Window
         _profiles.Remove(Current);
         ProfilesList.Items.Refresh();
         ProfilesList.SelectedIndex = 0;
+    }
+
+    private void BrowseWorkingDirectory_Click(object sender, RoutedEventArgs e)
+    {
+        var dialog = new OpenFolderDialog
+        {
+            Title = "Select Working Directory"
+        };
+        if (!string.IsNullOrWhiteSpace(WorkingDirectoryBox.Text))
+        {
+            try { dialog.InitialDirectory = WorkingDirectoryBox.Text; } catch { /* ignore invalid path */ }
+        }
+        if (dialog.ShowDialog() == true)
+        {
+            WorkingDirectoryBox.Text = dialog.FolderName;
+        }
+    }
+
+    private void BrowseExecutable_Click(object sender, RoutedEventArgs e)
+    {
+        var dialog = new OpenFileDialog
+        {
+            Title = "Select Executable",
+            Filter = "Executable Files (*.exe;*.bat;*.cmd;*.com)|*.exe;*.bat;*.cmd;*.com|All Files (*.*)|*.*"
+        };
+        if (!string.IsNullOrWhiteSpace(ExecutableBox.Text))
+        {
+            try { dialog.InitialDirectory = Path.GetDirectoryName(ExecutableBox.Text); } catch { /* ignore invalid path */ }
+        }
+        if (dialog.ShowDialog() == true)
+        {
+            ExecutableBox.Text = dialog.FileName;
+        }
     }
 
     private void Save_Click(object sender, RoutedEventArgs e)
