@@ -230,14 +230,6 @@ ResizeMode="CanResizeWithGrip">
             </MenuItem>
         </Menu>
 
-                <!-- Theme selector -->
-                <ComboBox x:Name="ThemeSelector"
-                          Margin="8,0,0,0"
-                          VerticalAlignment="Center"
-                          WindowChrome.IsHitTestVisibleInChrome="True"
-                          DisplayMemberPath="DisplayName"
-                          SelectionChanged="OnThemeSelectionChanged" />
-
                 <!-- Title text -->
                 <Border Background="{DynamicResource ProjectNameBackground}" Padding="8,0" Margin="14,0">
                     <TextBlock Text="{Binding WindowTitle}" VerticalAlignment="Center" Padding="0,1,0,0">
@@ -258,6 +250,14 @@ ResizeMode="CanResizeWithGrip">
             <!-- Window chrome buttons -->
             <StackPanel Orientation="Horizontal" HorizontalAlignment="Right"
                         WindowChrome.IsHitTestVisibleInChrome="True">
+                <!-- Theme selector (kept left of the system buttons) -->
+                <ComboBox x:Name="ThemeSelector"
+                          Margin="0,0,12,0"
+                          MinWidth="80"
+                          VerticalAlignment="Center"
+                          WindowChrome.IsHitTestVisibleInChrome="True"
+                          DisplayMemberPath="DisplayName"
+                          SelectionChanged="OnThemeSelectionChanged" />
                 <Button Style="{StaticResource MinimizeButton}" Click="OnMinimizeClick" />
                 <Button Style="{StaticResource MaximizeButton}" Click="OnMaximizeClick" />
                 <Button Style="{StaticResource RestoreDownButton}" Click="OnRestoreDownClick" />
