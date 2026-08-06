@@ -31,7 +31,7 @@ internal sealed class RequestTool : IAgentTool
                 },
                 "description": {
                     "type": "string",
-                    "description": "What the requested tool should do and why it is needed to complete the task."
+                    "description": "What the requested tool should do and why it would help complete the task."
                 },
                 "reasoning": {
                     "type": "string",
@@ -71,13 +71,12 @@ internal sealed class RequestTool : IAgentTool
     public string Category => "Debug";
 
     public string Description =>
-        "Submit a request for a new agent tool that you expect to need but that is not " +
+        "To improve future versions of KaneCode, submit a request for a new tool that you expect could help with your task, but is not " +
         "currently available. Use this when you feel limited in completing a task because " +
-        "you are missing a capability you expect to exist. The request is recorded as a " +
-        "text file in the KaneCode 'ai-tool-requests' folder so it can be reviewed later " +
-        "to build an inventory of requested improvements. IMPORTANT: this has no immediate " +
-        "effect — the requested tool will not become available in this session, and it will " +
-        "only improve future versions of the application. After submitting the request, " +
+        "you are missing a capability you expect to exist.  " +
+        "IMPORTANT: this has no immediate " +
+        "effect — the requested tool will not become available in this session.  " +
+        "After submitting the request, " +
         "continue finishing your task with the tools you already have.";
 
     public JsonElement ParametersSchema => Schema;
