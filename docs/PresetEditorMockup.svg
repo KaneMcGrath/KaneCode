@@ -1,0 +1,342 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1240 920" font-family="Segoe UI, system-ui, sans-serif">
+  <style>
+    .quiet { fill: #5E6470; }
+    .muted { fill: #8A8F9A; }
+    .text { fill: #D9DCE2; }
+    .bright { fill: #F0F2F6; }
+    .accent { fill: #5B9CFF; }
+    .accentLight { fill: #8FB7FF; }
+    .amber { fill: #E5C07B; }
+    .green { fill: #4CAF7D; }
+    .red { fill: #E06C75; }
+    .mono { font-family: 'Cascadia Code', Consolas, monospace; }
+    .numBadge { fill: #E5C07B; }
+    .numText { fill: #2B2110; font-weight: 700; font-size: 11px; }
+    .card { fill: #23252B; stroke: #353945; }
+    .inset { fill: #1E2026; stroke: #3D4250; }
+    .chip { fill: #2B2E38; stroke: #3D4250; }
+  </style>
+  <defs>
+    <clipPath id="winClip"><rect x="0" y="0" width="1240" height="920" rx="12"/></clipPath>
+    <linearGradient id="listFade" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1C1D22" stop-opacity="0"/>
+      <stop offset="1" stop-color="#1C1D22" stop-opacity="1"/>
+    </linearGradient>
+  </defs>
+
+  <g clip-path="url(#winClip)">
+    <rect x="0" y="0" width="1240" height="920" fill="#1C1D22"/>
+
+    <!-- ============ TITLE BAR ============ -->
+    <rect x="0" y="0" width="1240" height="44" fill="#22242B"/>
+    <text x="20" y="28" font-size="13" fill="#D9DCE2">Preset Editor</text>
+    <circle cx="1194" cy="22" r="7" fill="#E06C75"/>
+    <circle cx="1214" cy="22" r="7" fill="#E5C07B"/>
+    <circle cx="1234" cy="22" r="7" fill="#4CAF7D"/>
+
+    <!-- ============ HEADER ============ -->
+    <text x="20" y="83" font-size="12" fill="#8A8F9A">Preset</text>
+    <rect x="88" y="66" width="250" height="30" rx="5" fill="#1E2026" stroke="#3D4250"/>
+    <text x="100" y="86" font-size="12.5" fill="#D9DCE2">Prototype Architect</text>
+    <path d="M 320 79 l 5 5 5 -5" stroke="#8A8F9A" stroke-width="1.5" fill="none"/>
+    <rect x="350" y="66" width="60" height="30" rx="5" fill="#262932" stroke="#3D4250"/>
+    <text x="380" y="86" font-size="11.5" fill="#D9DCE2" text-anchor="middle">New</text>
+    <rect x="416" y="66" width="88" height="30" rx="5" fill="#262932" stroke="#3D4250"/>
+    <text x="460" y="86" font-size="11.5" fill="#D9DCE2" text-anchor="middle">Copy From</text>
+    <rect x="510" y="66" width="64" height="30" rx="5" fill="#262932" stroke="#3D4250"/>
+    <text x="542" y="86" font-size="11.5" fill="#D9DCE2" text-anchor="middle">Delete</text>
+
+    <rect x="984" y="66" width="76" height="30" rx="5" fill="#262932" stroke="#3D4250"/>
+    <text x="1022" y="86" font-size="11.5" fill="#D9DCE2" text-anchor="middle">Revert</text>
+    <rect x="1066" y="66" width="78" height="30" rx="5" fill="#5B9CFF"/>
+    <text x="1105" y="86" font-size="11.5" font-weight="600" fill="#FFFFFF" text-anchor="middle">Save</text>
+    <rect x="1150" y="66" width="76" height="30" rx="5" fill="#262932" stroke="#3D4250"/>
+    <text x="1188" y="86" font-size="11.5" fill="#D9DCE2" text-anchor="middle">Cancel</text>
+
+    <text x="20" y="127" font-size="12" fill="#8A8F9A">Name</text>
+    <rect x="88" y="110" width="420" height="28" rx="5" fill="#1E2026" stroke="#3D4250"/>
+    <text x="100" y="129" font-size="12.5" fill="#D9DCE2">Prototype Architect</text>
+    <text x="1204" y="129" font-size="11" fill="#5E6470" text-anchor="end">Autosaves to ai-presets.json</text>
+
+    <line x1="0" y1="150" x2="1240" y2="150" stroke="#2A2D35" stroke-width="1"/>
+
+    <!-- ============ TAB BAR ============ -->
+    <text x="24" y="174" font-size="12.5" fill="#8A8F9A">System Prompt</text>
+    <text x="140" y="174" font-size="12.5" font-weight="600" fill="#D9DCE2">Tools</text>
+    <rect x="138" y="180" width="46" height="2.5" rx="1.25" fill="#5B9CFF"/>
+    <text x="222" y="174" font-size="12.5" fill="#8A8F9A">Advanced</text>
+    <rect x="1080" y="160" width="146" height="20" rx="10" fill="#22304F" stroke="#2C3E5F"/>
+    <text x="1153" y="174" font-size="10.5" fill="#8FB7FF" text-anchor="middle">12 / 28 tools enabled</text>
+
+    <!-- ============ LEFT COLUMN ============ -->
+    <text x="32" y="206" font-size="13" font-weight="600" fill="#D9DCE2">AGENT TOOLS</text>
+    <text x="398" y="206" font-size="11.5" fill="#8A8F9A" text-anchor="end">12 / 28 enabled</text>
+
+    <rect x="32" y="216" width="366" height="30" rx="6" fill="#1E2026" stroke="#3D4250"/>
+    <circle cx="48" cy="231" r="6" fill="none" stroke="#8A8F9A" stroke-width="1.5"/>
+    <line x1="53" y1="236" x2="58" y2="241" stroke="#8A8F9A" stroke-width="1.5"/>
+    <text x="64" y="236" font-size="11.5" fill="#5E6470">Search tools, params, categories…</text>
+
+    <rect x="32" y="254" width="52" height="24" rx="12" fill="#5B9CFF"/>
+    <text x="58" y="270" font-size="11" fill="#FFFFFF" text-anchor="middle">All</text>
+    <rect x="90" y="254" width="70" height="24" rx="12" fill="#262932" stroke="#3D4250"/>
+    <text x="125" y="270" font-size="11" fill="#D9DCE2" text-anchor="middle">Enabled</text>
+    <rect x="166" y="254" width="92" height="24" rx="12" fill="#262932" stroke="#3D4250"/>
+    <text x="212" y="270" font-size="11" fill="#D9DCE2" text-anchor="middle">Overridden</text>
+    <text x="398" y="270" font-size="11" fill="#8FB7FF" text-anchor="end">Select all</text>
+
+    <text x="32" y="298" font-size="10.5" letter-spacing="1.5" fill="#5E6470">FILE SYSTEM</text>
+    <text x="398" y="298" font-size="10.5" fill="#5E6470" text-anchor="end">6</text>
+
+    <!-- read -->
+    <g>
+      <rect x="32" y="310" width="16" height="16" rx="4" fill="#5B9CFF"/>
+      <polyline points="36,318 39,321 44,315" fill="none" stroke="#FFFFFF" stroke-width="1.8"/>
+      <text x="56" y="332" font-size="12.5" fill="#D9DCE2">read</text>
+      <text x="56" y="347" font-size="10.5" fill="#8A8F9A">Read file(s) from the project</text>
+    </g>
+
+    <!-- edit : SELECTED -->
+    <rect x="32" y="354" width="366" height="44" rx="6" fill="#22304F"/>
+    <rect x="32" y="354" width="3" height="44" rx="1.5" fill="#5B9CFF"/>
+    <rect x="40" y="370" width="16" height="16" rx="4" fill="#5B9CFF"/>
+    <polyline points="44,378 47,381 52,375" fill="none" stroke="#FFFFFF" stroke-width="1.8"/>
+    <text x="64" y="376" font-size="12.5" font-weight="600" fill="#E8EDFF">edit</text>
+    <text x="64" y="391" font-size="10.5" fill="#A9B7D8">Apply targeted text edits</text>
+    <rect x="368" y="365" width="20" height="20" rx="10" fill="#3A3020" stroke="#6B5B2F"/>
+    <text x="378" y="379" font-size="10.5" fill="#E5C07B" text-anchor="middle">4</text>
+
+    <!-- write -->
+    <g>
+      <rect x="32" y="414" width="16" height="16" rx="4" fill="#5B9CFF"/>
+      <polyline points="36,422 39,425 44,419" fill="none" stroke="#FFFFFF" stroke-width="1.8"/>
+      <text x="56" y="436" font-size="12.5" fill="#D9DCE2">write</text>
+      <text x="56" y="451" font-size="10.5" fill="#8A8F9A">Create or overwrite a file</text>
+    </g>
+
+    <!-- list -->
+    <g>
+      <rect x="32" y="458" width="16" height="16" rx="4" fill="#5B9CFF"/>
+      <polyline points="36,466 39,469 44,463" fill="none" stroke="#FFFFFF" stroke-width="1.8"/>
+      <text x="56" y="480" font-size="12.5" fill="#D9DCE2">list</text>
+      <text x="56" y="495" font-size="10.5" fill="#8A8F9A">List files in a directory</text>
+    </g>
+
+    <!-- search -->
+    <g>
+      <rect x="32" y="502" width="16" height="16" rx="4" fill="#5B9CFF"/>
+      <polyline points="36,510 39,513 44,507" fill="none" stroke="#FFFFFF" stroke-width="1.8"/>
+      <text x="56" y="524" font-size="12.5" fill="#D9DCE2">search</text>
+      <text x="56" y="539" font-size="10.5" fill="#8A8F9A">Regex search across files</text>
+    </g>
+
+    <!-- delete : disabled -->
+    <g opacity="0.85">
+      <rect x="32" y="546" width="16" height="16" rx="4" fill="#1E2026" stroke="#4A4F5C"/>
+      <text x="56" y="568" font-size="12.5" fill="#6E7380">delete</text>
+      <text x="56" y="583" font-size="10.5" fill="#5A5F6B">Delete a file permanently</text>
+    </g>
+
+    <text x="32" y="606" font-size="10.5" letter-spacing="1.5" fill="#5E6470">GIT</text>
+    <text x="398" y="606" font-size="10.5" fill="#5E6470" text-anchor="end">4</text>
+
+    <!-- diff -->
+    <g>
+      <rect x="32" y="618" width="16" height="16" rx="4" fill="#5B9CFF"/>
+      <polyline points="36,626 39,629 44,623" fill="none" stroke="#FFFFFF" stroke-width="1.8"/>
+      <text x="56" y="640" font-size="12.5" fill="#D9DCE2">diff</text>
+      <text x="56" y="655" font-size="10.5" fill="#8A8F9A">Show changes for a file</text>
+    </g>
+
+    <!-- commit -->
+    <g>
+      <rect x="32" y="662" width="16" height="16" rx="4" fill="#5B9CFF"/>
+      <polyline points="36,670 39,673 44,667" fill="none" stroke="#FFFFFF" stroke-width="1.8"/>
+      <text x="56" y="684" font-size="12.5" fill="#D9DCE2">commit</text>
+      <text x="56" y="699" font-size="10.5" fill="#8A8F9A">Stage &amp; commit changes</text>
+    </g>
+
+    <!-- checkout -->
+    <g>
+      <rect x="32" y="706" width="16" height="16" rx="4" fill="#5B9CFF"/>
+      <polyline points="36,714 39,717 44,711" fill="none" stroke="#FFFFFF" stroke-width="1.8"/>
+      <text x="56" y="728" font-size="12.5" fill="#D9DCE2">checkout</text>
+      <text x="56" y="743" font-size="10.5" fill="#8A8F9A">Switch branches</text>
+    </g>
+
+    <!-- discard : disabled -->
+    <g opacity="0.85">
+      <rect x="32" y="750" width="16" height="16" rx="4" fill="#1E2026" stroke="#4A4F5C"/>
+      <text x="56" y="772" font-size="12.5" fill="#6E7380">discard</text>
+      <text x="56" y="787" font-size="10.5" fill="#5A5F6B">Discard local changes</text>
+    </g>
+
+    <rect x="402" y="330" width="5" height="430" rx="2.5" fill="#2E323C"/>
+    <rect x="402" y="372" width="5" height="150" rx="2.5" fill="#484E5B"/>
+    <rect x="20" y="726" width="390" height="142" fill="url(#listFade)"/>
+
+    <!-- ============ RIGHT COLUMN ============ -->
+    <!-- Tool header -->
+    <rect x="424" y="188" width="796" height="64" rx="8" class="card"/>
+    <circle cx="462" cy="220" r="22" fill="#22304F" stroke="#2C3E5F"/>
+    <g transform="translate(0,-12)">
+      <path d="M 463 218 a 4 4 0 0 1 5.6 5.6 L 457 235 l -6.7 1.7 1.7 -6.7 Z" fill="none" stroke="#8FB7FF" stroke-width="1.6" stroke-linejoin="round"/>
+    </g>
+    <text x="494" y="216" font-size="19" font-weight="600" fill="#F0F2F6">edit</text>
+    <rect x="494" y="224" width="96" height="18" rx="9" class="chip"/>
+    <text x="542" y="237" font-size="9.5" fill="#AAB1BD" text-anchor="middle">WRITE FILES</text>
+    <rect x="598" y="224" width="118" height="18" rx="9" class="chip"/>
+    <text x="657" y="237" font-size="9.5" fill="#AAB1BD" text-anchor="middle">3 required params</text>
+
+    <text x="1148" y="214" font-size="11.5" fill="#D9DCE2" text-anchor="end">Enabled</text>
+    <rect x="1156" y="204" width="40" height="20" rx="10" fill="#5B9CFF"/>
+    <circle cx="1186" cy="214" r="7" fill="#FFFFFF"/>
+
+    <!-- ============ DESCRIPTION PANEL ============ -->
+    <rect x="424" y="258" width="796" height="140" rx="8" class="card"/>
+    <text x="440" y="278" font-size="13" font-weight="600" fill="#D9DCE2">DESCRIPTION</text>
+    <text x="440" y="294" font-size="10.5"><tspan fill="#8A8F9A">Sent to the model in every tool definition</tspan><tspan fill="#E5C07B"> · modified vs tool default</tspan></text>
+    <text x="1032" y="278" font-size="10.5" fill="#8FB7FF" text-anchor="end">Use default</text>
+
+    <rect x="440" y="306" width="764" height="72" rx="6" class="inset"/>
+    <rect x="440" y="306" width="3" height="72" rx="1.5" fill="#E5C07B"/>
+    <text x="456" y="328" font-size="12" class="mono" fill="#D9DCE2">Apply a single search-and-replace edit to <tspan fill="#E5C07B" font-weight="600">{filePath}</tspan>:</text>
+    <text x="456" y="346" font-size="12" class="mono" fill="#D9DCE2">find <tspan fill="#E5C07B" font-weight="600">{oldText}</tspan> and replace it with <tspan fill="#E5C07B" font-weight="600">{newText}</tspan>, failing</text>
+    <text x="456" y="364" font-size="12" class="mono" fill="#D9DCE2">if the match is ambiguous or not found.</text>
+
+    <text x="452" y="388" font-size="10.5"><tspan fill="#8A8F9A">172 chars · 44 tokens · </tspan><tspan fill="#E5C07B">3 dynamic refs</tspan></text>
+    <text x="888" y="388" font-size="10.5" fill="#8A8F9A" text-anchor="end">Insert param:</text>
+    <rect x="894" y="376" width="64" height="20" rx="10" fill="#22304F" stroke="#2C3E5F"/>
+    <text x="926" y="390" font-size="9.5" class="mono" fill="#8FB7FF" text-anchor="middle">{filePath}</text>
+    <rect x="964" y="376" width="60" height="20" rx="10" fill="#22304F" stroke="#2C3E5F"/>
+    <text x="994" y="390" font-size="9.5" class="mono" fill="#8FB7FF" text-anchor="middle">{oldText}</text>
+    <rect x="1030" y="376" width="60" height="20" rx="10" fill="#22304F" stroke="#2C3E5F"/>
+    <text x="1060" y="390" font-size="9.5" class="mono" fill="#8FB7FF" text-anchor="middle">{newText}</text>
+
+    <!-- ============ DETAIL TABS ============ -->
+    <text x="440" y="424" font-size="12.5" fill="#8A8F9A">Parameters</text>
+    <text x="528" y="424" font-size="12.5" font-weight="600" fill="#D9DCE2">Backend Options</text>
+    <rect x="526" y="430" width="106" height="2.5" rx="1.25" fill="#5B9CFF"/>
+    <text x="650" y="424" font-size="12.5" fill="#8A8F9A">Tool definition</text>
+
+    <!-- ============ BACKEND OPTIONS ============ -->
+    <!-- summary -->
+    <rect x="440" y="444" width="764" height="24" rx="6" fill="#2B2620" stroke="#4A3B24"/>
+    <text x="452" y="460" font-size="10.5" fill="#C9A45C">5 backend options customized for this agent — these control execution, not the model-facing schema</text>
+    <text x="1204" y="460" font-size="10.5" fill="#8FB7FF" text-anchor="end">Show diff</text>
+
+    <!-- Card A: IMPLEMENTATION -->
+    <rect x="440" y="474" width="764" height="120" rx="6" class="card"/>
+    <text x="456" y="494" font-size="11.5" font-weight="600" fill="#D9DCE2">IMPLEMENTATION</text>
+    <text x="456" y="510" font-size="10" fill="#8A8F9A">Which engine executes this tool for this preset</text>
+    <text x="1192" y="494" font-size="10" fill="#8A8F9A" text-anchor="end">1 of 3 selected</text>
+
+    <rect x="440" y="500" width="3" height="24" rx="1.5" fill="#E5C07B"/>
+    <rect x="448" y="500" width="748" height="24" rx="4" fill="#22304F"/>
+    <circle cx="464" cy="512" r="6" fill="#5B9CFF"/>
+    <circle cx="464" cy="512" r="2" fill="#FFFFFF"/>
+    <text x="478" y="516" font-size="11.5" font-weight="600" fill="#E8EDFF">Unified Diff</text>
+    <rect x="574" y="504" width="84" height="16" rx="8" fill="#1F3328" stroke="#2E5C40"/>
+    <text x="616" y="516" font-size="9" fill="#4CAF7D" text-anchor="middle">recommended</text>
+    <text x="668" y="516" font-size="10" fill="#8A8F9A">Token-efficient hunks with context — best default.</text>
+
+    <g>
+      <circle cx="464" cy="538" r="6" fill="none" stroke="#5E6470" stroke-width="1.5"/>
+      <text x="478" y="542" font-size="11.5" fill="#D9DCE2">Anchored Replace</text>
+      <text x="668" y="542" font-size="10" fill="#8A8F9A">Robust to indentation drift; replaces anchored blocks.</text>
+    </g>
+
+    <g>
+      <circle cx="464" cy="564" r="6" fill="none" stroke="#5E6470" stroke-width="1.5"/>
+      <text x="478" y="568" font-size="11.5" fill="#D9DCE2">Exact Match (current)</text>
+      <text x="668" y="568" font-size="10" fill="#8A8F9A">Current behavior — exact replace + indentation fallback.</text>
+    </g>
+
+    <!-- Card B: MATCHING -->
+    <rect x="440" y="600" width="764" height="130" rx="6" class="card"/>
+    <text x="456" y="620" font-size="11.5" font-weight="600" fill="#D9DCE2">MATCHING</text>
+    <text x="1192" y="620" font-size="10" fill="#8A8F9A" text-anchor="end">applies to: Unified Diff</text>
+
+    <rect x="440" y="626" width="3" height="24" rx="1.5" fill="#E5C07B"/>
+    <text x="456" y="642" font-size="11.5" fill="#D9DCE2">Context lines</text>
+    <rect x="1084" y="630" width="22" height="22" rx="4" fill="#262932" stroke="#3D4250"/>
+    <text x="1095" y="646" font-size="13" fill="#D9DCE2" text-anchor="middle">−</text>
+    <rect x="1110" y="630" width="36" height="22" rx="3" fill="#1E2026" stroke="#3D4250"/>
+    <text x="1128" y="646" font-size="11.5" class="mono" fill="#D9DCE2" text-anchor="middle">3</text>
+    <rect x="1150" y="630" width="22" height="22" rx="4" fill="#262932" stroke="#3D4250"/>
+    <text x="1161" y="646" font-size="13" fill="#D9DCE2" text-anchor="middle">+</text>
+
+    <text x="456" y="668" font-size="11.5" fill="#D9DCE2">Case-sensitive matching</text>
+    <rect x="1156" y="655" width="36" height="18" rx="9" fill="#3A3E4A"/>
+    <circle cx="1165" cy="664" r="7" fill="#C6CBD4"/>
+
+    <text x="456" y="694" font-size="11.5" fill="#D9DCE2">Indentation-insensitive fallback</text>
+    <rect x="1156" y="681" width="36" height="18" rx="9" fill="#5B9CFF"/>
+    <circle cx="1183" cy="690" r="7" fill="#FFFFFF"/>
+
+    <rect x="440" y="704" width="3" height="24" rx="1.5" fill="#E5C07B"/>
+    <text x="456" y="720" font-size="11.5" fill="#D9DCE2">On multiple matches</text>
+    <rect x="1064" y="710" width="132" height="24" rx="5" class="inset"/>
+    <text x="1076" y="727" font-size="11" fill="#D9DCE2">Fail</text>
+    <path d="M 1178 723 l 4 4 4 -4" stroke="#8A8F9A" stroke-width="1.5" fill="none"/>
+
+    <!-- Card C: EXECUTION & SAFETY -->
+    <rect x="440" y="736" width="764" height="124" rx="6" class="card"/>
+    <text x="456" y="756" font-size="11.5" font-weight="600" fill="#D9DCE2">EXECUTION &amp; SAFETY</text>
+    <text x="1192" y="756" font-size="10" fill="#8A8F9A" text-anchor="end">defaults inherited from tool</text>
+
+    <text x="456" y="778" font-size="11.5" fill="#D9DCE2">Require confirmation</text>
+    <text x="660" y="778" font-size="10" fill="#5E6470">inherits tool default (true)</text>
+    <rect x="1156" y="763" width="36" height="18" rx="9" fill="#5B9CFF"/>
+    <circle cx="1183" cy="772" r="7" fill="#FFFFFF"/>
+
+    <rect x="440" y="786" width="3" height="24" rx="1.5" fill="#E5C07B"/>
+    <text x="456" y="802" font-size="11.5" fill="#D9DCE2">Max retries</text>
+    <rect x="1016" y="790" width="22" height="22" rx="4" fill="#262932" stroke="#3D4250"/>
+    <text x="1027" y="806" font-size="13" fill="#D9DCE2" text-anchor="middle">−</text>
+    <rect x="1042" y="790" width="36" height="22" rx="3" fill="#1E2026" stroke="#3D4250"/>
+    <text x="1060" y="806" font-size="11.5" class="mono" fill="#D9DCE2" text-anchor="middle">2</text>
+    <rect x="1082" y="790" width="22" height="22" rx="4" fill="#262932" stroke="#3D4250"/>
+    <text x="1093" y="806" font-size="13" fill="#D9DCE2" text-anchor="middle">+</text>
+    <text x="1128" y="802" font-size="11.5" fill="#D9DCE2">Timeout (s)</text>
+    <rect x="1164" y="790" width="40" height="22" rx="3" fill="#1E2026" stroke="#3D4250"/>
+    <text x="1184" y="806" font-size="11.5" class="mono" fill="#E5C07B" text-anchor="middle">45</text>
+
+    <rect x="440" y="812" width="3" height="24" rx="1.5" fill="#E5C07B"/>
+    <text x="456" y="828" font-size="11.5" fill="#D9DCE2">Path scope</text>
+    <rect x="1042" y="818" width="154" height="24" rx="5" class="inset"/>
+    <text x="1054" y="835" font-size="11" fill="#D9DCE2">Project + external</text>
+    <path d="M 1178 831 l 4 4 4 -4" stroke="#8A8F9A" stroke-width="1.5" fill="none"/>
+
+    <text x="456" y="852" font-size="11.5" fill="#D9DCE2">Log verbosity</text>
+    <rect x="1064" y="842" width="132" height="24" rx="5" class="inset"/>
+    <text x="1076" y="859" font-size="11" fill="#D9DCE2">Normal</text>
+    <path d="M 1178 855 l 4 4 4 -4" stroke="#8A8F9A" stroke-width="1.5" fill="none"/>
+
+    <!-- ============ STATUS BAR ============ -->
+    <rect x="0" y="868" width="1240" height="52" fill="#202127"/>
+    <line x1="0" y1="868" x2="1240" y2="868" stroke="#2A2D35"/>
+    <circle cx="24" cy="894" r="4" fill="#4CAF7D"/>
+    <text x="36" y="899" font-size="11.5" fill="#8A8F9A">Schema valid — 5 backend options customized · 12/28 tools enabled</text>
+    <text x="1204" y="899" font-size="11" fill="#5E6470" text-anchor="end">Last saved 2 min ago · ai-presets.json</text>
+
+    <!-- ============ NUMBERED CALL-OUTS ============ -->
+    <g>
+      <circle cx="396" cy="214" r="10" class="numBadge"/><text x="396" y="218" class="numText" text-anchor="middle">1</text>
+      <circle cx="404" cy="376" r="10" class="numBadge"/><text x="404" y="380" class="numText" text-anchor="middle">2</text>
+      <circle cx="1204" cy="216" r="10" class="numBadge"/><text x="1204" y="220" class="numText" text-anchor="middle">3</text>
+      <circle cx="1204" cy="328" r="10" class="numBadge"/><text x="1204" y="332" class="numText" text-anchor="middle">4</text>
+      <line x1="1194" y1="328" x2="1192" y2="328" stroke="#D9B85E" stroke-width="1"/>
+      <circle cx="1204" cy="512" r="10" class="numBadge"/><text x="1204" y="516" class="numText" text-anchor="middle">5</text>
+      <line x1="1194" y1="512" x2="1190" y2="512" stroke="#D9B85E" stroke-width="1"/>
+      <circle cx="1204" cy="640" r="10" class="numBadge"/><text x="1204" y="644" class="numText" text-anchor="middle">6</text>
+      <line x1="1194" y1="640" x2="1192" y2="640" stroke="#D9B85E" stroke-width="1"/>
+      <circle cx="1204" cy="772" r="10" class="numBadge"/><text x="1204" y="776" class="numText" text-anchor="middle">7</text>
+      <line x1="1194" y1="772" x2="1192" y2="772" stroke="#D9B85E" stroke-width="1"/>
+      <circle cx="1204" cy="456" r="10" class="numBadge"/><text x="1204" y="460" class="numText" text-anchor="middle">8</text>
+      <line x1="1194" y1="456" x2="1192" y2="456" stroke="#D9B85E" stroke-width="1"/>
+      <circle cx="1204" cy="420" r="10" class="numBadge"/><text x="1204" y="424" class="numText" text-anchor="middle">9</text>
+      <line x1="1194" y1="420" x2="1180" y2="424" stroke="#D9B85E" stroke-width="1"/>
+    </g>
+  </g>
+</svg>
