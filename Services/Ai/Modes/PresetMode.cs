@@ -43,6 +43,12 @@ internal sealed class PresetMode : IAiChatMode
     /// <inheritdoc />
     public IReadOnlySet<string>? AllowedTools => _preset.AllowedTools;
 
+    /// <summary>
+    /// The underlying preset this mode wraps. Used by the execution layer to
+    /// resolve per-preset backend options for tools.
+    /// </summary>
+    internal AiPreset Preset => _preset;
+
     /// <inheritdoc />
     public JsonElement GetToolDefinitions(AgentToolRegistry registry)
     {
@@ -54,7 +60,7 @@ internal sealed class PresetMode : IAiChatMode
         }
 
         IReadOnlySet<string>? allowedTools = _preset.AllowedTools;
-        return registry.SerializeToolDefinitions(allowedTools);
+        return registry.SerializeToolDefinitions(allowedTools, _preset);
     }
 
     /// <inheritdoc />

@@ -1,0 +1,232 @@
+<UserControl x:Class="KaneCode.Controls.ToolDetailView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <UserControl.Resources>
+        <Style x:Key="DetailLinkButton" TargetType="Button">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Foreground" Value="{DynamicResource DiagnosticInfoForeground}" />
+            <Setter Property="FontSize" Value="10.5" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Padding" Value="0" />
+            <Style.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter Property="Foreground" Value="{DynamicResource WindowForeground}" />
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+
+        <Style x:Key="DetailTabButton" TargetType="Button">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Foreground" Value="{DynamicResource PanelHeaderForeground}" />
+            <Setter Property="FontSize" Value="12.5" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Padding" Value="0,0,0,4" />
+            <Setter Property="Margin" Value="0,0,24,0" />
+        </Style>
+
+        <Style x:Key="MonoText" TargetType="TextBlock">
+            <Setter Property="FontFamily" Value="Cascadia Code, Consolas, monospace" />
+        </Style>
+
+        <Style x:Key="StepperButton" TargetType="Button">
+            <Setter Property="Width" Value="22" />
+            <Setter Property="Height" Value="22" />
+            <Setter Property="FontSize" Value="13" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Padding" Value="0" />
+        </Style>
+    </UserControl.Resources>
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <!-- ═══════════════ TOOL HEADER ═══════════════ -->
+        <Border Grid.Row="0"
+                Background="{DynamicResource PanelBackground}"
+                BorderBrush="{DynamicResource ControlBorder}"
+                BorderThickness="1"
+                Margin="0,0,0,10"
+                Padding="14,10">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+
+                <Border Width="40" Height="40"
+                        Background="{DynamicResource ControlBackground}"
+                        BorderBrush="{DynamicResource ControlBorder}"
+                        BorderThickness="1"
+                        VerticalAlignment="Center">
+                    <TextBlock x:Name="ToolIconText" Text="⚙"
+                               FontSize="18" Foreground="{DynamicResource WindowForeground}"
+                               HorizontalAlignment="Center" VerticalAlignment="Center" />
+                </Border>
+
+                <StackPanel Grid.Column="1" Margin="12,0,0,0" VerticalAlignment="Center">
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock x:Name="ToolNameText" FontSize="19" FontWeight="SemiBold"
+                                   Foreground="{DynamicResource WindowForeground}" />
+                        <Border Background="{DynamicResource ControlBackground}"
+                                BorderBrush="{DynamicResource ControlBorder}" BorderThickness="1"
+                                Margin="10,2,0,0" Padding="8,1" VerticalAlignment="Center">
+                            <TextBlock x:Name="ToolCategoryText" FontSize="9.5"
+                                       Foreground="{DynamicResource PanelHeaderForeground}" />
+                        </Border>
+                        <Border Background="{DynamicResource ControlBackground}"
+                                BorderBrush="{DynamicResource ControlBorder}" BorderThickness="1"
+                                Margin="6,2,0,0" Padding="8,1" VerticalAlignment="Center">
+                            <TextBlock x:Name="ToolParamsText" FontSize="9.5"
+                                       Foreground="{DynamicResource PanelHeaderForeground}" />
+                        </Border>
+                    </StackPanel>
+                    <TextBlock x:Name="ToolSummaryText" FontSize="11" Foreground="{DynamicResource ControlDisabledForeground}"
+                               Margin="0,2,0,0" TextTrimming="CharacterEllipsis" />
+                </StackPanel>
+
+                <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+                    <TextBlock Text="Enabled" FontSize="11.5" Foreground="{DynamicResource WindowForeground}"
+                               VerticalAlignment="Center" Margin="0,0,8,0" />
+                    <CheckBox x:Name="EnabledToggle" VerticalAlignment="Center"
+                              Checked="EnabledToggle_Changed" Unchecked="EnabledToggle_Changed" />
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <!-- ═══════════════ SCROLLABLE CONTENT ═══════════════ -->
+        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+            <StackPanel>
+                <!-- ── DESCRIPTION PANEL ── -->
+                <Border Background="{DynamicResource PanelBackground}"
+                        BorderBrush="{DynamicResource ControlBorder}"
+                        BorderThickness="1" Padding="14,10" Margin="0,0,0,10">
+                    <StackPanel>
+                        <Grid>
+                            <StackPanel>
+                                <TextBlock Text="DESCRIPTION" FontSize="13" FontWeight="SemiBold"
+                                           Foreground="{DynamicResource WindowForeground}" />
+                                <TextBlock x:Name="DescriptionSubLabel" FontSize="10.5"
+                                           Foreground="{DynamicResource PanelHeaderForeground}" Margin="0,2,0,0"
+                                           Text="Sent to the model in every tool definition" />
+                            </StackPanel>
+                            <Button x:Name="UseDefaultDescriptionButton" Style="{StaticResource DetailLinkButton}"
+                                    Content="Use default" HorizontalAlignment="Right" VerticalAlignment="Top"
+                                    Click="UseDefaultDescription_Click" />
+                        </Grid>
+
+                        <Border x:Name="DescriptionEditorFrame"
+                                Background="{DynamicResource EditorBackground}"
+                                BorderBrush="{DynamicResource ControlBorder}"
+                                BorderThickness="1"
+                                Margin="0,8,0,0" Padding="0">
+                            <Grid>
+                                <Border x:Name="DescriptionModifiedBar" Width="3" HorizontalAlignment="Left"
+                                        Background="{DynamicResource DiagnosticWarningForeground}" Visibility="Collapsed" />
+                                <RichTextBox x:Name="DescriptionEditor"
+                                             FontFamily="Cascadia Code, Consolas, monospace"
+                                             FontSize="12"
+                                             Background="Transparent"
+                                             BorderThickness="0"
+                                             Padding="10,6"
+                                             AcceptsReturn="True"
+                                             VerticalScrollBarVisibility="Auto"
+                                             MinHeight="76"
+                                             MaxHeight="160"
+                                             TextChanged="DescriptionEditor_TextChanged" />
+                            </Grid>
+                        </Border>
+
+                        <Grid Margin="0,6,0,0">
+                            <TextBlock x:Name="DescriptionMetaText" FontSize="10.5"
+                                       Foreground="{DynamicResource ControlDisabledForeground}"
+                                       VerticalAlignment="Center" />
+                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                                <TextBlock Text="Insert param:" FontSize="10.5"
+                                           Foreground="{DynamicResource ControlDisabledForeground}"
+                                           VerticalAlignment="Center" Margin="0,0,6,0" />
+                                <ItemsControl x:Name="ParamChipsPanel">
+                                    <ItemsControl.ItemsPanel>
+                                        <ItemsPanelTemplate>
+                                            <StackPanel Orientation="Horizontal" />
+                                        </ItemsPanelTemplate>
+                                    </ItemsControl.ItemsPanel>
+                                </ItemsControl>
+                            </StackPanel>
+                        </Grid>
+                    </StackPanel>
+                </Border>
+
+                <!-- ── DETAIL TABS ── -->
+                <StackPanel Orientation="Horizontal" Margin="2,0,0,6">
+                    <Button x:Name="ParametersTabButton" Style="{StaticResource DetailTabButton}"
+                            Content="Parameters" Click="ParametersTab_Click" />
+                    <Button x:Name="BackendTabButton" Style="{StaticResource DetailTabButton}"
+                            Content="Backend Options" Click="BackendTab_Click" />
+                    <Button x:Name="DefinitionTabButton" Style="{StaticResource DetailTabButton}"
+                            Content="Tool definition" Click="DefinitionTab_Click" />
+                </StackPanel>
+
+                <!-- ── PARAMETERS TAB ── -->
+                <StackPanel x:Name="ParametersPanel" Visibility="Collapsed">
+                    <Grid Margin="2,0,2,8">
+                        <TextBlock Text="PARAMETERS" FontSize="13" FontWeight="SemiBold"
+                                   Foreground="{DynamicResource WindowForeground}" />
+                        <TextBlock x:Name="ParametersHeaderCount" FontSize="10.5"
+                                   Foreground="{DynamicResource PanelHeaderForeground}"
+                                   HorizontalAlignment="Right" VerticalAlignment="Center" />
+                    </Grid>
+                </StackPanel>
+
+                <!-- ── BACKEND OPTIONS TAB ── -->
+                <StackPanel x:Name="BackendOptionsPanel" Visibility="Collapsed" />
+
+                <!-- ── TOOL DEFINITION TAB ── -->
+                <Grid x:Name="DefinitionPanel" Visibility="Collapsed">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+
+                    <Grid Grid.Row="0" Margin="2,0,2,8">
+                        <TextBlock Text="TOOL DEFINITION" FontSize="13" FontWeight="SemiBold"
+                                   Foreground="{DynamicResource WindowForeground}" />
+                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                            <Button x:Name="CopyDefinitionButton" Content="Copy"
+                                    Style="{StaticResource DetailLinkButton}" Margin="0,0,12,0"
+                                    Click="CopyDefinition_Click" />
+                            <Button x:Name="TestCallButton" Content="Test call"
+                                    Style="{StaticResource DetailLinkButton}"
+                                    Click="TestCall_Click" />
+                        </StackPanel>
+                    </Grid>
+
+                    <Border Grid.Row="1" Background="{DynamicResource EditorBackground}"
+                            BorderBrush="{DynamicResource ControlBorder}"
+                            BorderThickness="1" Padding="0">
+                        <TextBox x:Name="DefinitionText"
+                                 IsReadOnly="True"
+                                 FontFamily="Cascadia Code, Consolas, monospace"
+                                 FontSize="11.5"
+                                 Background="Transparent"
+                                 BorderThickness="0"
+                                 Padding="10,8"
+                                 TextWrapping="NoWrap"
+                                 AcceptsReturn="True"
+                                 VerticalScrollBarVisibility="Auto"
+                                 MaxHeight="420" />
+                    </Border>
+                    <TextBlock x:Name="TestCallResultText" Grid.Row="2" Margin="2,6,2,0"
+                               FontSize="10.5" Foreground="{DynamicResource PanelHeaderForeground}"
+                               TextWrapping="Wrap" />
+                </Grid>
+            </StackPanel>
+        </ScrollViewer>
+    </Grid>
+</UserControl>

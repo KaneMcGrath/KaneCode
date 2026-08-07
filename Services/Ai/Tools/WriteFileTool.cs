@@ -26,14 +26,53 @@ internal sealed class WriteFileTool : IAgentTool
         }
         """).RootElement.Clone();
 
+    private static readonly JsonElement BackendOptions = JsonDocument.Parse("""
+        {
+            "type": "object",
+            "properties": {
+                "require_confirmation": {
+                    "type": "boolean",
+                    "default": true,
+                    "description": "Require user confirmation before writing the file"
+                },
+                "timeout": {
+                    "type": "integer",
+                    "default": 30,
+                    "minimum": 1,
+                    "maximum": 600,
+                    "description": "Execution timeout in seconds"
+                },
+                "path_scope": {
+                    "type": "string",
+                    "enum": ["project", "project_external"],
+                    "default": "project",
+                    "description": "Where file paths may resolve: project only, or project plus attached external context folders"
+                }
+            }
+        }
+        """).RootElement.Clone();
+
+    private static readonly JsonElement DefaultOptions = JsonDocument.Parse("""
+        {
+            "require_confirmation": true,
+            "timeout": 30,
+            "path_scope": "project"
+        }
+        """).RootElement.Clone();
+
     private readonly Func<string?> _projectRootProvider;
     private readonly Action<string>? _onFileChanged;
+    private readonly ExternalContextDirectoryRegistry? _externalContextDirectoryRegistry;
 
-    public WriteFileTool(Func<string?> projectRootProvider, Action<string>? onFileChanged = null)
+    public WriteFileTool(
+        Func<string?> projectRootProvider,
+        Action<string>? onFileChanged = null,
+        ExternalContextDirectoryRegistry? externalContextDirectoryRegistry = null)
     {
         ArgumentNullException.ThrowIfNull(projectRootProvider);
         _projectRootProvider = projectRootProvider;
         _onFileChanged = onFileChanged;
+        _externalContextDirectoryRegistry = externalContextDirectoryRegistry;
     }
 
     public string Name => "write";
@@ -43,6 +82,22 @@ internal sealed class WriteFileTool : IAgentTool
     public string Description => "Create or overwrite a file by path with provided content.";
 
     public JsonElement ParametersSchema => Schema;
+
+    public JsonElement BackendOptionsSchema => BackendOptions;
+
+    public IReadOnlyDictionary<string, JsonElement> DefaultBackendOptions
+    {
+        get
+        {
+            Dictionary<string, JsonElement> defaults = new(StringComparer.Ordinal);
+            foreach (JsonProperty property in DefaultOptions.EnumerateObject())
+            {
+                defaults[property.Name] = property.Value.Clone();
+            }
+
+            return defaults;
+        }
+    }
 
     public bool RequiresConfirmation => true;
 
@@ -63,9 +118,16 @@ internal sealed class WriteFileTool : IAgentTool
         string content = contentElement.GetString() ?? string.Empty;
         string resolvedPath;
 
+        string pathScope = AgentToolContext.GetString("path_scope", "project");
+
         try
         {
-            resolvedPath = AgentToolPathResolver.ResolvePath(_projectRootProvider, filePath);
+            resolvedPath = pathScope == "project_external" && _externalContextDirectoryRegistry is not null
+                ? AgentToolPathResolver.ResolvePath(
+                    _projectRootProvider,
+                    filePath,
+                    _externalContextDirectoryRegistry.GetAllowedDirectories())
+                : AgentToolPathResolver.ResolvePath(_projectRootProvider, filePath);
         }
         catch (Exception ex) when (ex is InvalidOperationException or ArgumentException or NotSupportedException or PathTooLongException)
         {

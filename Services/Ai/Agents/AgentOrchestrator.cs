@@ -1,3 +1,5 @@
+using KaneCode.Models;
+using KaneCode.Services.Ai.Modes;
 using System.Collections.Concurrent;
 using System.Text.Json;
 
@@ -211,10 +213,18 @@ internal sealed class AgentOrchestrator : IDisposable
                 "Wait for the lock to be released and retry.");
         }
 
+        // Resolve the preset's backend options for this tool and execute within
+        // that context so the tool reads its effective configuration.
+        AiPreset? preset = (agent.Mode as PresetMode)?.Preset;
+        IReadOnlyDictionary<string, JsonElement> options = AgentToolContext.Resolve(tool, preset);
+
         try
         {
-            ToolCallResult result = await tool.ExecuteAsync(args, cancellationToken).ConfigureAwait(false);
-            return result;
+            using (AgentToolContext.Push(options))
+            {
+                ToolCallResult result = await tool.ExecuteAsync(args, cancellationToken).ConfigureAwait(false);
+                return result;
+            }
         }
         catch (OperationCanceledException)
         {
@@ -368,7 +378,7 @@ internal sealed class AgentOrchestrator : IDisposable
         try
         {
             JsonElement toolsDef = subAgent.Mode.ToolsEnabled
-                ? _toolRegistry.SerializeToolDefinitions(subAgent.Mode.AllowedTools)
+                ? _toolRegistry.SerializeToolDefinitions(subAgent.Mode.AllowedTools, (subAgent.Mode as PresetMode)?.Preset)
                 : default;
 
             AgentRunResult result = await subAgent.RunAsync(

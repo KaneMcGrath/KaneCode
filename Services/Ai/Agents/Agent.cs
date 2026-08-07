@@ -1,3 +1,5 @@
+using KaneCode.Models;
+using KaneCode.Services.Ai.Modes;
 using System.Text.Json;
 
 namespace KaneCode.Services.Ai.Agents;
@@ -434,8 +436,16 @@ internal sealed class Agent : IAgent
 
         try
         {
-            ToolCallResult result = await tool.ExecuteAsync(args, cancellationToken).ConfigureAwait(false);
-            return result;
+            // Resolve the preset's backend options for this tool and execute within
+            // that context so the tool reads its effective configuration.
+            AiPreset? preset = (Mode as PresetMode)?.Preset;
+            IReadOnlyDictionary<string, JsonElement> options = AgentToolContext.Resolve(tool, preset);
+
+            using (AgentToolContext.Push(options))
+            {
+                ToolCallResult result = await tool.ExecuteAsync(args, cancellationToken).ConfigureAwait(false);
+                return result;
+            }
         }
         catch (OperationCanceledException)
         {

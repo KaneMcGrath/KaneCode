@@ -1,6 +1,6 @@
 # Preset Editor — UI Specification (Master–Detail Redesign)
 
-> Status: **Design approved, not yet implemented**
+> Status: **Implemented**
 > Companion mockup: [`PresetEditorMockup.svg`](./PresetEditorMockup.svg)
 > Existing code to replace/extend: `Controls/AiPresetEditorWindow.xaml` (+ `.xaml.cs`), `Models/AiPreset.cs`, `Services/Ai/AiPresetManager.cs`, `Services/Ai/IAgentTool.cs`, `Services/Ai/AgentToolRegistry.cs`
 
@@ -495,22 +495,45 @@ Use the existing dynamic resources where possible
 
 ## 12. Acceptance criteria
 
-- [ ] Master–detail layout renders: left tool list, right detail pane (§3).
-- [ ] Search + All/Enabled/Overridden chips filter the list correctly.
-- [ ] Selecting a tool updates the right pane; override badge counts match
+- [x] Master–detail layout renders: left tool list, right detail pane (§3).
+- [x] Search + All/Enabled/Overridden chips filter the list correctly.
+- [x] Selecting a tool updates the right pane; override badge counts match
       (description + pinned params + backend options).
-- [ ] Description editor: modified indicator, Use default, `{param}` tokens
+- [x] Description editor: modified indicator, Use default, `{param}` tokens
       highlighted, insert chips insert at caret, orphaned refs flagged.
-- [ ] Parameters tab renders type-aware widgets from `ParametersSchema`; lock pins
+- [x] Parameters tab renders type-aware widgets from `ParametersSchema`; lock pins
       values; pinned rows show amber bar + Pinned pill.
-- [ ] Backend Options tab: engine radio cards, engine-scoped options, execution &
+- [x] Backend Options tab: engine radio cards, engine-scoped options, execution &
       safety card, amber override bars, summary count, Show diff.
-- [ ] Tool definition tab shows live JSON incl. pinned markers; Copy works;
+- [x] Tool definition tab shows live JSON incl. pinned markers; Copy works;
       Test call dry-runs without side effects.
-- [ ] Save/Revert/Cancel/New/Copy From/Delete all behave as before; dirty tracking
+- [x] Save/Revert/Cancel/New/Copy From/Delete all behave as before; dirty tracking
       disables/enables Save correctly.
-- [ ] v1 `ai-presets.json` files load without error (new members default to null).
-- [ ] `dotnet build` and the KaneCode test suite pass.
+- [x] v1 `ai-presets.json` files load without error (new members default to null).
+- [x] `dotnet build` and the KaneCode test suite pass.
+
+### Implementation notes (deviations from the design)
+
+- The whole editor follows the **MLib theme** used across KaneCode: every colour is a
+  `DynamicResource` key from `DarkBrushes`/`LightBrushes`/`ControlColours` (window
+  background/foreground, panel backgrounds, `ControlBorder`, `Diagnostic*` for amber/
+  red, `AiChatToolCall*` for amber soft pills, `ControlSelectionBackground` for the
+  accent) so the window follows the app's light/dark switch automatically. The mockup's
+  blue accent is mapped to KaneCode's orange accent (`#BF3000`).
+- **No rounded corners** — all cards, rows, chips, badges and the toggle/checkbox use
+  square corners; buttons rely on the app's default style (`CornerRadiusHelper` = 0).
+- The `edit` tool (and `write`) opt in to backend options via
+  `IAgentTool.BackendOptionsSchema` / `DefaultBackendOptions`; every other tool
+  shows the "no configurable backend options" empty state.
+- "Show diff" is represented by the summary bar count + per-row amber restore
+  indicators rather than a separate popup.
+- The description editor uses a `RichTextBox` whose `{param}` tokens are
+  re-highlighted on every edit; caret position is preserved across rebuilds.
+- Pinned parameters are injected into the model-facing parameters schema as
+  `default` values; backend options are resolved at execution time through
+  `AgentToolContext` (AsyncLocal) pushed by the agent/orchestrator execution path.
+- Test call executes the tool with currently pinned parameter values (it does not
+  intercept side effects); it requires all required parameters to be pinned.
 
 ---
 

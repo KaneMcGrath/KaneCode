@@ -1151,7 +1151,7 @@ public partial class AiChatPanel : UserControl
             return default;
         }
 
-        return _toolRegistry.SerializeToolDefinitions(enabledTools);
+        return _toolRegistry.SerializeToolDefinitions(enabledTools, (_activeMode as PresetMode)?.Preset);
     }
 
     /// <summary>
@@ -4265,7 +4265,7 @@ public partial class AiChatPanel : UserControl
 
         // Reset system prompt to mode default
         JsonElement toolsDef = _toolRegistry is not null
-            ? _toolRegistry.SerializeToolDefinitions(conversation.EnabledTools)
+            ? _toolRegistry.SerializeToolDefinitions(conversation.EnabledTools, (mode as PresetMode)?.Preset)
             : default;
         conversation.SystemPrompt = mode.BuildSystemPrompt(toolsDef);
 
@@ -5417,7 +5417,7 @@ public partial class AiChatPanel : UserControl
             }
 
             JsonElement toolsDef = subAgent.Mode.ToolsEnabled && _toolRegistry is not null
-                ? _toolRegistry.SerializeToolDefinitions(subAgent.Mode.AllowedTools)
+                ? _toolRegistry.SerializeToolDefinitions(subAgent.Mode.AllowedTools, (subAgent.Mode as PresetMode)?.Preset)
                 : default;
 
             AgentRunResult result = await subAgent.RunAsync(
