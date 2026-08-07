@@ -6,7 +6,12 @@
     <UserControl.Resources>
         <local:ModeDropdownTemplateSelector x:Key="ModeDropdownTemplateSelector" />
     </UserControl.Resources>
-    <DockPanel Background="{DynamicResource AiChatBackground}">
+    <Grid>
+    <DockPanel Background="{DynamicResource AiChatBackground}"
+               AllowDrop="True"
+               PreviewDragOver="AiChatPanel_PreviewDragOver"
+               PreviewDragLeave="AiChatPanel_PreviewDragLeave"
+               PreviewDrop="AiChatPanel_PreviewDrop">
 
         <!-- Header -->
         <Border DockPanel.Dock="Top"
@@ -651,5 +656,24 @@
                 </Grid>
             </Border>
         </Grid>
+
     </DockPanel>
+
+    <!-- Drag & drop highlight overlay: shown while dragging files over the chat panel -->
+    <Border x:Name="DropHighlightBorder"
+            BorderBrush="{DynamicResource AiChatSendButtonBackground}"
+            BorderThickness="2.5"
+            Background="{DynamicResource AiChatHeaderBackground}"
+            Visibility="Collapsed"
+            IsHitTestVisible="False"
+            Panel.ZIndex="1000">
+        <TextBlock Text="&#x1F4CE; Drop file(s) to add to chat context"
+                   HorizontalAlignment="Center"
+                   VerticalAlignment="Center"
+                   FontSize="15"
+                   FontWeight="SemiBold"
+                   Foreground="{DynamicResource AiChatSendButtonForeground}"
+                   Margin="0,0,0,40" />
+    </Border>
+    </Grid>
 </UserControl>

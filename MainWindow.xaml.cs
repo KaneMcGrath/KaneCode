@@ -1259,6 +1259,81 @@ public partial class MainWindow : Window
         }
     }
 
+    // ── Explorer drag-to-AI-chat ─────────────────────────────────────
+
+    private Point _fileTreeDragStartPoint;
+    private bool _isFileTreeDragging;
+
+    private void FileTree_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        _fileTreeDragStartPoint = e.GetPosition(null);
+        _isFileTreeDragging = false;
+    }
+
+    /// <summary>
+    /// Starts an OLE drag when the user drags a file, folder, project, or solution
+    /// node out of the explorer tree. The payload uses the standard
+    /// <see cref="DataFormats.FileDrop"/> format so it can be dropped into the
+    /// AI chat (added to context) or into other applications (e.g. Windows Explorer).
+    /// </summary>
+    private void FileTree_PreviewMouseMove(object sender, MouseEventArgs e)
+    {
+        if (e.LeftButton != MouseButtonState.Pressed)
+        {
+            return;
+        }
+
+        Point currentPosition = e.GetPosition(null);
+        Vector delta = _fileTreeDragStartPoint - currentPosition;
+
+        if (!_isFileTreeDragging &&
+            (Math.Abs(delta.X) <= SystemParameters.MinimumHorizontalDragDistance &&
+             Math.Abs(delta.Y) <= SystemParameters.MinimumVerticalDragDistance))
+        {
+            return;
+        }
+
+        if (FindProjectItemUnderMouse(e.OriginalSource as DependencyObject) is not ProjectItem item ||
+            !IsDraggableProjectItem(item))
+        {
+            return;
+        }
+
+        _isFileTreeDragging = true;
+
+        var dataObject = new DataObject();
+        dataObject.SetData(DataFormats.FileDrop, new[] { item.FullPath });
+        DragDrop.DoDragDrop(FileTree, dataObject, DragDropEffects.Copy);
+    }
+
+    /// <summary>
+    /// Walks up the visual tree from the event source to find the
+    /// <see cref="TreeViewItem"/> under the mouse and returns its data context.
+    /// </summary>
+    private static ProjectItem? FindProjectItemUnderMouse(DependencyObject? source)
+    {
+        DependencyObject? current = source;
+        while (current is not null && current is not TreeViewItem)
+        {
+            current = VisualTreeHelper.GetParent(current);
+        }
+
+        return (current as TreeViewItem)?.DataContext as ProjectItem;
+    }
+
+    /// <summary>
+    /// Returns true for explorer nodes backed by a real file-system path that can
+    /// be meaningfully added to chat context (files, folders, projects, solutions).
+    /// Virtual nodes (Dependencies, Framework, Package) are excluded.
+    /// </summary>
+    private static bool IsDraggableProjectItem(ProjectItem item)
+    {
+        return item.ItemType is ProjectItemType.File
+            or ProjectItemType.Folder
+            or ProjectItemType.Project
+            or ProjectItemType.Solution;
+    }
+
     // ── Tab drag-drop reordering ──────────────────────────────────────
 
     private Point _tabDragStartPoint;

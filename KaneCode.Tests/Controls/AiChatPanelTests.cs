@@ -403,6 +403,62 @@ public class AiChatPanelTests
     }
 
     [Fact]
+    public void WhenDataObjectContainsFileDropPathsThenTheyAreParsed()
+    {
+        string firstPath = Path.Combine(Path.GetTempPath(), $"drop-test-{Guid.NewGuid():N}.txt");
+        string secondPath = Path.Combine(Path.GetTempPath(), $"drop-test-{Guid.NewGuid():N}.cs");
+        try
+        {
+            File.WriteAllText(firstPath, "one");
+            File.WriteAllText(secondPath, "two");
+            IDataObject dataObject = new DataObject();
+            dataObject.SetData(DataFormats.FileDrop, new[] { firstPath, secondPath });
+
+            bool result = AiChatPanel.TryGetDroppedFilePaths(dataObject, out IReadOnlyList<string> filePaths);
+
+            Assert.True(result);
+            Assert.Equal(2, filePaths.Count);
+            Assert.Contains(firstPath, filePaths);
+            Assert.Contains(secondPath, filePaths);
+        }
+        finally
+        {
+            if (File.Exists(firstPath))
+            {
+                File.Delete(firstPath);
+            }
+            if (File.Exists(secondPath))
+            {
+                File.Delete(secondPath);
+            }
+        }
+    }
+
+    [Fact]
+    public void WhenDataObjectHasNoFileDropFormatThenPathsAreNotParsed()
+    {
+        IDataObject dataObject = new DataObject();
+        dataObject.SetData(DataFormats.Text, "not a file drop");
+
+        bool result = AiChatPanel.TryGetDroppedFilePaths(dataObject, out IReadOnlyList<string> filePaths);
+
+        Assert.False(result);
+        Assert.Empty(filePaths);
+    }
+
+    [Fact]
+    public void WhenDataObjectHasEmptyFileDropArrayThenPathsAreNotParsed()
+    {
+        IDataObject dataObject = new DataObject();
+        dataObject.SetData(DataFormats.FileDrop, Array.Empty<string>());
+
+        bool result = AiChatPanel.TryGetDroppedFilePaths(dataObject, out IReadOnlyList<string> filePaths);
+
+        Assert.False(result);
+        Assert.Empty(filePaths);
+    }
+
+    [Fact]
     public void WhenSavingPastedImageThenFileIsWrittenWithHashBasedName()
     {
         byte[] imageBytes = [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A];

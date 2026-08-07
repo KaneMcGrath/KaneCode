@@ -2091,6 +2091,125 @@ public partial class AiChatPanel : UserControl
         }
     }
 
+    // ── Drag & drop support ─────────────────────────────────────────
+
+    /// <summary>
+    /// Extracts the file paths carried by a drag/drop data object (from the
+    /// explorer tree or Windows Explorer). Returns false when the payload
+    /// is not a file drop.
+    /// </summary>
+    internal static bool TryGetDroppedFilePaths(IDataObject dataObject, out IReadOnlyList<string> filePaths)
+    {
+        filePaths = [];
+
+        if (dataObject is null || !dataObject.GetDataPresent(DataFormats.FileDrop))
+        {
+            return false;
+        }
+
+        filePaths = dataObject.GetData(DataFormats.FileDrop) as string[] ?? [];
+        return filePaths.Count > 0;
+    }
+
+    /// <summary>
+    /// Shows a copy cursor and the drop-highlight overlay while dragging files
+    /// over the chat panel, so the user knows the drop will add them to context.
+    /// </summary>
+    private void AiChatPanel_PreviewDragOver(object sender, DragEventArgs e)
+    {
+        if (TryGetDroppedFilePaths(e.Data, out _))
+        {
+            e.Effects = DragDropEffects.Copy;
+            DropHighlightBorder.Visibility = Visibility.Visible;
+            e.Handled = true;
+        }
+        else
+        {
+            e.Effects = DragDropEffects.None;
+            DropHighlightBorder.Visibility = Visibility.Collapsed;
+        }
+    }
+
+    /// <summary>
+    /// Hides the drop-highlight overlay when the pointer leaves the panel.
+    /// Transient leave events fired while crossing between child elements are
+    /// ignored by checking the pointer is still within the panel bounds.
+    /// </summary>
+    private void AiChatPanel_PreviewDragLeave(object sender, DragEventArgs e)
+    {
+        if (sender is FrameworkElement dropTarget)
+        {
+            Point position = e.GetPosition(dropTarget);
+            if (position.X >= 0 && position.Y >= 0 &&
+                position.X <= dropTarget.ActualWidth &&
+                position.Y <= dropTarget.ActualHeight)
+            {
+                return;
+            }
+        }
+
+        DropHighlightBorder.Visibility = Visibility.Collapsed;
+    }
+
+    /// <summary>
+    /// Handles dropping files onto the chat panel. Each dropped file is added to
+    /// the conversation context for the next message; dropped folders are attached
+    /// as external-folder context (request-scoped tool access).
+    /// </summary>
+    private void AiChatPanel_PreviewDrop(object sender, DragEventArgs e)
+    {
+        DropHighlightBorder.Visibility = Visibility.Collapsed;
+
+        if (!TryGetDroppedFilePaths(e.Data, out IReadOnlyList<string> filePaths))
+        {
+            return;
+        }
+
+        e.Handled = true;
+
+        int addedCount = 0;
+        int failedCount = 0;
+
+        foreach (string path in filePaths)
+        {
+            try
+            {
+                if (Directory.Exists(path))
+                {
+                    AddReference(AiContextReferenceFactory.CreateExternalFolderReference(path));
+                    addedCount++;
+                }
+                else if (File.Exists(path))
+                {
+                    AddFileReference(path);
+                    addedCount++;
+                }
+                else
+                {
+                    failedCount++;
+                }
+            }
+            catch (IOException)
+            {
+                failedCount++;
+            }
+            catch (UnauthorizedAccessException)
+            {
+                failedCount++;
+            }
+        }
+
+        if (addedCount > 0)
+        {
+            string noun = addedCount == 1 ? "item" : "items";
+            AppendSystemMessage($"📎 Dropped {addedCount} {noun} — added to context for the next message.");
+        }
+        else if (failedCount > 0)
+        {
+            AppendSystemMessage("Could not add the dropped item(s) to context.");
+        }
+    }
+
     /// <summary>
     /// Reads an image from the clipboard (screenshot, copied picture, or copied image file)
     /// and adds it as an <see cref="AiReferenceKind.Image"/> reference so it is automatically

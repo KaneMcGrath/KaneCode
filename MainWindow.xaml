@@ -283,7 +283,9 @@ ResizeMode="CanResizeWithGrip">
                                           ItemsSource="{Binding ProjectItems}"
                                           Background="Transparent" BorderThickness="0"
                                           Foreground="{DynamicResource PanelForeground}"
-                                          MouseDoubleClick="FileTree_MouseDoubleClick">
+                                          MouseDoubleClick="FileTree_MouseDoubleClick"
+                                          PreviewMouseLeftButtonDown="FileTree_PreviewMouseLeftButtonDown"
+                                          PreviewMouseMove="FileTree_PreviewMouseMove">
                                     <TreeView.ContextMenu>
                                         <ContextMenu>
                                             <MenuItem Header="_New File">
