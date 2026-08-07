@@ -103,4 +103,25 @@ public class OpenFileTabTests
     {
         Assert.Throws<ArgumentNullException>(() => new OpenFileTab(null!));
     }
+
+    [Fact]
+    public void WhenConstructedThenImagePreviewIsInactiveByDefault()
+    {
+        OpenFileTab tab = new OpenFileTab(@"C:\test\Image.png", "content");
+
+        Assert.False(tab.IsImagePreviewActive);
+    }
+
+    [Fact]
+    public void WhenImagePreviewStateSetThenPropertyChangedRaised()
+    {
+        OpenFileTab tab = new OpenFileTab(@"C:\test\Image.svg", "content");
+        List<string> changedProperties = [];
+        tab.PropertyChanged += (_, e) => changedProperties.Add(e.PropertyName!);
+
+        tab.IsImagePreviewActive = true;
+
+        Assert.True(tab.IsImagePreviewActive);
+        Assert.Contains(nameof(OpenFileTab.IsImagePreviewActive), changedProperties);
+    }
 }

@@ -25,6 +25,32 @@ internal static class EditorService
     };
 
     /// <summary>
+    /// File extensions treated as images. These open in the image viewer
+    /// (preview) by default instead of the raw text editor.
+    /// </summary>
+    private static readonly HashSet<string> ImageFileExtensions = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ".png", ".jpg", ".jpeg", ".jfif", ".gif", ".bmp", ".dib",
+        ".ico", ".tif", ".tiff", ".webp", ".wdp", ".hdp",
+        ".emf", ".wmf", ".svg"
+    };
+
+    /// <summary>
+    /// Returns true if the file extension indicates an image file that should
+    /// be displayed with the built-in image viewer.
+    /// </summary>
+    public static bool IsImageFile(string filePath)
+    {
+        if (string.IsNullOrWhiteSpace(filePath))
+        {
+            return false;
+        }
+
+        string? ext = Path.GetExtension(filePath);
+        return ext is not null && ImageFileExtensions.Contains(ext);
+    }
+
+    /// <summary>
     /// Reads the full text of a file.
     /// </summary>
     public static string ReadFile(string path)

@@ -22,6 +22,7 @@ using System.Windows.Controls.Primitives;
 using System.Windows.Documents;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Media.Imaging;
 using AvalonDock.Layout;
 
 namespace KaneCode;
@@ -309,7 +310,7 @@ public partial class MainWindow : Window
             // SelectionChanged fired, causing SwitchToTab to short-circuit).
             EditorTabControl.SelectedItem = _viewModel.ActiveTab;
             UpdatePresentationLineHighlight();
-            UpdateMarkdownToolbar();
+            UpdatePreviewToolbar();
         }
 
         if (e.PropertyName == nameof(MainViewModel.BuildSummary)
@@ -904,14 +905,50 @@ public partial class MainWindow : Window
         // to keep exactly one active. This is handled in the Checked handler.
     }
 
+    private void ImageViewToggle_Checked(object sender, RoutedEventArgs e)
+    {
+        // Guard: during XAML initialization the named elements may not be
+        // resolved yet (IsChecked=True triggers the Checked event on start).
+        if (!IsLoaded)
+        {
+            return;
+        }
+
+        if (sender == ImageEditButton)
+        {
+            ImagePreviewButton.IsChecked = false;
+            ShowImageEditorView();
+        }
+        else if (sender == ImagePreviewButton)
+        {
+            ImageEditButton.IsChecked = false;
+            ShowImageViewerView();
+        }
+    }
+
+    private void ImageViewToggle_Unchecked(object sender, RoutedEventArgs e)
+    {
+        // Guard: during XAML initialization the named elements may not be
+        // resolved yet (IsChecked changes can trigger Unchecked on start).
+        if (!IsLoaded)
+        {
+            return;
+        }
+
+        // When one toggle is unchecked, we ensure the other is checked
+        // to keep exactly one active. This is handled in the Checked handler.
+    }
+
     private void ShowMarkdownEditorView()
     {
         CodeEditor.Visibility = Visibility.Visible;
         MarkdownPreview.Visibility = Visibility.Collapsed;
+        ImagePreview.Visibility = Visibility.Collapsed;
 
         if (_viewModel.ActiveTab is not null)
         {
             _viewModel.ActiveTab.IsMarkdownPreviewActive = false;
+            _viewModel.ActiveTab.IsImagePreviewActive = false;
         }
     }
 
@@ -919,31 +956,125 @@ public partial class MainWindow : Window
     {
         CodeEditor.Visibility = Visibility.Collapsed;
         MarkdownPreview.Visibility = Visibility.Visible;
+        ImagePreview.Visibility = Visibility.Collapsed;
 
         if (_viewModel.ActiveTab is not null)
         {
             _viewModel.ActiveTab.IsMarkdownPreviewActive = true;
+            _viewModel.ActiveTab.IsImagePreviewActive = false;
         }
 
         // Refresh the preview with the latest editor content
         MarkdownPreview.SetMarkdownContent(CodeEditor.Text);
     }
 
+    private void ShowImageEditorView()
+    {
+        CodeEditor.Visibility = Visibility.Visible;
+        MarkdownPreview.Visibility = Visibility.Collapsed;
+        ImagePreview.Visibility = Visibility.Collapsed;
+
+        if (_viewModel.ActiveTab is not null)
+        {
+            _viewModel.ActiveTab.IsImagePreviewActive = false;
+        }
+    }
+
+    private void ShowImageViewerView()
+    {
+        CodeEditor.Visibility = Visibility.Collapsed;
+        MarkdownPreview.Visibility = Visibility.Collapsed;
+        ImagePreview.Visibility = Visibility.Visible;
+
+        if (_viewModel.ActiveTab is not null)
+        {
+            _viewModel.ActiveTab.IsMarkdownPreviewActive = false;
+            _viewModel.ActiveTab.IsImagePreviewActive = true;
+        }
+
+        LoadImagePreview();
+    }
+
     /// <summary>
-    /// Updates the markdown toolbar visibility based on the active tab's file extension.
-    /// Restores the tab's saved preview state (Edit vs Preview) when switching back.
+    /// Shows the raw editor view (used for non-markdown, non-image files).
     /// </summary>
-    private void UpdateMarkdownToolbar()
+    private void ShowEditorView()
+    {
+        CodeEditor.Visibility = Visibility.Visible;
+        MarkdownPreview.Visibility = Visibility.Collapsed;
+        ImagePreview.Visibility = Visibility.Collapsed;
+
+        if (_viewModel.ActiveTab is not null)
+        {
+            _viewModel.ActiveTab.IsMarkdownPreviewActive = false;
+            _viewModel.ActiveTab.IsImagePreviewActive = false;
+        }
+    }
+
+    /// <summary>
+    /// Loads the active image file into the preview panel. SVG files are
+    /// rendered from the current editor text so unsaved edits are reflected;
+    /// raster images are loaded from disk.
+    /// </summary>
+    private void LoadImagePreview()
+    {
+        OpenFileTab? activeTab = _viewModel.ActiveTab;
+        if (activeTab is null || string.IsNullOrWhiteSpace(activeTab.FilePath))
+        {
+            ImagePreview.Clear();
+            return;
+        }
+
+        if (activeTab.FilePath.EndsWith(".svg", StringComparison.OrdinalIgnoreCase))
+        {
+            ImagePreview.SetSvgContent(CodeEditor.Text);
+            return;
+        }
+
+        try
+        {
+            using var stream = new FileStream(
+                activeTab.FilePath,
+                FileMode.Open,
+                FileAccess.Read,
+                FileShare.Read);
+
+            BitmapDecoder decoder = BitmapDecoder.Create(
+                stream,
+                BitmapCreateOptions.PreservePixelFormat,
+                BitmapCacheOption.OnLoad);
+
+            BitmapSource source = decoder.Frames[0];
+            source.Freeze();
+            ImagePreview.SetRasterImage(source);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.NotSupportedException)
+        {
+            ImagePreview.SetError($"Could not load image:\n{ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Updates the markdown/image toolbar visibility based on the active tab's
+    /// file extension. Restores the tab's saved view state (Edit vs Preview)
+    /// when switching back.
+    /// </summary>
+    private void UpdatePreviewToolbar()
     {
         var activeTab = _viewModel.ActiveTab;
-        bool isMarkdownFile = activeTab?.FilePath is not null &&
-            Path.GetExtension(activeTab.FilePath)?.Equals(".md", StringComparison.OrdinalIgnoreCase) == true;
+        string? extension = activeTab?.FilePath is not null
+            ? Path.GetExtension(activeTab.FilePath)
+            : null;
+
+        bool isMarkdownFile = extension?.Equals(".md", StringComparison.OrdinalIgnoreCase) == true;
+        bool isImageFile = activeTab is not null && EditorService.IsImageFile(activeTab.FilePath);
 
         MarkdownToolbar.Visibility = isMarkdownFile ? Visibility.Visible : Visibility.Collapsed;
+        ImageToolbar.Visibility = isImageFile ? Visibility.Visible : Visibility.Collapsed;
 
         if (isMarkdownFile && activeTab is not null)
         {
-            // Restore the tab's saved preview state
+            // Restore the tab's saved markdown preview state
             if (activeTab.IsMarkdownPreviewActive)
             {
                 if (MarkdownPreviewButton.IsChecked != true)
@@ -967,22 +1098,56 @@ public partial class MainWindow : Window
                 }
             }
         }
+        else if (isImageFile && activeTab is not null)
+        {
+            // Restore the tab's saved image view state. New image tabs default
+            // to the image viewer (preview) via OpenFileByPath.
+            if (activeTab.IsImagePreviewActive)
+            {
+                if (ImagePreviewButton.IsChecked != true)
+                {
+                    ImagePreviewButton.IsChecked = true;
+                }
+                else
+                {
+                    ShowImageViewerView();
+                }
+            }
+            else
+            {
+                if (ImageEditButton.IsChecked != true)
+                {
+                    ImageEditButton.IsChecked = true;
+                }
+                else
+                {
+                    ShowImageEditorView();
+                }
+            }
+        }
         else
         {
-            // Ensure editor is visible for non-markdown files
-            ShowMarkdownEditorView();
+            // Ensure editor is visible for non-markdown, non-image files
+            ShowEditorView();
         }
     }
 
     /// <summary>
     /// Called whenever the editor text changes. Updates the markdown preview
-    /// if preview mode is currently active.
+    /// and the SVG image preview if preview mode is currently active.
     /// </summary>
     private void OnCodeEditorTextChanged(object? sender, EventArgs e)
     {
         if (MarkdownPreview.Visibility == Visibility.Visible)
         {
             MarkdownPreview.SetMarkdownContent(CodeEditor.Text);
+        }
+
+        if (ImagePreview.Visibility == Visibility.Visible &&
+            _viewModel.ActiveTab?.FilePath is string imagePath &&
+            imagePath.EndsWith(".svg", StringComparison.OrdinalIgnoreCase))
+        {
+            ImagePreview.SetSvgContent(CodeEditor.Text);
         }
     }
 

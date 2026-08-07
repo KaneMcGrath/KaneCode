@@ -1656,6 +1656,11 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
             var content = EditorService.ReadFile(filePath);
             var highlighting = EditorService.GetSyntaxHighlighting(filePath);
             var tab = new OpenFileTab(filePath, content);
+            if (EditorService.IsImageFile(filePath))
+            {
+                // Image files default to the image viewer instead of raw text.
+                tab.IsImagePreviewActive = true;
+            }
             OpenTabs.Add(tab);
             ActivateTab(tab, syntaxHighlighting: highlighting);
         }

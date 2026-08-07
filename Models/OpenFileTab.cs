@@ -70,4 +70,15 @@ public sealed class OpenFileTab : ObservableObject
         get => _isMarkdownPreviewActive;
         set => SetProperty(ref _isMarkdownPreviewActive, value);
     }
+
+    private bool _isImagePreviewActive;
+    /// <summary>
+    /// True when the image preview (image viewer) is shown instead of the raw
+    /// editor content. Only meaningful for image files; ignored for others.
+    /// </summary>
+    public bool IsImagePreviewActive
+    {
+        get => _isImagePreviewActive;
+        set => SetProperty(ref _isImagePreviewActive, value);
+    }
 }

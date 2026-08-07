@@ -501,6 +501,45 @@ ResizeMode="CanResizeWithGrip">
                                             </StackPanel>
                                         </Border>
 
+                                        <!-- Image toolbar (only visible for image files) -->
+                                        <Border x:Name="ImageToolbar"
+                                                DockPanel.Dock="Bottom"
+                                                Visibility="Collapsed"
+                                                Height="28"
+                                                Background="{DynamicResource StatusBarBackground}">
+                                            <StackPanel Orientation="Horizontal" Margin="8,0">
+                                                <ToggleButton x:Name="ImageEditButton"
+                                                              Content="Edit"
+                                                              IsChecked="True"
+                                                              Width="80"
+                                                              Height="22"
+                                                              FontSize="11"
+                                                              Cursor="Hand"
+                                                              Foreground="{DynamicResource StatusBarForeground}"
+                                                              Background="{DynamicResource ControlBackground}"
+                                                              BorderBrush="{DynamicResource ControlBorder}"
+                                                              BorderThickness="1"
+                                                              Padding="6,1"
+                                                              Checked="ImageViewToggle_Checked"
+                                                              Unchecked="ImageViewToggle_Unchecked" />
+                                                <ToggleButton x:Name="ImagePreviewButton"
+                                                              Content="Preview"
+                                                              IsChecked="False"
+                                                              Width="80"
+                                                              Height="22"
+                                                              FontSize="11"
+                                                              Margin="6,0,0,0"
+                                                              Cursor="Hand"
+                                                              Foreground="{DynamicResource StatusBarForeground}"
+                                                              Background="{DynamicResource ControlBackground}"
+                                                              BorderBrush="{DynamicResource ControlBorder}"
+                                                              BorderThickness="1"
+                                                              Padding="6,1"
+                                                              Checked="ImageViewToggle_Checked"
+                                                              Unchecked="ImageViewToggle_Unchecked" />
+                                            </StackPanel>
+                                        </Border>
+
                                         <Grid>
                                             <avalonEdit:TextEditor x:Name="CodeEditor"
                                                                FontFamily="Cascadia Code, Consolas, Courier New"
@@ -541,6 +580,7 @@ ResizeMode="CanResizeWithGrip">
                                                 </avalonEdit:TextEditor.ContextMenu>
                                             </avalonEdit:TextEditor>
                                             <controls:MarkdownPreviewPanel x:Name="MarkdownPreview" Visibility="Collapsed" />
+                                            <controls:ImagePreviewPanel x:Name="ImagePreview" Visibility="Collapsed" />
                                             <controls:PresentationOverlay x:Name="PresentationOverlay" />
                                         </Grid>
                                     </DockPanel>
