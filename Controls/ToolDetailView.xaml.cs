@@ -38,6 +38,8 @@ public partial class ToolDetailView : UserControl
     private Action? _onChanged;
     private bool _loading = true;
     private string _cleanDefinitionJson = string.Empty;
+    private bool _reflowPending;
+    private int _pendingCaretOffset;
 
     public ToolDetailView()
     {
@@ -187,12 +189,50 @@ public partial class ToolDetailView : UserControl
         string text = GetDescriptionText();
         State.DescriptionOverride = text;
 
-        int caretOffset = new TextRange(DescriptionEditor.Document.ContentStart, DescriptionEditor.CaretPosition).Text.Length;
-        DescriptionEditor.Document = BuildHighlightedDocument(text);
-        RestoreCaret(caretOffset);
+        // The highlight rebuild must not replace DescriptionEditor.Document
+        // in here: TextChanged fires while the editing pipeline is inside a
+        // DeclareChangeBlock/BeginChange scope, and WPF throws
+        // InvalidOperationException when the Document property is set then.
+        // Capture the caret position now and defer the reflow to the
+        // dispatcher, which runs after the current change block completes.
+        _pendingCaretOffset = new TextRange(DescriptionEditor.Document.ContentStart, DescriptionEditor.CaretPosition).Text.Length;
 
         UpdateDescriptionVisuals(text);
         MarkChanged();
+
+        QueueDescriptionReflow();
+    }
+
+    private void QueueDescriptionReflow()
+    {
+        if (_reflowPending)
+        {
+            return;
+        }
+
+        _reflowPending = true;
+        Dispatcher.BeginInvoke(DispatcherPriority.Background, new Action(ReflowDescription));
+    }
+
+    private void ReflowDescription()
+    {
+        _reflowPending = false;
+        if (_loading || State is null)
+        {
+            return;
+        }
+
+        string text = GetDescriptionText();
+        _loading = true;
+        try
+        {
+            DescriptionEditor.Document = BuildHighlightedDocument(text);
+            RestoreCaret(_pendingCaretOffset);
+        }
+        finally
+        {
+            _loading = false;
+        }
     }
 
     private void UpdateDescriptionVisuals(string text)
