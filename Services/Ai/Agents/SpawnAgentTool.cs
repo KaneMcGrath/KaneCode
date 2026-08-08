@@ -49,12 +49,12 @@ internal sealed class SpawnAgentTool : IAgentTool
 
             writer.WriteStartObject("provider");
             writer.WriteString("type", "string");
-            writer.WriteString("description", "Optional provider ID for the sub-agent (e.g. 'v1chatcompletions'). If omitted, the parent's provider is used.");
+            writer.WriteString("description", "Optional provider for the sub-agent — the provider ID or the user-created label from AI settings (e.g. 'v1chatcompletions' or 'My OpenAI Key'). If omitted, the parent's provider is used.");
             writer.WriteEndObject();
 
             writer.WriteStartObject("model");
             writer.WriteString("type", "string");
-            writer.WriteString("description", "Optional model for the sub-agent. If omitted, the parent's model is used.");
+            writer.WriteString("description", "Optional model for the sub-agent. A combined 'providerLabel/model' value (e.g. 'My OpenAI Key/gpt-4o') also selects the provider. If omitted, the parent's model is used.");
             writer.WriteEndObject();
 
             writer.WriteStartObject("mode");

@@ -114,6 +114,7 @@
                         <ComboBox x:Name="ModeSelector"
                                   SelectionChanged="ModeSelector_SelectionChanged"
                                   ItemTemplateSelector="{StaticResource ModeDropdownTemplateSelector}"
+                                  ContextMenuOpening="ModeSelector_ContextMenuOpening"
                                   FontSize="11"
                                   MinWidth="80"
                                   VerticalAlignment="Center"
@@ -204,6 +205,13 @@
                                     </Style.Triggers>
                                 </Style>
                             </ComboBox.Resources>
+                            <ComboBox.ContextMenu>
+                                <ContextMenu>
+                                    <MenuItem x:Name="ModeCopyMenuItem"
+                                              Click="ModeCopyMenuItem_Click"
+                                              FontSize="11" />
+                                </ContextMenu>
+                            </ComboBox.ContextMenu>
                         </ComboBox>
                         <Grid Margin="0,0,6,0">
                             <primitives:ToggleButton x:Name="SettingsOptionsButton"
@@ -351,7 +359,28 @@
                                              Cursor="Hand"
                                              ToolTip="Select provider and model"
                                              IsChecked="False"
-                                             Click="ModelPickerButton_Click" />
+                                             Click="ModelPickerButton_Click"
+                                             ContextMenuOpening="ModelPickerButton_ContextMenuOpening">
+                        <primitives:ToggleButton.ContextMenu>
+                            <ContextMenu>
+                                <MenuItem x:Name="ModelPickerCopyProviderMenuItem"
+                                          Header="Copy provider"
+                                          Click="CopyProviderMenuItem_Click"
+                                          FontSize="11"
+                                          ToolTip="Copy the provider label from AI settings — a valid value for the spawn_agent 'provider' parameter." />
+                                <MenuItem x:Name="ModelPickerCopyModelMenuItem"
+                                          Header="Copy model"
+                                          Click="CopyModelMenuItem_Click"
+                                          FontSize="11"
+                                          ToolTip="Copy the model name — a valid value for the spawn_agent 'model' parameter." />
+                                <MenuItem x:Name="ModelPickerCopyModelAndProviderMenuItem"
+                                          Header="Copy model and provider"
+                                          Click="CopyModelAndProviderMenuItem_Click"
+                                          FontSize="11"
+                                          ToolTip="Copy as 'providerLabel/model' — accepted by the spawn_agent 'model' parameter (e.g. My OpenAI Key/gpt-4o)." />
+                            </ContextMenu>
+                        </primitives:ToggleButton.ContextMenu>
+                    </primitives:ToggleButton>
                 </DockPanel>
             </Grid>
         </Border>
@@ -593,7 +622,17 @@
                              BorderBrush="{DynamicResource AiChatBorder}"
                              SelectionChanged="ProviderListBox_SelectionChanged"
                              Padding="4,0"
-                             ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                             ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                             ContextMenuOpening="ProviderListBox_ContextMenuOpening">
+                        <ListBox.ContextMenu>
+                            <ContextMenu>
+                                <MenuItem x:Name="ProviderCopyMenuItem"
+                                          Header="Copy provider"
+                                          Click="CopyProviderMenuItem_Click"
+                                          FontSize="11"
+                                          ToolTip="Copy the provider label from AI settings — a valid value for the spawn_agent 'provider' parameter." />
+                            </ContextMenu>
+                        </ListBox.ContextMenu>
                         <ListBox.Resources>
                             <Style TargetType="ListBoxItem">
                                 <Setter Property="Padding" Value="8,4" />
@@ -620,7 +659,22 @@
                              BorderThickness="0"
                              SelectionChanged="ModelListBox_SelectionChanged"
                              Padding="4,0"
-                             ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                             ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                             ContextMenuOpening="ModelListBox_ContextMenuOpening">
+                        <ListBox.ContextMenu>
+                            <ContextMenu>
+                                <MenuItem x:Name="ModelCopyMenuItem"
+                                          Header="Copy model"
+                                          Click="CopyModelMenuItem_Click"
+                                          FontSize="11"
+                                          ToolTip="Copy the model name — a valid value for the spawn_agent 'model' parameter." />
+                                <MenuItem x:Name="ModelAndProviderCopyMenuItem"
+                                          Header="Copy model and provider"
+                                          Click="CopyModelAndProviderMenuItem_Click"
+                                          FontSize="11"
+                                          ToolTip="Copy as 'providerLabel/model' — accepted by the spawn_agent 'model' parameter (e.g. My OpenAI Key/gpt-4o)." />
+                            </ContextMenu>
+                        </ListBox.ContextMenu>
                         <ListBox.Resources>
                             <Style TargetType="ListBoxItem">
                                 <Setter Property="Padding" Value="8,4" />

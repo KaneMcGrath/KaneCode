@@ -90,6 +90,28 @@ public partial class AiChatPanel : UserControl
     private const int DefaultOutboundTokenBudget = AiProviderSettings.DefaultContextLength;
     private const int MaxToolCallIterations = 150;
 
+    // ── Copy-to-clipboard context menus ─────────────────────────────
+
+    /// <summary>
+    /// The dropdown item that was right-clicked (or the current selection when the
+    /// parent ComboBox itself was right-clicked). Consumed by the copy menu click handler.
+    /// </summary>
+    private ModeDropdownItem? _modeContextItem;
+
+    /// <summary>
+    /// The provider value targeted by the model picker's copy context menus.
+    /// Set by the <see cref="ContextMenuOpening"/> handlers from the item under the
+    /// mouse, or from the current provider when the parent control is right-clicked.
+    /// </summary>
+    private IAiProvider? _copyProvider;
+
+    /// <summary>
+    /// The model value targeted by the model picker's copy context menus.
+    /// Set by the <see cref="ContextMenuOpening"/> handlers from the item under the
+    /// mouse, or from the current model when the parent control is right-clicked.
+    /// </summary>
+    private string? _copyModel;
+
     // ── Raw Mode state ─────────────────────────────────────────────
 
     /// <summary>
@@ -4197,6 +4219,176 @@ public partial class AiChatPanel : UserControl
         _modelDiscoveryCts.Cancel();
         _modelDiscoveryCts.Dispose();
         _modelDiscoveryCts = null;
+    }
+
+    // ── Copy-to-clipboard context menus ────────────────────────────
+
+    /// <summary>
+    /// Populates the mode selector's context menu when it opens. When the user
+    /// right-clicks an item in the dropdown, the copy targets that item; when the
+    /// parent ComboBox is right-clicked (dropdown closed), the current selection
+    /// is targeted. Preset items copy the preset's mode ID (<c>preset:&lt;guid&gt;</c>),
+    /// built-in mode items copy the mode ID — both are valid <c>mode</c> values for
+    /// the spawn_agent subagent tool.
+    /// </summary>
+    private void ModeSelector_ContextMenuOpening(object sender, ContextMenuEventArgs e)
+    {
+        ModeDropdownItem? item = FindVisualParent<ComboBoxItem>(e.OriginalSource as DependencyObject)?.DataContext as ModeDropdownItem;
+
+        // Right-clicking the closed ComboBox itself (rather than an open-dropdown item)
+        // targets the currently selected mode.
+        if (item is null && !ModeSelector.IsDropDownOpen)
+        {
+            item = ModeSelector.SelectedItem as ModeDropdownItem;
+        }
+
+        _modeContextItem = item;
+
+        if (item is ModeDropdownPresetItem)
+        {
+            ModeCopyMenuItem.Header = "Copy preset";
+            ModeCopyMenuItem.ToolTip = "Copy the preset mode ID (e.g. preset:1a2b3c) — a valid value for the spawn_agent 'mode' parameter.";
+            ModeCopyMenuItem.IsEnabled = true;
+        }
+        else if (item is ModeDropdownModeItem)
+        {
+            ModeCopyMenuItem.Header = "Copy mode";
+            ModeCopyMenuItem.ToolTip = "Copy the mode ID — a valid value for the spawn_agent 'mode' parameter.";
+            ModeCopyMenuItem.IsEnabled = true;
+        }
+        else
+        {
+            ModeCopyMenuItem.Header = "Copy preset";
+            ModeCopyMenuItem.ToolTip = null;
+            ModeCopyMenuItem.IsEnabled = false;
+        }
+    }
+
+    private void ModeCopyMenuItem_Click(object sender, RoutedEventArgs e)
+    {
+        if (_modeContextItem is ModeDropdownPresetItem presetItem)
+        {
+            CopyToClipboard(presetItem.Mode.Id);
+        }
+        else if (_modeContextItem is ModeDropdownModeItem modeItem)
+        {
+            CopyToClipboard(modeItem.Mode.Id);
+        }
+    }
+
+    /// <summary>
+    /// Populates the model picker button's context menu when the parent control is
+    /// right-clicked. Targets the currently selected provider and model.
+    /// </summary>
+    private void ModelPickerButton_ContextMenuOpening(object sender, ContextMenuEventArgs e)
+    {
+        _copyProvider = _provider;
+        _copyModel = CurrentModel;
+
+        ModelPickerCopyProviderMenuItem.IsEnabled = _copyProvider is not null;
+        ModelPickerCopyModelMenuItem.IsEnabled = !string.IsNullOrWhiteSpace(_copyModel);
+        ModelPickerCopyModelAndProviderMenuItem.IsEnabled =
+            _copyProvider is not null && !string.IsNullOrWhiteSpace(_copyModel);
+    }
+
+    /// <summary>
+    /// Populates the provider list's context menu when it opens. Targets the provider
+    /// item under the mouse, falling back to the selected provider when empty space
+    /// (or the list header) is right-clicked.
+    /// </summary>
+    private void ProviderListBox_ContextMenuOpening(object sender, ContextMenuEventArgs e)
+    {
+        _copyProvider = FindVisualParent<ListBoxItem>(e.OriginalSource as DependencyObject)?.DataContext as IAiProvider
+            ?? ProviderListBox.SelectedItem as IAiProvider;
+
+        ProviderCopyMenuItem.IsEnabled = _copyProvider is not null;
+    }
+
+    /// <summary>
+    /// Populates the model list's context menu when it opens. Targets the model item
+    /// under the mouse, falling back to the selected model. The provider used for the
+    /// combined "model and provider" copy is the provider the model list belongs to.
+    /// </summary>
+    private void ModelListBox_ContextMenuOpening(object sender, ContextMenuEventArgs e)
+    {
+        _copyModel = FindVisualParent<ListBoxItem>(e.OriginalSource as DependencyObject)?.DataContext as string
+            ?? ModelListBox.SelectedItem as string;
+        _copyProvider = ProviderListBox.SelectedItem as IAiProvider ?? _provider;
+
+        ModelCopyMenuItem.IsEnabled = !string.IsNullOrWhiteSpace(_copyModel);
+        ModelAndProviderCopyMenuItem.IsEnabled =
+            _copyProvider is not null && !string.IsNullOrWhiteSpace(_copyModel);
+    }
+
+    private void CopyProviderMenuItem_Click(object sender, RoutedEventArgs e)
+    {
+        CopyToClipboard(_copyProvider?.DisplayName);
+    }
+
+    private void CopyModelMenuItem_Click(object sender, RoutedEventArgs e)
+    {
+        CopyToClipboard(_copyModel);
+    }
+
+    private void CopyModelAndProviderMenuItem_Click(object sender, RoutedEventArgs e)
+    {
+        if (_copyProvider is null || string.IsNullOrWhiteSpace(_copyModel))
+        {
+            return;
+        }
+
+        CopyToClipboard(BuildCombinedModelAndProvider(_copyProvider.DisplayName, _copyModel));
+    }
+
+    /// <summary>
+    /// Builds the combined "providerLabel/model" reference (e.g. "My OpenAI Key/gpt-4o")
+    /// that the spawn_agent subagent tool accepts in its <c>model</c> parameter.
+    /// <paramref name="providerLabel"/> is the user-created label of the configured
+    /// provider from the AI settings (the provider's <see cref="IAiProvider.DisplayName"/>).
+    /// </summary>
+    internal static string BuildCombinedModelAndProvider(string providerLabel, string model)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(providerLabel);
+        ArgumentException.ThrowIfNullOrWhiteSpace(model);
+
+        return $"{providerLabel.Trim()}/{model.Trim()}";
+    }
+
+    private static void CopyToClipboard(string? text)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return;
+        }
+
+        try
+        {
+            Clipboard.SetText(text);
+        }
+        catch (Exception)
+        {
+            // Clipboard access can fail (e.g. another process holding the clipboard) — ignore.
+        }
+    }
+
+    /// <summary>
+    /// Walks up the visual tree from <paramref name="child"/> and returns the first
+    /// ancestor of type <typeparamref name="T"/>, or null when none exists.
+    /// </summary>
+    private static T? FindVisualParent<T>(DependencyObject? child) where T : DependencyObject
+    {
+        DependencyObject? current = child;
+        while (current is not null)
+        {
+            if (current is T match)
+            {
+                return match;
+            }
+
+            current = VisualTreeHelper.GetParent(current);
+        }
+
+        return null;
     }
 
     private void ModeSelector_SelectionChanged(object sender, SelectionChangedEventArgs e)

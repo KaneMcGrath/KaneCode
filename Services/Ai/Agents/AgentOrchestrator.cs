@@ -274,7 +274,7 @@ internal sealed class AgentOrchestrator : IDisposable
         // Parse arguments
         string? task = null;
         string? agentDisplayName = null;
-        string? providerId = null;
+        string? providerRef = null;
         string? model = null;
         string? modeId = null;
         string? systemPrompt = null;
@@ -304,7 +304,7 @@ internal sealed class AgentOrchestrator : IDisposable
             if (args.TryGetProperty("provider", out JsonElement providerElement) &&
                 providerElement.ValueKind == JsonValueKind.String)
             {
-                providerId = providerElement.GetString();
+                providerRef = providerElement.GetString();
             }
 
             if (args.TryGetProperty("model", out JsonElement modelElement) &&
@@ -331,19 +331,22 @@ internal sealed class AgentOrchestrator : IDisposable
             return ToolCallResult.Fail("The 'task' parameter is required for spawn_agent.");
         }
 
-        // Resolve provider
+        // Resolve provider — accepts either the provider ID or the user-created
+        // label from the AI settings (e.g. "v1chatcompletions" or "My OpenAI Key").
         IAiProvider? provider = parentAgent.Provider;
-        if (!string.IsNullOrWhiteSpace(providerId))
+        bool providerExplicitlyResolved = false;
+        if (!string.IsNullOrWhiteSpace(providerRef))
         {
-            IAiProvider? found = _providerRegistry.Providers
-                .FirstOrDefault(p => string.Equals(p.ProviderId, providerId, StringComparison.OrdinalIgnoreCase));
+            IAiProvider? found = FindProvider(providerRef);
             if (found is not null)
             {
                 provider = found;
+                providerExplicitlyResolved = true;
             }
         }
 
-        // Resolve mode
+        // Resolve mode — supports built-in mode IDs and preset mode IDs
+        // (e.g. "preset:&lt;guid&gt;" copied from the chat panel's preset dropdown).
         IAiChatMode? mode = parentAgent.Mode;
         if (!string.IsNullOrWhiteSpace(modeId))
         {
@@ -352,10 +355,43 @@ internal sealed class AgentOrchestrator : IDisposable
             {
                 mode = found;
             }
+            else if (modeId.StartsWith("preset:", StringComparison.Ordinal))
+            {
+                string presetId = modeId["preset:".Length..];
+                AiPreset? preset = AiPresetManager.Load()
+                    .FirstOrDefault(p => string.Equals(p.Id, presetId, StringComparison.Ordinal));
+                if (preset is not null)
+                {
+                    mode = new PresetMode(preset, _toolRegistry);
+                }
+            }
         }
 
-        // Resolve model
+        // Resolve model. Also accepts a combined "providerRef/model" reference where
+        // providerRef is a registered provider ID or its user-created label
+        // (e.g. "v1chatcompletions/gpt-4o" or "My OpenAI Key/gpt-4o") copied from the
+        // chat panel's model picker, so a single string pins both the provider and
+        // the model. The provider part only switches the provider when no explicit
+        // provider parameter was supplied.
         string effectiveModel = model ?? parentAgent.Model;
+        if (!string.IsNullOrWhiteSpace(model) &&
+            TrySplitProviderPrefixedModel(
+                model,
+                BuildProviderRefs(),
+                out string prefixedProviderRef,
+                out string prefixedModel))
+        {
+            if (!providerExplicitlyResolved)
+            {
+                IAiProvider? prefixedProvider = FindProvider(prefixedProviderRef);
+                if (prefixedProvider is not null)
+                {
+                    provider = prefixedProvider;
+                }
+            }
+
+            effectiveModel = prefixedModel;
+        }
 
         // Create display name
         string displayName = !string.IsNullOrWhiteSpace(agentDisplayName)
@@ -580,6 +616,85 @@ internal sealed class AgentOrchestrator : IDisposable
         }
 
         return value[..maxLength] + "…";
+    }
+
+    /// <summary>
+    /// Finds a registered provider whose ID or user-created label matches
+    /// <paramref name="providerRef"/> (case-insensitive), or null.
+    /// </summary>
+    private IAiProvider? FindProvider(string providerRef)
+    {
+        return _providerRegistry.Providers
+            .FirstOrDefault(p =>
+                string.Equals(p.ProviderId, providerRef, StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(p.DisplayName, providerRef, StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>
+    /// Returns the identifiers (provider IDs and user-created labels) that can be
+    /// used to reference each registered provider.
+    /// </summary>
+    private List<string> BuildProviderRefs()
+    {
+        List<string> refs = new(_providerRegistry.Providers.Count * 2);
+        foreach (IAiProvider provider in _providerRegistry.Providers)
+        {
+            refs.Add(provider.ProviderId);
+            refs.Add(provider.DisplayName);
+        }
+
+        return refs;
+    }
+
+    /// <summary>
+    /// Attempts to split a provider-prefixed model reference of the form
+    /// "&lt;providerRef&gt;/&lt;model&gt;" (e.g. "v1chatcompletions/gpt-4o" or
+    /// "My OpenAI Key/gpt-4o") into its parts. <paramref name="knownProviderRefs"/>
+    /// is the set of registered provider IDs and user-created labels. Returns true
+    /// only when the model starts with one of those references followed by a
+    /// separator and a non-empty model suffix. The longest matching reference wins
+    /// so labels containing spaces or slashes resolve correctly. Any other string
+    /// is left untouched so ordinary model IDs (including ones containing slashes)
+    /// pass through unchanged.
+    /// </summary>
+    internal static bool TrySplitProviderPrefixedModel(
+        string model,
+        IReadOnlyList<string> knownProviderRefs,
+        out string providerRef,
+        out string modelName)
+    {
+        providerRef = string.Empty;
+        modelName = string.Empty;
+
+        if (string.IsNullOrWhiteSpace(model))
+        {
+            return false;
+        }
+
+        string? bestRef = null;
+        foreach (string known in knownProviderRefs)
+        {
+            if (string.IsNullOrWhiteSpace(known))
+            {
+                continue;
+            }
+
+            string prefix = known + "/";
+            if (model.StartsWith(prefix, StringComparison.OrdinalIgnoreCase) &&
+                (bestRef is null || known.Length > bestRef.Length))
+            {
+                bestRef = known;
+            }
+        }
+
+        if (bestRef is null)
+        {
+            return false;
+        }
+
+        providerRef = bestRef;
+        modelName = model[(bestRef.Length + 1)..].Trim();
+        return modelName.Length > 0;
     }
 }
 

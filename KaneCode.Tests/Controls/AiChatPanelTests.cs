@@ -223,6 +223,42 @@ public class AiChatPanelTests
     }
 
     [Fact]
+    public void WhenBuildingCombinedModelAndProviderThenProviderAndModelUseSlashSeparator()
+    {
+        string result = AiChatPanel.BuildCombinedModelAndProvider("v1chatcompletions", "gpt-4o");
+
+        Assert.Equal("v1chatcompletions/gpt-4o", result);
+    }
+
+    [Fact]
+    public void WhenBuildingCombinedModelAndProviderWithWhitespaceThenValuesAreTrimmed()
+    {
+        string result = AiChatPanel.BuildCombinedModelAndProvider(" v1chatcompletions ", " gpt-4o ");
+
+        Assert.Equal("v1chatcompletions/gpt-4o", result);
+    }
+
+    [Fact]
+    public void WhenBuildingCombinedModelAndProviderWithProviderLabelThenLabelAndModelAreCombined()
+    {
+        string result = AiChatPanel.BuildCombinedModelAndProvider("My OpenAI Key", "gpt-4o");
+
+        Assert.Equal("My OpenAI Key/gpt-4o", result);
+    }
+
+    [Fact]
+    public void WhenBuildingCombinedModelAndProviderWithBlankProviderThenArgumentExceptionIsThrown()
+    {
+        Assert.Throws<ArgumentException>(() => AiChatPanel.BuildCombinedModelAndProvider(" ", "gpt-4o"));
+    }
+
+    [Fact]
+    public void WhenBuildingCombinedModelAndProviderWithBlankModelThenArgumentExceptionIsThrown()
+    {
+        Assert.Throws<ArgumentException>(() => AiChatPanel.BuildCombinedModelAndProvider("v1chatcompletions", " "));
+    }
+
+    [Fact]
     public void WhenSelectingModelThenPreferredMatchIsReturnedIgnoringCase()
     {
         string? result = AiChatPanel.SelectModel(["gpt-4o", "gpt-4.1"], "GPT-4.1");
