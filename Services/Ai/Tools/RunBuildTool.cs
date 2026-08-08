@@ -64,33 +64,30 @@ internal sealed class RunBuildTool : IAgentTool
         }
 
         var lines = new List<string>();
-        var exitCodeTcs = new TaskCompletionSource<int>(TaskCreationOptions.RunContinuationsAsynchronously);
 
-        void OnOutput(string line) => lines.Add(line);
-        void OnExited(int code) => exitCodeTcs.TrySetResult(code);
-
-        _buildService.OutputReceived += OnOutput;
-        _buildService.ProcessExited += OnExited;
-
+        // Capture output through the scoped per-invocation callback rather than the
+        // global OutputReceived/ProcessExited events. Those events also carry events
+        // raised by the previous process that this call cancels (e.g. a stale
+        // "Build/Run cancelled." line and exit code -1 from a superseded build), which
+        // would otherwise be misattributed to this build and report success as failure.
+        int exitCode;
         try
         {
-            await _buildService.BuildAsync(projectPath, configuration: configuration, cancellationToken: cancellationToken).ConfigureAwait(false);
+            exitCode = await _buildService.BuildAsync(
+                projectPath,
+                configuration: configuration,
+                cancellationToken: cancellationToken,
+                onOutput: lines.Add).ConfigureAwait(false);
         }
-        finally
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
-            _buildService.OutputReceived -= OnOutput;
-            _buildService.ProcessExited -= OnExited;
+            return ToolCallResult.Fail("Build was cancelled.");
         }
 
         if (cancellationToken.IsCancellationRequested)
         {
             return ToolCallResult.Fail("Build was cancelled.");
         }
-
-        // ProcessExited fires inside BuildAsync before it returns, so the TCS is always set here.
-        var exitCode = exitCodeTcs.Task.IsCompleted
-            ? exitCodeTcs.Task.Result
-            : await exitCodeTcs.Task.WaitAsync(TimeSpan.FromSeconds(5), cancellationToken).ConfigureAwait(false);
 
         var output = FormatOutput(lines);
         var succeeded = exitCode == 0;

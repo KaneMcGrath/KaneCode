@@ -25,10 +25,24 @@ internal sealed class BuildService : IDisposable
         "MSBuildSDKsPath"
     ];
 
-    /// <summary>Raised for each stdout/stderr line produced by the process.</summary>
+    /// <summary>
+    /// Raised for each stdout/stderr line produced by a process.
+    /// This is a global broadcast intended for UI streaming (e.g. the Build Output panel).
+    /// Callers that need output for a specific invocation should use the <c>onOutput</c>
+    /// parameter on the run methods instead: the broadcast also carries events raised by
+    /// a previous process that this invocation cancels, so subscribing to it from a
+    /// per-invocation capture would let stale output leak into the result.
+    /// </summary>
     public event Action<string>? OutputReceived;
 
-    /// <summary>Raised when the process exits with its exit code.</summary>
+    /// <summary>
+    /// Raised when a process exits with its exit code.
+    /// This is a global broadcast intended for UI status (e.g. build summary text).
+    /// Callers that need the exit code of a specific invocation should use the return
+    /// value of the run methods instead: the broadcast also carries events raised by a
+    /// previous process that this invocation cancels, so a stale exit code (such as -1
+    /// from a cancelled earlier build) could otherwise be mistaken for the current run.
+    /// </summary>
     public event Action<int>? ProcessExited;
 
     /// <summary>Whether a build or run process is currently active.</summary>
@@ -49,7 +63,15 @@ internal sealed class BuildService : IDisposable
     /// <param name="projectOrSolutionPath">Path to the project or solution to clean.</param>
     /// <param name="configuration">Optional build configuration (Debug/Release). Defaults to all configurations if not specified.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
-    public async Task CleanAsync(string projectOrSolutionPath, string? configuration = null, CancellationToken cancellationToken = default)
+    /// <param name="onOutput">Optional callback invoked for each output line produced by this
+    /// invocation. It only receives output from this run — never stale output from a previous
+    /// process that this invocation cancelled.</param>
+    /// <returns>The process exit code (0 = success, -1 = cancelled).</returns>
+    public async Task<int> CleanAsync(
+        string projectOrSolutionPath,
+        string? configuration = null,
+        CancellationToken cancellationToken = default,
+        Action<string>? onOutput = null)
     {
         var directory = GetWorkingDirectory(projectOrSolutionPath);
         var arguments = $"clean \"{projectOrSolutionPath}\"";
@@ -57,7 +79,7 @@ internal sealed class BuildService : IDisposable
         {
             arguments += $" --configuration {configuration}";
         }
-        await RunDotnetAsync(arguments, directory, cancellationToken).ConfigureAwait(false);
+        return await RunDotnetAsync(arguments, directory, cancellationToken, onOutput: onOutput).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -66,7 +88,15 @@ internal sealed class BuildService : IDisposable
     /// <param name="projectOrSolutionPath">Path to the project or solution to build.</param>
     /// <param name="configuration">Optional build configuration (Debug/Release).</param>
     /// <param name="cancellationToken">Cancellation token.</param>
-    public async Task BuildAsync(string projectOrSolutionPath, string? configuration = null, CancellationToken cancellationToken = default)
+    /// <param name="onOutput">Optional callback invoked for each output line produced by this
+    /// invocation. It only receives output from this run — never stale output from a previous
+    /// process that this invocation cancelled.</param>
+    /// <returns>The process exit code (0 = success, -1 = cancelled).</returns>
+    public async Task<int> BuildAsync(
+        string projectOrSolutionPath,
+        string? configuration = null,
+        CancellationToken cancellationToken = default,
+        Action<string>? onOutput = null)
     {
         var directory = GetWorkingDirectory(projectOrSolutionPath);
         var arguments = $"build \"{projectOrSolutionPath}\"";
@@ -74,17 +104,17 @@ internal sealed class BuildService : IDisposable
         {
             arguments += $" --configuration {configuration}";
         }
-        await RunDotnetAsync(arguments, directory, cancellationToken).ConfigureAwait(false);
+        return await RunDotnetAsync(arguments, directory, cancellationToken, onOutput: onOutput).ConfigureAwait(false);
     }
 
     /// <summary>
     /// Runs <c>dotnet run</c> in the given project directory.
     /// </summary>
-    public async Task RunAsync(string projectPath, CancellationToken cancellationToken = default)
+    public async Task<int> RunAsync(string projectPath, CancellationToken cancellationToken = default, Action<string>? onOutput = null)
     {
         var directory = GetWorkingDirectory(projectPath);
         var arguments = $"run --project \"{projectPath}\"";
-        await RunDotnetAsync(arguments, directory, cancellationToken).ConfigureAwait(false);
+        return await RunDotnetAsync(arguments, directory, cancellationToken, onOutput: onOutput).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -93,14 +123,21 @@ internal sealed class BuildService : IDisposable
     /// <param name="projectPath">Path to the project to run.</param>
     /// <param name="programArguments">Optional command-line arguments to pass to the program.</param>
     /// <param name="configuration">Optional build configuration (Debug/Release).</param>
+    /// <param name="workingDirectory">Optional working directory for the process.</param>
+    /// <param name="environmentVariables">Optional environment variables for the process.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
-    public async Task RunProjectAsync(
+    /// <param name="onOutput">Optional callback invoked for each output line produced by this
+    /// invocation. It only receives output from this run — never stale output from a previous
+    /// process that this invocation cancelled.</param>
+    /// <returns>The process exit code (0 = success, -1 = cancelled).</returns>
+    public async Task<int> RunProjectAsync(
         string projectPath,
         string? programArguments = null,
         string? configuration = null,
         string? workingDirectory = null,
         IReadOnlyDictionary<string, string>? environmentVariables = null,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        Action<string>? onOutput = null)
     {
         string directory = string.IsNullOrWhiteSpace(workingDirectory)
             ? GetRunOutputDirectory(projectPath, configuration)
@@ -123,7 +160,7 @@ internal sealed class BuildService : IDisposable
             args.Append(programArguments);
         }
 
-        await RunDotnetAsync(args.ToString(), directory, cancellationToken, environmentVariables).ConfigureAwait(false);
+        return await RunDotnetAsync(args.ToString(), directory, cancellationToken, environmentVariables, onOutput).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -135,13 +172,18 @@ internal sealed class BuildService : IDisposable
     /// <param name="framework">Optional target framework moniker (e.g. "net8.0").</param>
     /// <param name="verbosity">Optional verbosity level (quiet/minimal/normal/detailed/diagnostic).</param>
     /// <param name="cancellationToken">Cancellation token.</param>
-    public async Task TestAsync(
+    /// <param name="onOutput">Optional callback invoked for each output line produced by this
+    /// invocation. It only receives output from this run — never stale output from a previous
+    /// process that this invocation cancelled.</param>
+    /// <returns>The process exit code (0 = success, -1 = cancelled).</returns>
+    public async Task<int> TestAsync(
         string projectOrSolutionPath,
         string? filter = null,
         string? configuration = null,
         string? framework = null,
         string? verbosity = null,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        Action<string>? onOutput = null)
     {
         var directory = GetWorkingDirectory(projectOrSolutionPath);
         var args = new System.Text.StringBuilder();
@@ -174,7 +216,7 @@ internal sealed class BuildService : IDisposable
             args.Append(verbosity);
         }
 
-        await RunDotnetAsync(args.ToString(), directory, cancellationToken).ConfigureAwait(false);
+        return await RunDotnetAsync(args.ToString(), directory, cancellationToken, onOutput: onOutput).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -200,7 +242,12 @@ internal sealed class BuildService : IDisposable
         }
     }
 
-    private async Task RunDotnetAsync(string arguments, string workingDirectory, CancellationToken cancellationToken, IReadOnlyDictionary<string, string>? environmentVariables = null)
+    private async Task<int> RunDotnetAsync(
+        string arguments,
+        string workingDirectory,
+        CancellationToken cancellationToken,
+        IReadOnlyDictionary<string, string>? environmentVariables = null,
+        Action<string>? onOutput = null)
     {
         Cancel();
 
@@ -243,6 +290,7 @@ internal sealed class BuildService : IDisposable
             if (e.Data is not null)
             {
                 OutputReceived?.Invoke(e.Data);
+                onOutput?.Invoke(e.Data);
             }
         };
 
@@ -251,6 +299,7 @@ internal sealed class BuildService : IDisposable
             if (e.Data is not null)
             {
                 OutputReceived?.Invoke(e.Data);
+                onOutput?.Invoke(e.Data);
             }
         };
 
@@ -267,7 +316,9 @@ internal sealed class BuildService : IDisposable
 
             await process.WaitForExitAsync(cts.Token).ConfigureAwait(false);
 
-            ProcessExited?.Invoke(process.ExitCode);
+            int exitCode = process.ExitCode;
+            ProcessExited?.Invoke(exitCode);
+            return exitCode;
         }
         catch (OperationCanceledException)
         {
@@ -287,7 +338,9 @@ internal sealed class BuildService : IDisposable
             }
 
             OutputReceived?.Invoke("Build/Run cancelled.");
+            onOutput?.Invoke("Build/Run cancelled.");
             ProcessExited?.Invoke(-1);
+            return -1;
         }
         finally
         {

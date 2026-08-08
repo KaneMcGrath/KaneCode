@@ -87,32 +87,30 @@ internal sealed class RunCleanTool : IAgentTool
         }
 
         var lines = new List<string>();
-        var exitCodeTcs = new TaskCompletionSource<int>(TaskCreationOptions.RunContinuationsAsynchronously);
 
-        void OnOutput(string line) => lines.Add(line);
-        void OnExited(int code) => exitCodeTcs.TrySetResult(code);
-
-        _buildService.OutputReceived += OnOutput;
-        _buildService.ProcessExited += OnExited;
-
+        // Capture output through the scoped per-invocation callback rather than the
+        // global OutputReceived/ProcessExited events. Those events also carry events
+        // raised by the previous process that this call cancels (e.g. a stale
+        // "Build/Run cancelled." line and exit code -1 from a superseded build), which
+        // would otherwise be misattributed to this run and report success as failure.
+        int exitCode;
         try
         {
-            await _buildService.CleanAsync(projectPath, configuration, cancellationToken).ConfigureAwait(false);
+            exitCode = await _buildService.CleanAsync(
+                projectPath,
+                configuration,
+                cancellationToken,
+                onOutput: lines.Add).ConfigureAwait(false);
         }
-        finally
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
-            _buildService.OutputReceived -= OnOutput;
-            _buildService.ProcessExited -= OnExited;
+            return ToolCallResult.Fail("Clean was cancelled.");
         }
 
         if (cancellationToken.IsCancellationRequested)
         {
             return ToolCallResult.Fail("Clean was cancelled.");
         }
-
-        var exitCode = exitCodeTcs.Task.IsCompleted
-            ? exitCodeTcs.Task.Result
-            : await exitCodeTcs.Task.WaitAsync(TimeSpan.FromSeconds(5), cancellationToken).ConfigureAwait(false);
 
         var output = FormatOutput(lines);
         var succeeded = exitCode == 0;
