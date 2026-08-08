@@ -15,8 +15,13 @@
         <TextBlock Grid.Row="1" Text="Repository URL:" VerticalAlignment="Center" Margin="0,0,8,8"/>
         <TextBox x:Name="UrlTextBox" Grid.Row="1" Grid.Column="1" Margin="0,0,0,8"/>
         <TextBlock Grid.Row="2" Text="Destination folder:" VerticalAlignment="Center" Margin="0,0,8,8"/>
-        <Grid Grid.Row="2" Grid.Column="1" Margin="0,0,0,8"><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-            <TextBox x:Name="DestinationTextBox" Margin="0,0,8,0"/><Button Content="Browse..." Width="82" Click="Browse_Click"/>
+        <Grid Grid.Row="2" Grid.Column="1" Margin="0,0,0,8">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+            <TextBox x:Name="DestinationTextBox" Margin="0,0,8,0"/>
+            <Button Grid.Column="1" Content="Browse..." Width="82" Click="Browse_Click"/>
         </Grid>
         <TextBlock Grid.Row="3" Grid.ColumnSpan="2" Text="For GitHub HTTPS repositories, enter your GitHub username and a personal access token when prompted. Tokens are kept only in memory and are never written to the repository or saved by KaneCode." TextWrapping="Wrap" Foreground="{DynamicResource PanelForeground}" Margin="0,2,0,14"/>
         <TextBlock Grid.Row="4" Grid.ColumnSpan="2" Text="The destination must be empty or not yet exist. After cloning, KaneCode opens the first solution or project found in the repository." TextWrapping="Wrap" Foreground="{DynamicResource PanelForeground}" Margin="0,0,0,14"/>
