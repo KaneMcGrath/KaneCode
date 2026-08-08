@@ -1,5 +1,5 @@
-using System.IO;
 using System.Windows;
+using KaneCode.Services;
 using Microsoft.Win32;
 
 namespace KaneCode.Controls;
@@ -12,7 +12,7 @@ public partial class CloneRepositoryWindow : Window
     public CloneRepositoryWindow()
     {
         InitializeComponent();
-        DestinationTextBox.Text = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
+        DestinationTextBox.Text = GeneralSettingsManager.LoadDefaultProjectFolder();
     }
 
     private void Browse_Click(object sender, RoutedEventArgs e)
