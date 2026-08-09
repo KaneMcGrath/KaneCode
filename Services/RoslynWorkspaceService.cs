@@ -29,6 +29,18 @@ internal sealed class RoslynWorkspaceService : IDisposable
     /// pushed through this service (open files, adhoc documents).
     /// </summary>
     private readonly ConcurrentDictionary<string, SourceText> _sourceTextCache = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Caches the full-project analyzer pass per <see cref="Compilation"/> instance so that
+    /// requesting diagnostics for several files in the same project does not re-run the whole
+    /// analyzer pass (which analyzes every tree in the project) for each file.
+    /// Keyed by <see cref="ProjectId"/>; the compilation reference doubles as the version check.
+    /// </summary>
+    private readonly ConcurrentDictionary<ProjectId, AnalyzerPassResult> _analyzerPassCache = new();
+
+    /// <summary>Result of one full-project analyzer pass, valid while the compilation instance is current.</summary>
+    private sealed record AnalyzerPassResult(Compilation Compilation, ImmutableArray<Diagnostic> Diagnostics);
+
     private bool _disposed;
 
     public RoslynWorkspaceService()
@@ -232,10 +244,21 @@ internal sealed class RoslynWorkspaceService : IDisposable
 
     /// <summary>
     /// Gets diagnostics for the given file, including both compiler diagnostics
-    /// and analyzer diagnostics from any registered <see cref="AnalyzerReference"/> entries.
+    /// and (optionally) analyzer diagnostics from any registered <see cref="AnalyzerReference"/> entries.
     /// Thread-safe: operates on an immutable solution snapshot.
     /// </summary>
-    public async Task<IReadOnlyList<Diagnostic>> GetDiagnosticsAsync(string filePath, CancellationToken cancellationToken = default)
+    /// <param name="filePath">Path of the document to analyze.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <param name="includeAnalyzerDiagnostics">
+    /// When false, only compiler diagnostics are returned. Compiler diagnostics are computed
+    /// per document and are cheap; analyzer diagnostics require running the analyzers over the
+    /// whole compilation, which scales with the size of the repo. Latency-sensitive callers
+    /// (active-file squiggles while typing) should pass false.
+    /// </param>
+    public async Task<IReadOnlyList<Diagnostic>> GetDiagnosticsAsync(
+        string filePath,
+        CancellationToken cancellationToken = default,
+        bool includeAnalyzerDiagnostics = true)
     {
         Document? document = GetDocument(filePath);
         if (document is null)
@@ -250,6 +273,11 @@ internal sealed class RoslynWorkspaceService : IDisposable
         }
 
         ImmutableArray<Diagnostic> compilerDiagnostics = semanticModel.GetDiagnostics(cancellationToken: cancellationToken);
+
+        if (!includeAnalyzerDiagnostics)
+        {
+            return compilerDiagnostics;
+        }
 
         ImmutableArray<Diagnostic> analyzerDiagnostics = await GetAnalyzerDiagnosticsForDocumentAsync(
             document, cancellationToken).ConfigureAwait(false);
@@ -268,8 +296,14 @@ internal sealed class RoslynWorkspaceService : IDisposable
     /// <summary>
     /// Runs all analyzers registered on the document's project and returns diagnostics
     /// scoped to the given document's syntax tree.
+    /// <para>
+    /// The analyzer pass analyzes every syntax tree in the project, so its cost scales with
+    /// the size of the repo. The result is cached per <see cref="Compilation"/> instance so
+    /// the pass runs at most once per project per solution version, even when diagnostics are
+    /// requested for many files in the same project.
+    /// </para>
     /// </summary>
-    private static async Task<ImmutableArray<Diagnostic>> GetAnalyzerDiagnosticsForDocumentAsync(
+    private async Task<ImmutableArray<Diagnostic>> GetAnalyzerDiagnosticsForDocumentAsync(
         Document document, CancellationToken cancellationToken)
     {
         Project project = document.Project;
@@ -301,10 +335,21 @@ internal sealed class RoslynWorkspaceService : IDisposable
 
         try
         {
-            CompilationWithAnalyzers compilationWithAnalyzers = compilation.WithAnalyzers(
-                analyzers, options: project.AnalyzerOptions, cancellationToken: cancellationToken);
-            ImmutableArray<Diagnostic> allDiagnostics = await compilationWithAnalyzers
-                .GetAnalyzerDiagnosticsAsync(cancellationToken).ConfigureAwait(false);
+            ImmutableArray<Diagnostic> allDiagnostics;
+            if (_analyzerPassCache.TryGetValue(project.Id, out var cached)
+                && ReferenceEquals(cached.Compilation, compilation))
+            {
+                allDiagnostics = cached.Diagnostics;
+            }
+            else
+            {
+                CompilationWithAnalyzers compilationWithAnalyzers = compilation.WithAnalyzers(
+                    analyzers, options: project.AnalyzerOptions);
+                allDiagnostics = await compilationWithAnalyzers
+                    .GetAnalyzerDiagnosticsAsync(cancellationToken).ConfigureAwait(false);
+
+                _analyzerPassCache[project.Id] = new AnalyzerPassResult(compilation, allDiagnostics);
+            }
 
             // Filter to diagnostics located in the current document's syntax tree
             return allDiagnostics
@@ -408,6 +453,7 @@ internal sealed class RoslynWorkspaceService : IDisposable
             _documentIds.Clear();
             _projectIds.Clear();
             _sourceTextCache.Clear();
+            _analyzerPassCache.Clear();
 
             InitializeDefaultProject();
         }
@@ -434,6 +480,7 @@ internal sealed class RoslynWorkspaceService : IDisposable
             _documentIds.Clear();
             _projectIds.Clear();
             _sourceTextCache.Clear();
+            _analyzerPassCache.Clear();
 
             // Rebuild tracking dictionaries from the loaded solution
             Solution solution = newWorkspace.CurrentSolution;

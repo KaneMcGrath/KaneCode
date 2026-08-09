@@ -399,18 +399,17 @@ internal sealed class BackgroundAnalysisScheduler : IDisposable
     {
         try
         {
-            // Phase 1: active-document diagnostics (latency-sensitive, short delay)
+            // Phase 1: active-document diagnostics (latency-sensitive, short delay).
+            // Compiler-only here so typing feedback stays instant; the expensive whole-project
+            // analyzer pass is deferred to the throttled solution-wide phase below.
             await Task.Delay(_activeDocDiagnosticsDelay, activeDocCt).ConfigureAwait(false);
 
             List<DiagnosticEntry> activeFileEntries = [];
             List<DiagnosticItem> activeFileItems = [];
 
-            (activeFileEntries, activeFileItems) = await BuildDiagnosticsForFileAsync(activeFilePath, activeDocCt).ConfigureAwait(false);
+            (activeFileEntries, activeFileItems) = await BuildDiagnosticsForFileAsync(activeFilePath, activeDocCt, includeAnalyzerDiagnostics: false).ConfigureAwait(false);
 
-            // Cache active file
-            await CacheDiagnosticsAsync(activeFilePath, activeFileEntries, activeFileItems, activeDocCt).ConfigureAwait(false);
-
-            // Deliver fast active-doc result immediately
+            // Deliver fast active-doc result immediately (compiler-only squiggles).
             DiagnosticsCompleted?.Invoke(new DiagnosticsResult(activeFileItems, activeFileEntries));
 
             // Phase 2: solution-wide diagnostics (lower priority, throttled)
@@ -439,17 +438,15 @@ internal sealed class BackgroundAnalysisScheduler : IDisposable
                 }
             }
 
-            List<DiagnosticItem> allItems = new(activeFileItems);
-            List<DiagnosticEntry> finalActiveEntries = activeFileEntries;
+            // Phase 2 recomputes the active file with full (compiler + analyzer) diagnostics
+            // so the error list is consistent. The analyzer pass is cached per compilation,
+            // so this does not re-run the whole-project pass for every file.
+            List<DiagnosticItem> allItems = [];
+            IReadOnlyList<DiagnosticEntry> finalActiveEntries = activeFileEntries;
 
             foreach (string path in filesToAnalyze)
             {
                 solutionCt.ThrowIfCancellationRequested();
-
-                if (string.Equals(path, activeFilePath, StringComparison.OrdinalIgnoreCase))
-                {
-                    continue; // Already computed
-                }
 
                 // Check cache first
                 AnalysisSnapshot? cached = GetCachedSnapshot(path);
@@ -462,6 +459,10 @@ internal sealed class BackgroundAnalysisScheduler : IDisposable
                         if (currentVersion == cached.DocumentVersion && cached.DiagnosticItems.Count > 0)
                         {
                             allItems.AddRange(cached.DiagnosticItems);
+                            if (string.Equals(path, activeFilePath, StringComparison.OrdinalIgnoreCase))
+                            {
+                                finalActiveEntries = cached.DiagnosticEntries;
+                            }
                             continue;
                         }
                     }
@@ -469,6 +470,11 @@ internal sealed class BackgroundAnalysisScheduler : IDisposable
 
                 (List<DiagnosticEntry> entries, List<DiagnosticItem> items) = await BuildDiagnosticsForFileAsync(path, solutionCt).ConfigureAwait(false);
                 allItems.AddRange(items);
+
+                if (string.Equals(path, activeFilePath, StringComparison.OrdinalIgnoreCase))
+                {
+                    finalActiveEntries = entries;
+                }
 
                 await CacheDiagnosticsAsync(path, entries, items, solutionCt).ConfigureAwait(false);
             }
@@ -524,16 +530,15 @@ internal sealed class BackgroundAnalysisScheduler : IDisposable
     {
         try
         {
-            // Phase 1: active-document diagnostics
-            // Small additional delay to let the semantic model settle after text update
+            // Phase 1: active-document diagnostics.
+            // Small additional delay to let the semantic model settle after text update.
+            // Compiler-only so squiggles appear fast; analyzers run in the throttled phase 2.
             await Task.Delay(_activeDocDiagnosticsDelay - _classificationDelay, activeDocCt).ConfigureAwait(false);
 
             (List<DiagnosticEntry> activeFileEntries, List<DiagnosticItem> activeFileItems) =
-                await BuildDiagnosticsForFileAsync(activeFilePath, activeDocCt).ConfigureAwait(false);
+                await BuildDiagnosticsForFileAsync(activeFilePath, activeDocCt, includeAnalyzerDiagnostics: false).ConfigureAwait(false);
 
-            await CacheDiagnosticsAsync(activeFilePath, activeFileEntries, activeFileItems, activeDocCt).ConfigureAwait(false);
-
-            // Deliver active-doc result immediately
+            // Deliver active-doc result immediately (compiler-only squiggles)
             DiagnosticsCompleted?.Invoke(new DiagnosticsResult(activeFileItems, activeFileEntries));
 
             // Phase 2: solution-wide
@@ -565,16 +570,15 @@ internal sealed class BackgroundAnalysisScheduler : IDisposable
                 }
             }
 
-            List<DiagnosticItem> allItems = new(activeFileItems);
+            // Phase 2 recomputes the active file with full (compiler + analyzer) diagnostics
+            // so the error list is consistent. The analyzer pass is cached per compilation,
+            // so this does not re-run the whole-project pass for every file.
+            List<DiagnosticItem> allItems = [];
+            IReadOnlyList<DiagnosticEntry> finalActiveEntries = activeFileEntries;
 
             foreach (string path in filesToAnalyze)
             {
                 solutionCt.ThrowIfCancellationRequested();
-
-                if (string.Equals(path, activeFilePath, StringComparison.OrdinalIgnoreCase))
-                {
-                    continue;
-                }
 
                 AnalysisSnapshot? cached = GetCachedSnapshot(path);
                 if (cached is not null)
@@ -586,6 +590,10 @@ internal sealed class BackgroundAnalysisScheduler : IDisposable
                         if (currentVersion == cached.DocumentVersion && cached.DiagnosticItems.Count > 0)
                         {
                             allItems.AddRange(cached.DiagnosticItems);
+                            if (string.Equals(path, activeFilePath, StringComparison.OrdinalIgnoreCase))
+                            {
+                                finalActiveEntries = cached.DiagnosticEntries;
+                            }
                             continue;
                         }
                     }
@@ -595,12 +603,17 @@ internal sealed class BackgroundAnalysisScheduler : IDisposable
                     await BuildDiagnosticsForFileAsync(path, solutionCt).ConfigureAwait(false);
                 allItems.AddRange(items);
 
+                if (string.Equals(path, activeFilePath, StringComparison.OrdinalIgnoreCase))
+                {
+                    finalActiveEntries = entries;
+                }
+
                 await CacheDiagnosticsAsync(path, entries, items, solutionCt).ConfigureAwait(false);
             }
 
             Interlocked.Exchange(ref _lastSolutionRunTicks, Stopwatch.GetTimestamp());
 
-            DiagnosticsCompleted?.Invoke(new DiagnosticsResult(allItems, activeFileEntries));
+            DiagnosticsCompleted?.Invoke(new DiagnosticsResult(allItems, finalActiveEntries));
         }
         catch (OperationCanceledException)
         {
@@ -626,9 +639,10 @@ internal sealed class BackgroundAnalysisScheduler : IDisposable
     }
 
     private async Task<(List<DiagnosticEntry> Entries, List<DiagnosticItem> Items)> BuildDiagnosticsForFileAsync(
-        string filePath, CancellationToken cancellationToken)
+        string filePath, CancellationToken cancellationToken, bool includeAnalyzerDiagnostics = true)
     {
-        IReadOnlyList<Diagnostic> diagnostics = await _roslynService.GetDiagnosticsAsync(filePath, cancellationToken).ConfigureAwait(false);
+        IReadOnlyList<Diagnostic> diagnostics = await _roslynService.GetDiagnosticsAsync(
+            filePath, cancellationToken, includeAnalyzerDiagnostics).ConfigureAwait(false);
         List<DiagnosticEntry> entries = [];
         List<(DiagnosticEntry Entry, string Category)> diagDetails = [];
 

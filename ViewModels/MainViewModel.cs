@@ -2975,12 +2975,15 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
             }
 
             // Only repopulate the error list when its contents changed. Repopulating a
-            // large ObservableCollection row-by-row is expensive, so skip it when possible.
+            // large ObservableCollection row-by-row is expensive, so skip it when possible
+            // and cap the displayed rows so a repo full of diagnostics cannot stall the UI.
+            const int maxErrorListItems = 2000;
             List<DiagnosticItem> ordered = result.AllItems
                 .OrderBy(i => i.Severity)
                 .ThenBy(i => i.File)
                 .ThenBy(i => i.Line)
                 .ThenBy(i => i.Column)
+                .Take(maxErrorListItems)
                 .ToList();
 
             if (!_lastDiagnosticItems.SequenceEqual(ordered))
