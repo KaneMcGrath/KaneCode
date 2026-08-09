@@ -19,6 +19,12 @@ internal sealed class RoslynClassificationColorizer : DocumentColorizingTransfor
     private string? _filePath;
     private IReadOnlyList<ClassifiedSpan> _classifiedSpans = [];
 
+    /// <summary>
+    /// Caches resolved theme brushes per classification type so per-line colorization
+    /// does not perform a WPF resource lookup for every span on every line.
+    /// </summary>
+    private static readonly Dictionary<string, Brush?> s_brushCache = new(StringComparer.Ordinal);
+
     public RoslynClassificationColorizer(RoslynWorkspaceService roslynService)
     {
         ArgumentNullException.ThrowIfNull(roslynService);
@@ -49,7 +55,7 @@ internal sealed class RoslynClassificationColorizer : DocumentColorizingTransfor
     /// </summary>
     public void SetClassifiedSpans(IReadOnlyList<ClassifiedSpan> spans)
     {
-        _classifiedSpans = spans;
+        _classifiedSpans = EnsureSorted(spans);
     }
 
     /// <summary>
@@ -77,12 +83,47 @@ internal sealed class RoslynClassificationColorizer : DocumentColorizingTransfor
             TextSpan.FromBounds(0, text.Length),
             cancellationToken).ConfigureAwait(false);
 
-        _classifiedSpans = spans.ToList();
+        _classifiedSpans = EnsureSorted(spans.ToList());
+    }
+
+    /// <summary>
+    /// Clears the cached theme brushes. Call when the application theme changes so
+    /// stale brush references are not reused.
+    /// </summary>
+    internal static void ClearBrushCache()
+    {
+        s_brushCache.Clear();
+    }
+
+    /// <summary>
+    /// Roslyn returns classified spans in document order. The per-line lookup below relies
+    /// on that ordering, so defensively sort when the input is unsorted (e.g. test callers).
+    /// </summary>
+    private static IReadOnlyList<ClassifiedSpan> EnsureSorted(IReadOnlyList<ClassifiedSpan> spans)
+    {
+        if (spans.Count <= 1)
+        {
+            return spans;
+        }
+
+        int previousEnd = spans[0].TextSpan.End;
+        for (int i = 1; i < spans.Count; i++)
+        {
+            if (spans[i].TextSpan.Start < previousEnd)
+            {
+                return spans.OrderBy(s => s.TextSpan.Start).ToList();
+            }
+
+            previousEnd = spans[i].TextSpan.End;
+        }
+
+        return spans;
     }
 
     protected override void ColorizeLine(DocumentLine line)
     {
-        if (_classifiedSpans.Count == 0)
+        var spans = _classifiedSpans;
+        if (spans.Count == 0)
         {
             return;
         }
@@ -90,12 +131,17 @@ internal sealed class RoslynClassificationColorizer : DocumentColorizingTransfor
         var lineStart = line.Offset;
         var lineEnd = line.EndOffset;
 
-        foreach (var span in _classifiedSpans)
+        // Spans are ordered by document position, so binary search for the first span
+        // that could overlap this line, then walk forward until spans pass the line end.
+        // This reduces the per-line cost from O(total spans) to O(log n + overlapping spans),
+        // which matters a lot for large files where span lists can be tens of thousands long.
+        int index = FindFirstSpanAtOrAfter(lineStart, spans);
+        for (int i = index; i < spans.Count; i++)
         {
-            // Skip spans outside this line
-            if (span.TextSpan.End <= lineStart || span.TextSpan.Start >= lineEnd)
+            var span = spans[i];
+            if (span.TextSpan.Start >= lineEnd)
             {
-                continue;
+                break;
             }
 
             var brush = GetBrushForClassification(span.ClassificationType);
@@ -106,6 +152,10 @@ internal sealed class RoslynClassificationColorizer : DocumentColorizingTransfor
 
             var start = Math.Max(span.TextSpan.Start, lineStart);
             var end = Math.Min(span.TextSpan.End, lineEnd);
+            if (start >= end)
+            {
+                continue;
+            }
 
             ChangeLinePart(start, end, element =>
             {
@@ -114,8 +164,41 @@ internal sealed class RoslynClassificationColorizer : DocumentColorizingTransfor
         }
     }
 
+    /// <summary>
+    /// Finds the index of the first span whose <see cref="ClassifiedSpan.TextSpan"/> ends
+    /// after <paramref name="lineStart"/> (i.e. the first span that can intersect a line
+    /// starting at that offset). Returns <c>spans.Count</c> when no span qualifies.
+    /// </summary>
+    private static int FindFirstSpanAtOrAfter(int lineStart, IReadOnlyList<ClassifiedSpan> spans)
+    {
+        int low = 0;
+        int high = spans.Count - 1;
+        int result = spans.Count;
+
+        while (low <= high)
+        {
+            int mid = (low + high) >> 1;
+            if (spans[mid].TextSpan.End > lineStart)
+            {
+                result = mid;
+                high = mid - 1;
+            }
+            else
+            {
+                low = mid + 1;
+            }
+        }
+
+        return result;
+    }
+
     private static Brush? GetBrushForClassification(string classificationType)
     {
+        if (s_brushCache.TryGetValue(classificationType, out Brush? cached))
+        {
+            return cached;
+        }
+
         var resourceKey = classificationType switch
         {
             ClassificationTypeNames.ClassName
@@ -161,11 +244,12 @@ internal sealed class RoslynClassificationColorizer : DocumentColorizingTransfor
             _ => null
         };
 
-        if (resourceKey is null)
-        {
-            return null;
-        }
+        Brush? brush = resourceKey is null
+            ? null
+            : Application.Current.TryFindResource(resourceKey) as Brush;
 
-        return Application.Current.TryFindResource(resourceKey) as Brush;
+        // Cache misses too so unknown classification types are resolved once.
+        s_brushCache[classificationType] = brush;
+        return brush;
     }
 }

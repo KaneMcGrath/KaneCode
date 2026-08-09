@@ -68,6 +68,39 @@ public class BackgroundAnalysisSchedulerTests : IDisposable
         Assert.False(fired);
     }
 
+    // --- Viewport classification ---
+
+    [Fact]
+    public async Task WhenViewportClassificationScheduledForLargeFileThenResultCoversVisibleRange()
+    {
+        string filePath = @"C:\Test\Large.cs";
+        var code = new System.Text.StringBuilder();
+        for (int i = 0; i < 2000; i++)
+        {
+            code.AppendLine($"namespace N{i % 10} {{ public class C{i} {{ public void M{i}() {{ int x{i} = {i}; }} }} }}");
+        }
+
+        await _workspace.OpenOrUpdateDocumentAsync(filePath, code.ToString());
+
+        TaskCompletionSource<ClassificationResult> tcs = new();
+        _scheduler.ClassificationCompleted += result => tcs.TrySetResult(result);
+
+        // Visible range somewhere in the middle of the 80k+ char document.
+        int visibleStart = 40_000;
+        int visibleEnd = 45_000;
+        _scheduler.ScheduleViewportClassification(filePath, visibleStart, visibleEnd);
+
+        ClassificationResult classificationResult = await tcs.Task.WaitAsync(TimeSpan.FromSeconds(10));
+
+        Assert.Equal(filePath, classificationResult.FilePath);
+        Assert.NotEmpty(classificationResult.ClassifiedSpans);
+
+        // The classified range should cover (with padding) the requested visible range.
+        Assert.True(classificationResult.Start <= visibleStart);
+        Assert.True(classificationResult.End >= visibleEnd);
+        Assert.True(classificationResult.End - classificationResult.Start < code.Length);
+    }
+
     // --- Full analysis (classification + diagnostics) ---
 
     [Fact]

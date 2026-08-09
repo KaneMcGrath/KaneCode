@@ -21,6 +21,14 @@ internal sealed class RoslynWorkspaceService : IDisposable
     private ProjectId _projectId;
     private readonly ConcurrentDictionary<string, DocumentId> _documentIds = new(StringComparer.OrdinalIgnoreCase);
     private readonly ConcurrentDictionary<string, ProjectId> _projectIds = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Tracks the last known <see cref="SourceText"/> for each open document so edits can be
+    /// applied incrementally (<see cref="ApplyTextChangeIncremental"/>) instead of copying the
+    /// entire document text on every keystroke. Only populated for documents whose text is
+    /// pushed through this service (open files, adhoc documents).
+    /// </summary>
+    private readonly ConcurrentDictionary<string, SourceText> _sourceTextCache = new(StringComparer.OrdinalIgnoreCase);
     private bool _disposed;
 
     public RoslynWorkspaceService()
@@ -87,6 +95,7 @@ internal sealed class RoslynWorkspaceService : IDisposable
     private DocumentId OpenOrUpdateDocumentUnsafe(string filePath, string text)
     {
         var sourceText = SourceText.From(text);
+        _sourceTextCache[filePath] = sourceText;
 
         if (_documentIds.TryGetValue(filePath, out var existingId))
         {
@@ -123,8 +132,51 @@ internal sealed class RoslynWorkspaceService : IDisposable
         try
         {
             var sourceText = SourceText.From(text);
+            _sourceTextCache[filePath] = sourceText;
             var updatedSolution = _workspace.CurrentSolution.WithDocumentText(documentId, sourceText);
             _workspace.TryApplyChanges(updatedSolution);
+        }
+        finally
+        {
+            _workspaceLock.Release();
+        }
+    }
+
+    /// <summary>
+    /// Applies a single text change to a tracked document without copying the whole document.
+    /// Cheap on the UI thread because <see cref="SourceText.WithChanges"/> is lazy; the heavy
+    /// string work only happens when Roslyn materializes the changed text.
+    /// <para>
+    /// Returns <c>false</c> when the document is not tracked or no <see cref="SourceText"/> is
+    /// cached, in which case the caller should fall back to a full-text update.
+    /// </para>
+    /// </summary>
+    public bool ApplyTextChangeIncremental(string filePath, int offset, int removedLength, string insertedText)
+    {
+        ArgumentNullException.ThrowIfNull(filePath);
+        ArgumentNullException.ThrowIfNull(insertedText);
+
+        if (!_documentIds.TryGetValue(filePath, out var documentId))
+        {
+            return false;
+        }
+
+        _workspaceLock.Wait();
+        try
+        {
+            if (!_sourceTextCache.TryGetValue(filePath, out var current))
+            {
+                return false;
+            }
+
+            if (offset < 0 || removedLength < 0 || offset > current.Length || offset + removedLength > current.Length)
+            {
+                return false;
+            }
+
+            var updated = current.WithChanges(new TextChange(new TextSpan(offset, removedLength), insertedText));
+            _sourceTextCache[filePath] = updated;
+            return _workspace.TryApplyChanges(_workspace.CurrentSolution.WithDocumentText(documentId, updated));
         }
         finally
         {
@@ -144,6 +196,8 @@ internal sealed class RoslynWorkspaceService : IDisposable
         {
             return;
         }
+
+        _sourceTextCache.TryRemove(filePath, out _);
 
         await _workspaceLock.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
@@ -353,6 +407,7 @@ internal sealed class RoslynWorkspaceService : IDisposable
             _workspace = new AdhocWorkspace(_hostServices);
             _documentIds.Clear();
             _projectIds.Clear();
+            _sourceTextCache.Clear();
 
             InitializeDefaultProject();
         }
@@ -378,6 +433,7 @@ internal sealed class RoslynWorkspaceService : IDisposable
             _workspace = newWorkspace;
             _documentIds.Clear();
             _projectIds.Clear();
+            _sourceTextCache.Clear();
 
             // Rebuild tracking dictionaries from the loaded solution
             Solution solution = newWorkspace.CurrentSolution;
@@ -464,6 +520,7 @@ internal sealed class RoslynWorkspaceService : IDisposable
         try
         {
             var sourceText = SourceText.From(text);
+            _sourceTextCache[filePath] = sourceText;
             var documentId = DocumentId.CreateNewId(projectId, filePath);
             var fileName = Path.GetFileName(filePath);
 

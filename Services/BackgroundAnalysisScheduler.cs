@@ -19,10 +19,14 @@ internal sealed record AnalysisSnapshot(
 
 /// <summary>
 /// Result payload delivered to the UI after a classification pass.
+/// <paramref name="Start"/> and <paramref name="End"/> describe the document range that was
+/// classified (may be a viewport-scoped range for large files).
 /// </summary>
 internal sealed record ClassificationResult(
     string FilePath,
-    IReadOnlyList<ClassifiedSpan> ClassifiedSpans);
+    IReadOnlyList<ClassifiedSpan> ClassifiedSpans,
+    int Start,
+    int End);
 
 /// <summary>
 /// Result payload delivered to the UI after a diagnostics pass.
@@ -46,6 +50,7 @@ internal sealed class BackgroundAnalysisScheduler : IDisposable
 
     // --- Independent cancellation per work type ---
     private CancellationTokenSource? _classificationCts;
+    private CancellationTokenSource? _viewportClassificationCts;
     private CancellationTokenSource? _activeDocDiagnosticsCts;
     private CancellationTokenSource? _solutionDiagnosticsCts;
 
@@ -117,6 +122,27 @@ internal sealed class BackgroundAnalysisScheduler : IDisposable
     }
 
     /// <summary>
+    /// Schedules a viewport-scoped classification that does not interfere with the main
+    /// classification/diagnostics pipeline. Used when the user scrolls a large file outside
+    /// the previously classified region so newly revealed code gets colors without re-classifying
+    /// the whole file.
+    /// </summary>
+    public void ScheduleViewportClassification(string filePath, int visibleStartOffset, int visibleEndOffset)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(filePath);
+        if (!RoslynWorkspaceService.IsCSharpFile(filePath))
+        {
+            return;
+        }
+
+        _viewportClassificationCts?.Cancel();
+        CancellationTokenSource cts = new();
+        _viewportClassificationCts = cts;
+
+        _ = RunViewportClassificationAsync(filePath, visibleStartOffset, visibleEndOffset, cts.Token);
+    }
+
+    /// <summary>
     /// Schedules diagnostics for the active document and (separately, with lower priority) for all open documents.
     /// </summary>
     /// <param name="activeFilePath">The active file that was just edited.</param>
@@ -143,11 +169,20 @@ internal sealed class BackgroundAnalysisScheduler : IDisposable
     /// Schedules all analysis work (classification + diagnostics) for an active-document edit.
     /// This is the main entry point that replaces the old <c>ScheduleRoslynAnalysis</c>.
     /// </summary>
-    public void ScheduleFullAnalysis(string activeFilePath, string editorText, IReadOnlyList<string> openCSharpFilePaths,
+    /// <param name="activeFilePath">The active file that was just edited.</param>
+    /// <param name="editorText">
+    /// The full editor text, or <c>null</c> when the caller keeps the workspace text in sync
+    /// incrementally (see <see cref="RoslynWorkspaceService.ApplyTextChangeIncremental"/>).
+    /// When null, the scheduler skips the full-text push but still invalidates the snapshot cache.
+    /// </param>
+    /// <param name="openCSharpFilePaths">All open C# file paths for solution-wide analysis.</param>
+    /// <param name="visibleStartOffset">Start offset of the visible range, or null for full file.</param>
+    /// <param name="visibleEndOffset">End offset of the visible range, or null for full file.</param>
+    public void ScheduleFullAnalysis(string activeFilePath, string? editorText, IReadOnlyList<string> openCSharpFilePaths,
         int? visibleStartOffset = null, int? visibleEndOffset = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(activeFilePath);
-        ArgumentNullException.ThrowIfNull(editorText);
+        ArgumentNullException.ThrowIfNull(openCSharpFilePaths);
         if (!RoslynWorkspaceService.IsCSharpFile(activeFilePath))
         {
             return;
@@ -177,6 +212,7 @@ internal sealed class BackgroundAnalysisScheduler : IDisposable
     public void CancelAll()
     {
         _classificationCts?.Cancel();
+        _viewportClassificationCts?.Cancel();
         _activeDocDiagnosticsCts?.Cancel();
         _solutionDiagnosticsCts?.Cancel();
     }
@@ -216,36 +252,127 @@ internal sealed class BackgroundAnalysisScheduler : IDisposable
         {
             await Task.Delay(_classificationDelay, cancellationToken).ConfigureAwait(false);
 
-            Document? document = _roslynService.GetDocument(filePath);
-            if (document is null)
+            ClassificationResult? result = await ClassifyDocumentAsync(filePath, visibleStart, visibleEnd, cancellationToken).ConfigureAwait(false);
+            if (result is null)
             {
                 return;
             }
 
-            SourceText text = await document.GetTextAsync(cancellationToken).ConfigureAwait(false);
-            TextSpan spanToClassify = DetermineClassificationSpan(text, visibleStart, visibleEnd);
+            await UpdateSnapshotWithClassificationAsync(filePath, result, cancellationToken).ConfigureAwait(false);
 
-            var spans = await Classifier.GetClassifiedSpansAsync(
-                document, spanToClassify, cancellationToken).ConfigureAwait(false);
-
-            IReadOnlyList<ClassifiedSpan> result = spans.ToList();
-
-            // Update cache
-            AnalysisSnapshot? existing = GetCachedSnapshot(filePath);
-            VersionStamp version = await document.GetTextVersionAsync(cancellationToken).ConfigureAwait(false);
-            AnalysisSnapshot updated = new(
-                version,
-                result,
-                existing?.DiagnosticEntries ?? [],
-                existing?.DiagnosticItems ?? []);
-            _snapshotCache[filePath] = updated;
-
-            ClassificationCompleted?.Invoke(new ClassificationResult(filePath, result));
+            ClassificationCompleted?.Invoke(result);
         }
         catch (OperationCanceledException)
         {
             // Superseded by a newer request
         }
+    }
+
+    private async Task RunViewportClassificationAsync(string filePath, int visibleStart, int visibleEnd, CancellationToken cancellationToken)
+    {
+        try
+        {
+            await Task.Delay(_classificationDelay, cancellationToken).ConfigureAwait(false);
+
+            ClassificationResult? result = await ClassifyDocumentAsync(filePath, visibleStart, visibleEnd, cancellationToken).ConfigureAwait(false);
+            if (result is null)
+            {
+                return;
+            }
+
+            await UpdateSnapshotWithClassificationAsync(filePath, result, cancellationToken).ConfigureAwait(false);
+
+            ClassificationCompleted?.Invoke(result);
+        }
+        catch (OperationCanceledException)
+        {
+            // Superseded by a newer request or scroll movement
+        }
+    }
+
+    /// <summary>
+    /// Core classification logic without debounce delay (used when delay was already applied).
+    /// </summary>
+    private async Task RunClassificationCoreAsync(string filePath, int? visibleStart, int? visibleEnd, CancellationToken cancellationToken)
+    {
+        try
+        {
+            ClassificationResult? result = await ClassifyDocumentAsync(filePath, visibleStart, visibleEnd, cancellationToken).ConfigureAwait(false);
+            if (result is null)
+            {
+                return;
+            }
+
+            await UpdateSnapshotWithClassificationAsync(filePath, result, cancellationToken).ConfigureAwait(false);
+
+            ClassificationCompleted?.Invoke(result);
+        }
+        catch (OperationCanceledException)
+        {
+            // Superseded
+        }
+    }
+
+    /// <summary>
+    /// Computes classified spans for the requested range (full file for small files,
+    /// padded viewport range for large files) and packages them with the covered bounds.
+    /// </summary>
+    private async Task<ClassificationResult?> ClassifyDocumentAsync(
+        string filePath, int? visibleStart, int? visibleEnd, CancellationToken cancellationToken)
+    {
+        Document? document = _roslynService.GetDocument(filePath);
+        if (document is null)
+        {
+            return null;
+        }
+
+        SourceText text = await document.GetTextAsync(cancellationToken).ConfigureAwait(false);
+        TextSpan spanToClassify = DetermineClassificationSpan(text, visibleStart, visibleEnd);
+
+        var spans = await Classifier.GetClassifiedSpansAsync(
+            document, spanToClassify, cancellationToken).ConfigureAwait(false);
+
+        IReadOnlyList<ClassifiedSpan> result = spans.ToList();
+
+        int start = 0;
+        int end = 0;
+        if (result.Count > 0)
+        {
+            start = int.MaxValue;
+            foreach (var span in result)
+            {
+                if (span.TextSpan.Start < start)
+                {
+                    start = span.TextSpan.Start;
+                }
+
+                if (span.TextSpan.End > end)
+                {
+                    end = span.TextSpan.End;
+                }
+            }
+        }
+
+        return new ClassificationResult(filePath, result, start, end);
+    }
+
+    private async Task UpdateSnapshotWithClassificationAsync(
+        string filePath, ClassificationResult result, CancellationToken cancellationToken)
+    {
+        AnalysisSnapshot? existing = GetCachedSnapshot(filePath);
+        Document? document = _roslynService.GetDocument(filePath);
+        if (document is null)
+        {
+            return;
+        }
+
+        VersionStamp version = await document.GetTextVersionAsync(cancellationToken).ConfigureAwait(false);
+        AnalysisSnapshot updated = new(
+            version,
+            result.ClassifiedSpans,
+            existing?.DiagnosticEntries ?? [],
+            existing?.DiagnosticItems ?? []);
+        _snapshotCache[filePath] = updated;
     }
 
     private TextSpan DetermineClassificationSpan(SourceText text, int? visibleStart, int? visibleEnd)
@@ -357,7 +484,7 @@ internal sealed class BackgroundAnalysisScheduler : IDisposable
         }
     }
 
-    private async Task RunFullAnalysisAsync(string activeFilePath, string editorText, IReadOnlyList<string> openCSharpFilePaths,
+    private async Task RunFullAnalysisAsync(string activeFilePath, string? editorText, IReadOnlyList<string> openCSharpFilePaths,
         int? visibleStart, int? visibleEnd,
         CancellationToken classCt, CancellationToken activeDocCt, CancellationToken solutionCt)
     {
@@ -366,10 +493,15 @@ internal sealed class BackgroundAnalysisScheduler : IDisposable
             // Use the shorter classification delay as the initial debounce for the whole pass
             await Task.Delay(_classificationDelay, classCt).ConfigureAwait(false);
 
-            // Push text into Roslyn
-            await _roslynService.UpdateDocumentTextAsync(activeFilePath, editorText, classCt).ConfigureAwait(false);
+            if (editorText is not null)
+            {
+                // Full-text push for callers that do not keep the workspace text in sync
+                // (e.g. tests). The editor normally syncs text incrementally, so this is skipped.
+                await _roslynService.UpdateDocumentTextAsync(activeFilePath, editorText, classCt).ConfigureAwait(false);
+            }
 
-            // Invalidate cache for the edited file
+            // The text may have changed since the cached snapshot (via incremental updates),
+            // so always invalidate the edited file's cache.
             InvalidateCache(activeFilePath);
 
             // Launch classification and diagnostics concurrently (they are independent)
@@ -377,44 +509,6 @@ internal sealed class BackgroundAnalysisScheduler : IDisposable
             Task diagnosticsTask = RunDiagnosticsCoreAsync(activeFilePath, openCSharpFilePaths, activeDocCt, solutionCt);
 
             await Task.WhenAll(classificationTask, diagnosticsTask).ConfigureAwait(false);
-        }
-        catch (OperationCanceledException)
-        {
-            // Superseded
-        }
-    }
-
-    /// <summary>
-    /// Core classification logic without debounce delay (used when delay was already applied).
-    /// </summary>
-    private async Task RunClassificationCoreAsync(string filePath, int? visibleStart, int? visibleEnd, CancellationToken cancellationToken)
-    {
-        try
-        {
-            Document? document = _roslynService.GetDocument(filePath);
-            if (document is null)
-            {
-                return;
-            }
-
-            SourceText text = await document.GetTextAsync(cancellationToken).ConfigureAwait(false);
-            TextSpan spanToClassify = DetermineClassificationSpan(text, visibleStart, visibleEnd);
-
-            var spans = await Classifier.GetClassifiedSpansAsync(
-                document, spanToClassify, cancellationToken).ConfigureAwait(false);
-
-            IReadOnlyList<ClassifiedSpan> result = spans.ToList();
-
-            AnalysisSnapshot? existing = GetCachedSnapshot(filePath);
-            VersionStamp version = await document.GetTextVersionAsync(cancellationToken).ConfigureAwait(false);
-            AnalysisSnapshot updated = new(
-                version,
-                result,
-                existing?.DiagnosticEntries ?? [],
-                existing?.DiagnosticItems ?? []);
-            _snapshotCache[filePath] = updated;
-
-            ClassificationCompleted?.Invoke(new ClassificationResult(filePath, result));
         }
         catch (OperationCanceledException)
         {
@@ -611,6 +705,8 @@ internal sealed class BackgroundAnalysisScheduler : IDisposable
 
         _classificationCts?.Cancel();
         _classificationCts?.Dispose();
+        _viewportClassificationCts?.Cancel();
+        _viewportClassificationCts?.Dispose();
         _activeDocDiagnosticsCts?.Cancel();
         _activeDocDiagnosticsCts?.Dispose();
         _solutionDiagnosticsCts?.Cancel();

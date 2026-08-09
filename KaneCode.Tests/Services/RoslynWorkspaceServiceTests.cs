@@ -249,6 +249,81 @@ public class RoslynWorkspaceServiceTests : IDisposable
             p => p.Equals(filePath, StringComparison.OrdinalIgnoreCase));
     }
 
+    // --- Incremental text changes ---
+
+    [Fact]
+    public async Task WhenTextChangeAppliedIncrementallyThenDocumentTextMatches()
+    {
+        string filePath = @"C:\Test\Incremental.cs";
+        string code = "class Foo { }";
+
+        await _service.OpenOrUpdateDocumentAsync(filePath, code);
+
+        bool applied = _service.ApplyTextChangeIncremental(filePath, offset: 6, removedLength: 3, insertedText: "Bar");
+
+        Assert.True(applied);
+
+        Document? document = _service.GetDocument(filePath);
+        Assert.NotNull(document);
+        string? text = (await document!.GetTextAsync()).ToString();
+        Assert.Equal("class Bar { }", text);
+    }
+
+    [Fact]
+    public async Task WhenMultipleIncrementalChangesAppliedThenAllAreReflectedInOrder()
+    {
+        string filePath = @"C:\Test\IncrementalMulti.cs";
+        string code = "class Foo { }";
+
+        await _service.OpenOrUpdateDocumentAsync(filePath, code);
+
+        // Replace "Foo" with "Bar", then insert "Baz" after "Bar".
+        Assert.True(_service.ApplyTextChangeIncremental(filePath, offset: 6, removedLength: 3, insertedText: "Bar"));
+        Assert.True(_service.ApplyTextChangeIncremental(filePath, offset: 9, removedLength: 0, insertedText: "Baz"));
+
+        Document? document = _service.GetDocument(filePath);
+        string? text = (await document!.GetTextAsync()).ToString();
+        Assert.Equal("class BarBaz { }", text);
+    }
+
+    [Fact]
+    public async Task WhenIncrementalChangeAppliedToUntrackedDocumentThenReturnsFalse()
+    {
+        bool applied = _service.ApplyTextChangeIncremental(@"C:\NoSuchFile.cs", offset: 0, removedLength: 0, insertedText: "x");
+
+        Assert.False(applied);
+    }
+
+    [Fact]
+    public async Task WhenIncrementalChangeHasInvalidOffsetsThenReturnsFalseAndTextIsUnchanged()
+    {
+        string filePath = @"C:\Test\IncrementalInvalid.cs";
+        string code = "class Foo { }";
+
+        await _service.OpenOrUpdateDocumentAsync(filePath, code);
+
+        bool applied = _service.ApplyTextChangeIncremental(filePath, offset: 100, removedLength: 3, insertedText: "Bar");
+
+        Assert.False(applied);
+
+        Document? document = _service.GetDocument(filePath);
+        string? text = (await document!.GetTextAsync()).ToString();
+        Assert.Equal(code, text);
+    }
+
+    [Fact]
+    public async Task WhenDocumentClosedThenIncrementalUpdateReturnsFalse()
+    {
+        string filePath = @"C:\Test\IncrementalClosed.cs";
+        await _service.OpenOrUpdateDocumentAsync(filePath, "class Foo { }");
+
+        await _service.CloseDocumentAsync(filePath);
+
+        bool applied = _service.ApplyTextChangeIncremental(filePath, offset: 0, removedLength: 0, insertedText: "x");
+
+        Assert.False(applied);
+    }
+
     // --- IsProjectConfigFile ---
 
     [Theory]

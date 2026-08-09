@@ -1,5 +1,6 @@
 using ICSharpCode.AvalonEdit;
 using ICSharpCode.AvalonEdit.CodeCompletion;
+using ICSharpCode.AvalonEdit.Document;
 using ICSharpCode.AvalonEdit.Highlighting;
 using ICSharpCode.AvalonEdit.Search;
 using KaneCode.Controls;
@@ -16,6 +17,7 @@ using System.IO;
 using System.Windows;
 using System.Windows.Input;
 using System.Windows.Media;
+using AvalonTextDocument = ICSharpCode.AvalonEdit.Document.TextDocument;
 
 namespace KaneCode.ViewModels;
 
@@ -75,6 +77,18 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
     private FileSystemWatcher? _projectFileWatcher;
     private CancellationTokenSource? _explorerRefreshCts;
     private CancellationTokenSource? _projectFileRefreshCts;
+
+    /// <summary>Debounces git-gutter recomputation so typing does not diff the whole file per keystroke.</summary>
+    private CancellationTokenSource? _gitGutterCts;
+
+    /// <summary>The <see cref="AvalonTextDocument"/> whose <see cref="AvalonTextDocument.Changed"/> event is currently subscribed.</summary>
+    private AvalonTextDocument? _documentChangeSubscribedDocument;
+
+    /// <summary>Last ordered diagnostic list shown in the error list, to avoid repopulating when unchanged.</summary>
+    private List<DiagnosticItem> _lastDiagnosticItems = [];
+
+    /// <summary>Document range covered by the last classification result, used to re-classify on scroll-out.</summary>
+    private (int Start, int End)? _lastClassifiedBounds;
     private bool _isLoadingProject;
     private bool _isUpdatingSelectedBranch;
     private CancellationTokenSource? _loadingStatusClearCts;
@@ -656,7 +670,133 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
         _editor.TextArea.TextEntered += OnTextEntered;
         _editor.TextArea.Caret.PositionChanged += OnCaretPositionChanged;
 
+        // Keep the Roslyn workspace text in sync incrementally as the user types.
+        AttachDocumentChangeHandler(_editor.Document);
+
+        // Re-classify the viewport when the user scrolls a large file outside the
+        // previously classified region.
+        _editor.TextArea.TextView.VisualLinesChanged += OnVisualLinesChanged;
+
         ApplyEditorTheme();
+    }
+
+    /// <summary>
+    /// Swaps the <see cref="AvalonTextDocument.Changed"/> subscription to a new document so
+    /// incremental Roslyn text updates follow the active tab's document.
+    /// </summary>
+    private void AttachDocumentChangeHandler(AvalonTextDocument? document)
+    {
+        if (ReferenceEquals(_documentChangeSubscribedDocument, document))
+        {
+            return;
+        }
+
+        if (_documentChangeSubscribedDocument is not null)
+        {
+            _documentChangeSubscribedDocument.Changed -= OnDocumentChanged;
+        }
+
+        _documentChangeSubscribedDocument = document;
+
+        if (document is not null)
+        {
+            document.Changed += OnDocumentChanged;
+        }
+    }
+
+    /// <summary>
+    /// Applies an AvalonEdit text change to the Roslyn workspace incrementally so typing in
+    /// large files does not copy the entire document text on every keystroke.
+    /// </summary>
+    private void OnDocumentChanged(object? sender, DocumentChangeEventArgs e)
+    {
+        if (_isActivating || ActiveTab is null)
+        {
+            return;
+        }
+
+        if (!ReferenceEquals(sender, ActiveTab.Document))
+        {
+            return;
+        }
+
+        if (!RoslynWorkspaceService.IsCSharpFile(ActiveTab.FilePath))
+        {
+            return;
+        }
+
+        string insertedText = e.InsertedText?.Text ?? string.Empty;
+
+        bool applied = _roslynService.ApplyTextChangeIncremental(ActiveTab.FilePath, e.Offset, e.RemovalLength, insertedText);
+        if (!applied)
+        {
+            // No cached SourceText (e.g. first edit after a workspace reload): full push once.
+            _ = _roslynService.OpenOrUpdateDocumentAsync(ActiveTab.FilePath, ActiveTab.Document.Text);
+        }
+    }
+
+    /// <summary>
+    /// Returns the document offset range currently visible in the editor, or null when the
+    /// view is not laid out yet.
+    /// </summary>
+    private (int Start, int End)? GetVisibleTextRange()
+    {
+        if (_editor is null)
+        {
+            return null;
+        }
+
+        var textView = _editor.TextArea.TextView;
+
+        // Accessing VisualLines throws VisualLinesInvalidException when the layout is not
+        // current (e.g. right after a document swap in ActivateTab), so bail out instead.
+        if (textView is null || !textView.VisualLinesValid || textView.VisualLines.Count == 0)
+        {
+            return null;
+        }
+
+        var first = textView.VisualLines[0];
+        var last = textView.VisualLines[^1];
+
+        if (first.FirstDocumentLine is null || last.LastDocumentLine is null)
+        {
+            return null;
+        }
+
+        return (first.FirstDocumentLine.Offset, last.LastDocumentLine.EndOffset);
+    }
+
+    /// <summary>
+    /// When the user scrolls a large file outside the previously classified region, schedules
+    /// a viewport-scoped classification so newly revealed code gets semantic colors quickly
+    /// without re-classifying the whole file.
+    /// </summary>
+    private void OnVisualLinesChanged(object? sender, EventArgs e)
+    {
+        if (_isActivating || _editor is null || ActiveTab is null)
+        {
+            return;
+        }
+
+        if (!RoslynWorkspaceService.IsCSharpFile(ActiveTab.FilePath))
+        {
+            return;
+        }
+
+        (int Start, int End)? visible = GetVisibleTextRange();
+        if (visible is null)
+        {
+            return;
+        }
+
+        var bounds = _lastClassifiedBounds;
+        if (bounds is not null && visible.Value.Start >= bounds.Value.Start && visible.Value.End <= bounds.Value.End)
+        {
+            // Viewport is still inside the classified region; nothing to do.
+            return;
+        }
+
+        _analysisScheduler.ScheduleViewportClassification(ActiveTab.FilePath, visible.Value.Start, visible.Value.End);
     }
 
     private void ShowFindPanel()
@@ -1954,6 +2094,7 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
 
             // Swap the underlying document � this preserves each tab's undo/redo history
             _editor.Document = tab.Document;
+            AttachDocumentChangeHandler(tab.Document);
 
             _classificationColorizer?.Reset(isCSharpFile ? tab.FilePath : null);
 
@@ -1979,7 +2120,11 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
                     _ = _roslynService.OpenOrUpdateDocumentAsync(tab.FilePath, _editor.Text);
                 }
 
-                ScheduleRoslynAnalysis();
+                // Defer analysis until after layout so the visible range is known; large files
+                // then classify only the viewport instead of the whole document.
+                Application.Current.Dispatcher.BeginInvoke(
+                    ScheduleRoslynAnalysis,
+                    System.Windows.Threading.DispatcherPriority.Background);
             }
             else
             {
@@ -2401,6 +2546,10 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
         }
 
         EditorService.ApplySyntaxHighlightingTheme(_editor.SyntaxHighlighting);
+
+        // Theme brushes may have changed; drop the colorizer's cached brushes.
+        RoslynClassificationColorizer.ClearBrushCache();
+
         _editor.TextArea.TextView.Redraw();
     }
 
@@ -2747,6 +2896,11 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
     /// Triggers background Roslyn analysis (classification + diagnostics) via the scheduler.
     /// Classification, active-document diagnostics, and solution-wide diagnostics run as
     /// independent background tasks with separate debounce delays and cancellation.
+    /// <para>
+    /// The workspace text is kept in sync incrementally by <see cref="OnDocumentChanged"/>, so
+    /// no full-text push is needed here. For large files only the visible range is classified
+    /// so the first paint of semantic colors is fast.
+    /// </para>
     /// </summary>
     private void ScheduleRoslynAnalysis()
     {
@@ -2756,7 +2910,6 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
         }
 
         string filePath = ActiveTab.FilePath;
-        string text = _editor?.Text ?? string.Empty;
 
         List<string> openCSharpPaths = [];
         foreach (OpenFileTab tab in OpenTabs)
@@ -2772,7 +2925,13 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
             _classificationColorizer.FilePath = filePath;
         }
 
-        _analysisScheduler.ScheduleFullAnalysis(filePath, text, openCSharpPaths);
+        (int Start, int End)? visible = GetVisibleTextRange();
+        _analysisScheduler.ScheduleFullAnalysis(
+            filePath,
+            editorText: null,
+            openCSharpPaths,
+            visible?.Start,
+            visible?.End);
     }
 
     /// <summary>
@@ -2788,6 +2947,12 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
             {
                 _classificationColorizer.SetClassifiedSpans(result.ClassifiedSpans);
                 _editor?.TextArea.TextView.Redraw();
+
+                // Track the classified document range so scrolling triggers viewport
+                // re-classification only when the user leaves this region.
+                _lastClassifiedBounds = result.ClassifiedSpans.Count > 0
+                    ? (result.Start, result.End)
+                    : null;
             }
         });
     }
@@ -2795,22 +2960,38 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
     /// <summary>
     /// Handles diagnostics results from the background scheduler.
     /// Updates squiggles, error list, and status bar on the UI thread.
+    /// Skips repopulating the error list and redrawing when nothing changed.
     /// </summary>
     private void OnDiagnosticsCompleted(DiagnosticsResult result)
     {
         Application.Current.Dispatcher.InvokeAsync(() =>
         {
-            _diagnosticRenderer?.UpdateDiagnostics(result.ActiveFileEntries);
-            _editor?.TextArea.TextView.Redraw();
+            // Only redraw squiggles when the active file's diagnostics actually changed.
+            IReadOnlyList<DiagnosticEntry> currentEntries = _diagnosticRenderer?.Entries ?? [];
+            if (!currentEntries.SequenceEqual(result.ActiveFileEntries))
+            {
+                _diagnosticRenderer?.UpdateDiagnostics(result.ActiveFileEntries);
+                _editor?.TextArea.TextView.Redraw();
+            }
 
-            DiagnosticItems.Clear();
-            foreach (DiagnosticItem item in result.AllItems
+            // Only repopulate the error list when its contents changed. Repopulating a
+            // large ObservableCollection row-by-row is expensive, so skip it when possible.
+            List<DiagnosticItem> ordered = result.AllItems
                 .OrderBy(i => i.Severity)
                 .ThenBy(i => i.File)
                 .ThenBy(i => i.Line)
-                .ThenBy(i => i.Column))
+                .ThenBy(i => i.Column)
+                .ToList();
+
+            if (!_lastDiagnosticItems.SequenceEqual(ordered))
             {
-                DiagnosticItems.Add(item);
+                DiagnosticItems.Clear();
+                foreach (DiagnosticItem item in ordered)
+                {
+                    DiagnosticItems.Add(item);
+                }
+
+                _lastDiagnosticItems = ordered;
             }
 
             int errorCount = result.AllItems.Count(e => e.Severity == DiagnosticSeverity.Error);
@@ -3956,17 +4137,67 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
 
         if (!_gitService.IsRepositoryOpen || !_gitService.TryGetRelativePath(ActiveTab.FilePath, out var relativePath) || string.IsNullOrWhiteSpace(relativePath))
         {
+            _gitGutterCts?.Cancel();
             _gitGutterRenderer.UpdateChanges([]);
             _editor.TextArea.TextView.Redraw();
             return;
         }
 
-        var headText = _gitService.GetHeadFileText(relativePath);
-        var currentText = _editor.Text;
+        // Debounce: rapid text changes (typing) cancel any pending gutter recompute so the
+        // expensive full-text diff only runs after typing pauses.
+        _gitGutterCts?.Cancel();
+        _gitGutterCts?.Dispose();
+        CancellationTokenSource cts = new();
+        _gitGutterCts = cts;
+        CancellationToken ct = cts.Token;
 
-        var changes = BuildGitLineChanges(headText, currentText, _editor.Document.LineCount);
-        _gitGutterRenderer.UpdateChanges(changes);
-        _editor.TextArea.TextView.Redraw();
+        string filePath = ActiveTab.FilePath;
+        AvalonTextDocument document = ActiveTab.Document;
+
+        _ = RunGitGutterUpdateAsync(filePath, relativePath, document, ct);
+    }
+
+    private async Task RunGitGutterUpdateAsync(string filePath, string relativePath, AvalonTextDocument document, CancellationToken cancellationToken)
+    {
+        try
+        {
+            // Wait for typing to pause before paying the cost of a full-text diff.
+            // The continuation resumes on the UI thread (no ConfigureAwait(false)) so the
+            // GitService and the AvalonEdit document are only touched from the UI thread.
+            await Task.Delay(TimeSpan.FromMilliseconds(300), cancellationToken);
+
+            string headText = _gitService.GetHeadFileText(relativePath);
+            string currentText = document.Text;
+            int currentLineCount = document.LineCount;
+
+            // The pure line-diff runs on a background thread.
+            IReadOnlyList<GitLineChange> changes = await Task.Run(
+                () => BuildGitLineChanges(headText, currentText, currentLineCount),
+                cancellationToken).ConfigureAwait(false);
+
+            cancellationToken.ThrowIfCancellationRequested();
+
+            await Application.Current.Dispatcher.InvokeAsync(() =>
+            {
+                // Only apply if the same file is still active.
+                if (ActiveTab is null || !string.Equals(ActiveTab.FilePath, filePath, StringComparison.OrdinalIgnoreCase))
+                {
+                    return;
+                }
+
+                _gitGutterRenderer?.UpdateChanges(changes);
+                _editor?.TextArea.TextView.Redraw();
+            }, System.Windows.Threading.DispatcherPriority.Background, cancellationToken);
+        }
+        catch (OperationCanceledException)
+        {
+            // Superseded by a newer update or tab switch.
+        }
+        catch (Exception ex)
+        {
+            // The gutter is best-effort; never let a git read failure disrupt editing.
+            Debug.WriteLine($"Git gutter update failed for '{filePath}': {ex.Message}");
+        }
     }
 
     private static IReadOnlyList<GitLineChange> BuildGitLineChanges(string headText, string currentText, int currentLineCount)
