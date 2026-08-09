@@ -75,7 +75,7 @@
                     VerticalAlignment="Center">
                 <TextBlock x:Name="ZoomText"
                            Text="100%"
-                           Foreground="{DynamicResource StatusBarForeground}"
+                           Foreground="#FFFFFF"
                            FontSize="11" />
             </Border>
             <Button x:Name="FitButton"
@@ -110,7 +110,7 @@
                     Margin="6,0,0,0"
                     VerticalAlignment="Center">
                 <TextBlock Text="Scroll to zoom · Drag to pan · Double-click to fit"
-                           Foreground="{DynamicResource StatusBarForeground}"
+                           Foreground="#FFFFFF"
                            FontSize="11" />
             </Border>
         </StackPanel>

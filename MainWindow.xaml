@@ -543,7 +543,13 @@ ResizeMode="CanResizeWithGrip">
                                         </Border>
 
                                         <Grid>
+                                            <Grid.RowDefinitions>
+                                                <RowDefinition Height="*" />
+                                                <RowDefinition Height="Auto" />
+                                            </Grid.RowDefinitions>
+
                                             <avalonEdit:TextEditor x:Name="CodeEditor"
+                                                               Grid.Row="0"
                                                                FontFamily="Cascadia Code, Consolas, Courier New"
                                                                FontSize="14"
                                                                ShowLineNumbers="True"
@@ -581,9 +587,42 @@ ResizeMode="CanResizeWithGrip">
                                                     </ContextMenu>
                                                 </avalonEdit:TextEditor.ContextMenu>
                                             </avalonEdit:TextEditor>
-                                            <controls:MarkdownPreviewPanel x:Name="MarkdownPreview" Visibility="Collapsed" />
-                                            <controls:ImagePreviewPanel x:Name="ImagePreview" Visibility="Collapsed" />
-                                            <controls:PresentationOverlay x:Name="PresentationOverlay" />
+                                            <controls:MarkdownPreviewPanel x:Name="MarkdownPreview" Grid.Row="0" Visibility="Collapsed" />
+                                            <controls:ImagePreviewPanel x:Name="ImagePreview" Grid.Row="0" Visibility="Collapsed" />
+                                            <controls:PresentationOverlay x:Name="PresentationOverlay" Grid.Row="0" />
+
+                                            <!-- Editor info bar (more indicators will be added here later) -->
+                                            <Border Grid.Row="1"
+                                                    Height="22"
+                                                    Background="{DynamicResource StatusBarBackground}">
+                                                <DockPanel>
+                                                    <StackPanel DockPanel.Dock="Right"
+                                                                Orientation="Horizontal"
+                                                                VerticalAlignment="Center"
+                                                                Margin="8,0">
+                                                        <TextBlock Text="Font size:"
+                                                                   FontSize="11"
+                                                                   Foreground="{DynamicResource StatusBarForeground}"
+                                                                   VerticalAlignment="Center" />
+                                                        <TextBox x:Name="EditorFontSizeBox"
+                                                                 Width="42"
+                                                                 Height="16"
+                                                                 Margin="4,0,0,0"
+                                                                 FontSize="11"
+                                                                 Padding="2,0"
+                                                                 TextAlignment="Right"
+                                                                 VerticalContentAlignment="Center"
+                                                                 CaretBrush="{DynamicResource StatusBarForeground}"
+                                                                 Foreground="{DynamicResource StatusBarForeground}"
+                                                                 Background="{DynamicResource ControlBackground}"
+                                                                 BorderBrush="{DynamicResource ControlBorder}"
+                                                                 BorderThickness="1"
+                                                                 ToolTip="Editor font size. Type a value and press Enter, or hold Ctrl and scroll to zoom."
+                                                                 KeyDown="EditorFontSizeBox_KeyDown"
+                                                                 LostFocus="EditorFontSizeBox_LostFocus" />
+                                                    </StackPanel>
+                                                </DockPanel>
+                                            </Border>
                                         </Grid>
                                     </DockPanel>
                                 </DockPanel>

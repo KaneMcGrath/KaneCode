@@ -14,6 +14,7 @@ using Microsoft.TemplateEngine.Abstractions;
 using Microsoft.Win32;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Globalization;
 using System.IO;
 using System.Text.Json;
 using System.Windows;
@@ -111,6 +112,7 @@ public partial class MainWindow : Window
     {
         _viewModel.AttachEditor(CodeEditor);
         CodeEditor.TextArea.TextView.BackgroundRenderers.Add(_presentationLineHighlightRenderer);
+        SyncEditorFontSizeBox();
 
         ApplyHotkeyBindings();
         HotkeyManager.BindingsChanged += ApplyHotkeyBindings;
@@ -335,6 +337,61 @@ public partial class MainWindow : Window
             // inspect files, gather diagnostics, and make edits.
             AiChatPanel.SwitchToMode(GetDefaultAgentModeId());
         }
+
+        if (e.PropertyName == nameof(MainViewModel.EditorFontSize))
+        {
+            SyncEditorFontSizeBox();
+        }
+    }
+
+    /// <summary>
+    /// Commits the font size typed into the info bar when Enter is pressed.
+    /// Esc reverts to the current value without committing.
+    /// </summary>
+    private void EditorFontSizeBox_KeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Escape)
+        {
+            SyncEditorFontSizeBox();
+            e.Handled = true;
+        }
+        else if (e.Key == Key.Enter)
+        {
+            CommitEditorFontSize();
+            e.Handled = true;
+        }
+    }
+
+    /// <summary>
+    /// Commits (or reverts) the font size when the info bar box loses focus.
+    /// </summary>
+    private void EditorFontSizeBox_LostFocus(object sender, RoutedEventArgs e)
+    {
+        CommitEditorFontSize();
+    }
+
+    /// <summary>
+    /// Parses the value in the info bar font size box and applies it to the
+    /// editor. Invalid input is ignored and the box reverts to the current size.
+    /// </summary>
+    private void CommitEditorFontSize()
+    {
+        string text = EditorFontSizeBox.Text.Trim();
+        if (double.TryParse(text, NumberStyles.Float, CultureInfo.CurrentCulture, out double size))
+        {
+            _viewModel.EditorFontSize = size;
+        }
+
+        // Always reflect the (possibly clamped) committed value.
+        SyncEditorFontSizeBox();
+    }
+
+    /// <summary>
+    /// Refreshes the info bar font size box to match <see cref="MainViewModel.EditorFontSize"/>.
+    /// </summary>
+    private void SyncEditorFontSizeBox()
+    {
+        EditorFontSizeBox.Text = _viewModel.EditorFontSize.ToString("0.##", CultureInfo.CurrentCulture);
     }
 
     private void AiChatPanel_AgentOrchestratorRequested()

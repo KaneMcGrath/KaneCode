@@ -362,4 +362,31 @@ public class MainViewModelTests
         Assert.Same(second, result);
     }
 
+    [Fact]
+    public void WhenEditorFontSizeExceedsMaximumThenItIsClampedToMaximum()
+    {
+        var viewModel = new MainViewModel();
+        viewModel.EditorFontSize = 200;
+
+        Assert.Equal(48, viewModel.EditorFontSize);
+    }
+
+    [Fact]
+    public void WhenEditorFontSizeBelowMinimumThenItIsClampedToMinimum()
+    {
+        var viewModel = new MainViewModel();
+        viewModel.EditorFontSize = 2;
+
+        Assert.Equal(8, viewModel.EditorFontSize);
+    }
+
+    [Fact]
+    public void WhenEditorFontSizeSetToValidValueThenItIsApplied()
+    {
+        var viewModel = new MainViewModel();
+        viewModel.EditorFontSize = 16;
+
+        Assert.Equal(16, viewModel.EditorFontSize);
+    }
+
 }

@@ -62,9 +62,9 @@
     <SolidColorBrush x:Key="ControlSelectionBackground" Color="#BF3000" />
     <SolidColorBrush x:Key="ControlSelectionForeground" Color="#FFFFFF" />
 
-    <!-- Status bar -->
-    <SolidColorBrush x:Key="StatusBarBackground" Color="#BF3000" />
-    <SolidColorBrush x:Key="StatusBarForeground" Color="#FFFFFF" />
+    <!-- Status bar (light gray, similar to the editor background) -->
+    <SolidColorBrush x:Key="StatusBarBackground" Color="#F3F3F3" />
+    <SolidColorBrush x:Key="StatusBarForeground" Color="#1E1E1E" />
 
     <!-- Side panels -->
     <SolidColorBrush x:Key="PanelBackground" Color="#F0F0F0" />

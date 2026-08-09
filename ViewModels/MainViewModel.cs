@@ -501,6 +501,29 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
         }
     }
 
+    /// <summary>Minimum font size allowed for the code editor (Ctrl+wheel zoom).</summary>
+    private const double EditorMinFontSize = 8;
+    /// <summary>Maximum font size allowed for the code editor (Ctrl+wheel zoom).</summary>
+    private const double EditorMaxFontSize = 48;
+
+    private double _editorFontSize = 14;
+    /// <summary>
+    /// Current code editor font size in device-independent pixels. Updated by
+    /// Ctrl+wheel zoom and editable from the editor info bar.
+    /// </summary>
+    public double EditorFontSize
+    {
+        get => _editorFontSize;
+        set
+        {
+            double clamped = Math.Clamp(value, EditorMinFontSize, EditorMaxFontSize);
+            if (SetProperty(ref _editorFontSize, clamped) && _editor is not null)
+            {
+                _editor.FontSize = clamped;
+            }
+        }
+    }
+
     public bool IsProjectRunInProgress => _isProjectRunInProgress;
 
     public string RunCommandText => GetRunCommandText(_isProjectRunInProgress);
@@ -649,6 +672,8 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
     {
         ArgumentNullException.ThrowIfNull(editor);
         _editor = editor;
+        // Adopt the editor's current font size so the info bar matches.
+        EditorFontSize = editor.FontSize;
         _editor.TextChanged += OnEditorTextChanged;
 
         _classificationColorizer = new RoslynClassificationColorizer(_roslynService);
@@ -2569,12 +2594,10 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
 
         // One standard wheel notch reports Delta = ±120. Scale proportionally so
         // precision touchpads that emit smaller deltas still zoom smoothly.
-        const double MinFontSize = 8;
-        const double MaxFontSize = 48;
         const double FontSizePerNotch = 1.5;
 
         double steps = e.Delta / 120.0;
-        _editor.FontSize = Math.Clamp(_editor.FontSize + steps * FontSizePerNotch, MinFontSize, MaxFontSize);
+        EditorFontSize += steps * FontSizePerNotch;
 
         // Consume the event so the editor does not also scroll vertically.
         e.Handled = true;
