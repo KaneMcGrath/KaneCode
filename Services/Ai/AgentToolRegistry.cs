@@ -116,8 +116,7 @@ internal sealed class AgentToolRegistry
             ? overrideDescription
             : tool.Description;
 
-        if (preset?.PinnedParameters is { } pinned &&
-            pinned.TryGetValue(tool.Name, out Dictionary<string, JsonElement>? parameterOverrides))
+        if (GetPinnedParameters(tool, preset) is { } parameterOverrides)
         {
             foreach ((string paramName, JsonElement value) in parameterOverrides)
             {
@@ -135,18 +134,13 @@ internal sealed class AgentToolRegistry
     /// <summary>
     /// Resolves the parameters schema sent to the model for a tool. When the preset
     /// pins parameter values, a <c>default</c> is injected into each pinned property
-    /// so the locked value is merged over the schema defaults.
+    /// so the locked value is merged over the schema defaults. When the preset hides
+    /// parameters, those properties (and any matching <c>required</c> entries) are
+    /// removed so the agent never sees them.
     /// </summary>
     public JsonElement ResolveParametersSchema(IAgentTool tool, AiPreset? preset)
     {
         ArgumentNullException.ThrowIfNull(tool);
-
-        if (preset?.PinnedParameters is not { } pinned ||
-            !pinned.TryGetValue(tool.Name, out Dictionary<string, JsonElement>? parameterOverrides) ||
-            parameterOverrides.Count == 0)
-        {
-            return tool.ParametersSchema;
-        }
 
         if (tool.ParametersSchema.ValueKind != JsonValueKind.Object ||
             JsonNode.Parse(tool.ParametersSchema.GetRawText()) is not JsonObject schemaRoot)
@@ -154,18 +148,95 @@ internal sealed class AgentToolRegistry
             return tool.ParametersSchema;
         }
 
+        HashSet<string>? hidden = GetHiddenParameters(tool, preset);
+        Dictionary<string, JsonElement>? pinned = GetPinnedParameters(tool, preset);
+
+        if ((hidden is null || hidden.Count == 0) && (pinned is null || pinned.Count == 0))
+        {
+            return tool.ParametersSchema;
+        }
+
         if (schemaRoot["properties"] is JsonObject properties)
         {
-            foreach ((string paramName, JsonElement value) in parameterOverrides)
+            if (hidden is { Count: > 0 })
             {
-                if (properties[paramName] is JsonObject property)
+                foreach (string name in hidden)
                 {
-                    property["default"] = JsonNode.Parse(value.GetRawText());
+                    properties.Remove(name);
+                }
+
+                // The editor only allows hiding non-required parameters, but prune
+                // defensively so a hand-edited preset can never emit a dangling
+                // required entry for a removed property.
+                if (schemaRoot["required"] is JsonArray required)
+                {
+                    for (int i = required.Count - 1; i >= 0; i--)
+                    {
+                        if (required[i] is JsonValue requiredValue &&
+                            requiredValue.TryGetValue<string>(out string? requiredName) &&
+                            hidden.Contains(requiredName))
+                        {
+                            required.RemoveAt(i);
+                        }
+                    }
+
+                    if (required.Count == 0)
+                    {
+                        schemaRoot.Remove("required");
+                    }
+                }
+            }
+
+            if (pinned is { Count: > 0 })
+            {
+                foreach ((string paramName, JsonElement value) in pinned)
+                {
+                    if (hidden?.Contains(paramName) == true)
+                    {
+                        continue; // hidden properties are removed; never re-add a default
+                    }
+
+                    if (properties[paramName] is JsonObject property)
+                    {
+                        property["default"] = JsonNode.Parse(value.GetRawText());
+                    }
                 }
             }
         }
 
         return JsonSerializer.SerializeToElement(schemaRoot);
+    }
+
+    /// <summary>
+    /// Returns the set of parameter names hidden for a tool by the preset, or null
+    /// when none are hidden.
+    /// </summary>
+    private static HashSet<string>? GetHiddenParameters(IAgentTool tool, AiPreset? preset)
+    {
+        if (preset?.HiddenParameters is { } hidden &&
+            hidden.TryGetValue(tool.Name, out HashSet<string>? names) &&
+            names.Count > 0)
+        {
+            return names;
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Returns the pinned parameter values for a tool from the preset, or null when
+    /// none are pinned.
+    /// </summary>
+    private static Dictionary<string, JsonElement>? GetPinnedParameters(IAgentTool tool, AiPreset? preset)
+    {
+        if (preset?.PinnedParameters is { } pinned &&
+            pinned.TryGetValue(tool.Name, out Dictionary<string, JsonElement>? overrides) &&
+            overrides.Count > 0)
+        {
+            return overrides;
+        }
+
+        return null;
     }
 
     /// <summary>

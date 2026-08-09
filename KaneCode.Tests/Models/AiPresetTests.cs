@@ -30,6 +30,10 @@ public sealed class AiPresetTests
                 {
                     ["engine"] = JsonDocument.Parse("\"unified_diff\"").RootElement.Clone()
                 }
+            },
+            HiddenParameters = new Dictionary<string, HashSet<string>>(StringComparer.Ordinal)
+            {
+                ["edit"] = new HashSet<string>(StringComparer.Ordinal) { "mode" }
             }
         };
 
@@ -41,17 +45,20 @@ public sealed class AiPresetTests
         Assert.NotSame(original.ToolDescriptions, clone.ToolDescriptions);
         Assert.NotSame(original.PinnedParameters, clone.PinnedParameters);
         Assert.NotSame(original.ToolOptions, clone.ToolOptions);
+        Assert.NotSame(original.HiddenParameters, clone.HiddenParameters);
 
         // Mutating the clone must not affect the original
         clone.ToolDescriptions!["edit"] = "changed";
         clone.PinnedParameters!["edit"]["filePath"] = JsonDocument.Parse("\"other.cs\"").RootElement.Clone();
         clone.ToolOptions!["edit"]["engine"] = JsonDocument.Parse("\"exact_match\"").RootElement.Clone();
         clone.AllowedTools!.Add("git_commit");
+        clone.HiddenParameters!["edit"].Add("contextLines");
 
         Assert.Equal("custom description", original.ToolDescriptions!["edit"]);
         Assert.Equal("\"src/A.cs\"", original.PinnedParameters!["edit"]["filePath"].GetRawText());
         Assert.Equal("\"unified_diff\"", original.ToolOptions!["edit"]["engine"].GetRawText());
         Assert.DoesNotContain("git_commit", original.AllowedTools);
+        Assert.DoesNotContain("contextLines", original.HiddenParameters!["edit"]);
     }
 
     [Fact]
@@ -65,6 +72,7 @@ public sealed class AiPresetTests
         Assert.Null(clone.ToolDescriptions);
         Assert.Null(clone.PinnedParameters);
         Assert.Null(clone.ToolOptions);
+        Assert.Null(clone.HiddenParameters);
     }
 
     [Fact]
@@ -91,6 +99,10 @@ public sealed class AiPresetTests
                 {
                     ["timeout"] = JsonDocument.Parse("45").RootElement.Clone()
                 }
+            },
+            HiddenParameters = new Dictionary<string, HashSet<string>>(StringComparer.Ordinal)
+            {
+                ["write"] = new HashSet<string>(StringComparer.Ordinal) { "mode", "encoding" }
             }
         };
 
@@ -103,6 +115,7 @@ public sealed class AiPresetTests
         Assert.Equal("\"src/out.txt\"", deserialized.PinnedParameters!["write"]["filePath"].GetRawText());
         Assert.Equal("true", deserialized.PinnedParameters!["write"]["overwrite"].GetRawText());
         Assert.Equal("45", deserialized.ToolOptions!["edit"]["timeout"].GetRawText());
+        Assert.True(deserialized.HiddenParameters!["write"].SetEquals(new[] { "mode", "encoding" }));
     }
 
     [Fact]
@@ -129,5 +142,6 @@ public sealed class AiPresetTests
         Assert.Null(preset.ToolDescriptions);
         Assert.Null(preset.PinnedParameters);
         Assert.Null(preset.ToolOptions);
+        Assert.Null(preset.HiddenParameters);
     }
 }

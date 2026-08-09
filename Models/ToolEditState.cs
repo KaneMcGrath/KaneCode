@@ -60,6 +60,12 @@ internal sealed class ToolEditState : ObservableObject
     /// <summary>Backend option overrides: option name → overridden value.</summary>
     public Dictionary<string, JsonElement> OptionOverrides { get; } = new(StringComparer.Ordinal);
 
+    /// <summary>
+    /// Hidden (disabled) parameter names: removed from the model-facing schema so
+    /// the agent never sees them. Only non-required parameters can be hidden.
+    /// </summary>
+    public HashSet<string> HiddenParameters { get; } = new(StringComparer.Ordinal);
+
     /// <summary>True when the description differs from the tool's default.</summary>
     public bool DescriptionModified => !string.IsNullOrWhiteSpace(DescriptionOverride)
         && !string.Equals(DescriptionOverride, Tool.Description, StringComparison.Ordinal);
@@ -68,14 +74,15 @@ internal sealed class ToolEditState : ObservableObject
     public bool HasOverrides => OverrideCount > 0;
 
     /// <summary>
-    /// Number of overrides for this tool: description (1) + pinned params + backend options.
-    /// Feeds the amber badge in the tool list and the "Overridden" filter.
+    /// Number of overrides for this tool: description (1) + pinned params +
+    /// hidden params + backend options. Feeds the amber badge in the tool list
+    /// and the "Overridden" filter.
     /// </summary>
     public int OverrideCount
     {
         get
         {
-            int count = PinnedParameters.Count + OptionOverrides.Count;
+            int count = PinnedParameters.Count + OptionOverrides.Count + HiddenParameters.Count;
             if (!string.IsNullOrWhiteSpace(DescriptionOverride))
             {
                 count++;
@@ -96,6 +103,24 @@ internal sealed class ToolEditState : ObservableObject
     public void RemovePinnedParameter(string name)
     {
         if (PinnedParameters.Remove(name))
+        {
+            NotifyOverridesChanged();
+        }
+    }
+
+    /// <summary>Hides a parameter from the model; fires change notifications for the badge.</summary>
+    public void HideParameter(string name)
+    {
+        if (HiddenParameters.Add(name))
+        {
+            NotifyOverridesChanged();
+        }
+    }
+
+    /// <summary>Restores a hidden parameter to the model-facing schema; fires change notifications.</summary>
+    public void UnhideParameter(string name)
+    {
+        if (HiddenParameters.Remove(name))
         {
             NotifyOverridesChanged();
         }

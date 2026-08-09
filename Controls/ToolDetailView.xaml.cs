@@ -145,7 +145,9 @@ public partial class ToolDetailView : UserControl
             RebuildBackendOptionsPanel();
             RebuildDefinition();
 
-            ShowTab("backend");
+            // Parameters is the default tab so the parameter overrides (pin / hide)
+            // are the first thing the user sees for every tool.
+            ShowTab("parameters");
         }
         finally
         {
@@ -260,6 +262,10 @@ public partial class ToolDetailView : UserControl
         {
             _loading = false;
         }
+
+        // The description is part of the model-facing tool definition, so keep the
+        // preview in sync once the user is done editing (reflow runs on blur).
+        RebuildDefinition();
     }
 
     private void UpdateDescriptionVisuals(string text)
@@ -404,6 +410,7 @@ public partial class ToolDetailView : UserControl
             _loading = false;
         }
 
+        RebuildDefinition();
         MarkChanged();
     }
 
@@ -475,7 +482,8 @@ public partial class ToolDetailView : UserControl
             : default;
 
         int pinnedCount = State.PinnedParameters.Count;
-        ParametersHeaderCount.Text = $"{paramNames.Count} shown · {pinnedCount} pinned";
+        int hiddenCount = State.HiddenParameters.Count;
+        ParametersHeaderCount.Text = $"{paramNames.Count} shown · {pinnedCount} pinned · {hiddenCount} hidden";
 
         if (paramNames.Count == 0)
         {
@@ -495,6 +503,7 @@ public partial class ToolDetailView : UserControl
     private Border BuildParameterRow(string name, JsonElement prop, bool isRequired)
     {
         bool isPinned = State.PinnedParameters.ContainsKey(name);
+        bool isHidden = State.HiddenParameters.Contains(name);
         JsonElement defaultValue = GetSchemaDefault(prop, type: GetPropertyString(prop, "type") ?? "string");
         string typeName = GetPropertyString(prop, "type") ?? "string";
         string? description = GetPropertyString(prop, "description");
@@ -513,6 +522,7 @@ public partial class ToolDetailView : UserControl
         Grid grid = new();
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto }); // amber bar
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto }); // hide
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto }); // pin
 
         Border amberBar = new()
@@ -541,34 +551,45 @@ public partial class ToolDetailView : UserControl
         {
             topRow.Children.Add(BuildTextChip("required", Brush("Brush.Red")));
         }
+        else
+        {
+            topRow.Children.Add(BuildTextChip("optional", Brush("Brush.Faint")));
+        }
 
         Border pinnedPill = BuildTextChip("Pinned", Brush("Brush.Amber"));
         pinnedPill.Visibility = isPinned ? Visibility.Visible : Visibility.Collapsed;
         topRow.Children.Add(pinnedPill);
+
+        Border hiddenPill = BuildTextChip("Hidden", Brush("Brush.Faint"));
+        hiddenPill.Visibility = isHidden ? Visibility.Visible : Visibility.Collapsed;
+        topRow.Children.Add(hiddenPill);
         info.Children.Add(topRow);
 
+        TextBlock descriptionText = new()
+        {
+            Text = description,
+            FontSize = 10.5,
+            Foreground = Brush("Brush.Muted"),
+            TextTrimming = TextTrimming.CharacterEllipsis,
+            Margin = new Thickness(0, 1, 0, 4)
+        };
         if (!string.IsNullOrWhiteSpace(description))
         {
-            info.Children.Add(new TextBlock
-            {
-                Text = description,
-                FontSize = 10.5,
-                Foreground = Brush("Brush.Muted"),
-                TextTrimming = TextTrimming.CharacterEllipsis,
-                Margin = new Thickness(0, 1, 0, 4)
-            });
+            info.Children.Add(descriptionText);
         }
 
         widget.Element.Margin = new Thickness(0, 0, 0, 2);
-        widget.Element.IsEnabled = isPinned;
+        widget.Element.IsEnabled = isPinned && !isHidden;
         info.Children.Add(widget.Element);
         Grid.SetColumn(info, 1);
         grid.Children.Add(info);
 
+        // Pin button (available for every parameter; disabled while hidden).
         ToggleButton pinButton = new()
         {
             Content = isPinned ? "🔒" : "🔓",
             IsChecked = isPinned,
+            IsEnabled = !isHidden,
             ToolTip = isPinned ? "Unpin (restore default)" : "Pin a value for the agent",
             VerticalAlignment = VerticalAlignment.Top,
             Margin = new Thickness(0, 6, 6, 0),
@@ -579,6 +600,56 @@ public partial class ToolDetailView : UserControl
             FontSize = 12,
             Cursor = System.Windows.Input.Cursors.Hand
         };
+        Grid.SetColumn(pinButton, 3);
+        grid.Children.Add(pinButton);
+
+        // Hide/disable toggle — only for non-required parameters.
+        ToggleButton? hideButton = null;
+        if (!isRequired)
+        {
+            hideButton = new ToggleButton
+            {
+                Content = isHidden ? "Show" : "Hide",
+                IsChecked = isHidden,
+                ToolTip = isHidden
+                    ? "Show this parameter to the agent"
+                    : "Hide this parameter from the agent",
+                VerticalAlignment = VerticalAlignment.Top,
+                Margin = new Thickness(0, 6, 4, 0),
+                Background = isHidden ? Brush("Brush.AmberSoftBg") : Brush("Brush.PanelBg"),
+                BorderBrush = isHidden ? Brush("Brush.AmberSoftBorder") : Brush("Brush.ControlBorder"),
+                BorderThickness = new Thickness(1),
+                Padding = new Thickness(6, 3, 6, 3),
+                FontSize = 11,
+                Cursor = System.Windows.Input.Cursors.Hand
+            };
+            Grid.SetColumn(hideButton, 2);
+            grid.Children.Add(hideButton);
+        }
+
+        // Applies the hidden visual state to the whole row. Hidden rows are greyed
+        // out (name/description muted, reduced opacity), the value widget is
+        // disabled, the pin button is disabled, and a "Hidden" pill is shown.
+        void ApplyRowState(bool hidden)
+        {
+            bool pinned = State.PinnedParameters.ContainsKey(name);
+            nameText.Foreground = hidden ? Brush("Brush.Faint") : Brush("Brush.Text");
+            descriptionText.Foreground = hidden ? Brush("Brush.Faint") : Brush("Brush.Muted");
+            info.Opacity = hidden ? 0.55 : 1.0;
+            RefreshPinVisuals(amberBar, pinnedPill, pinButton, isPinned: pinned && !hidden);
+            widget.Element.IsEnabled = !hidden && pinned;
+            hiddenPill.Visibility = hidden ? Visibility.Visible : Visibility.Collapsed;
+            pinButton.IsEnabled = !hidden;
+            pinButton.IsChecked = pinned && !hidden;
+            if (hideButton is not null)
+            {
+                hideButton.Content = hidden ? "Show" : "Hide";
+                hideButton.ToolTip = hidden
+                    ? "Show this parameter to the agent"
+                    : "Hide this parameter from the agent";
+            }
+        }
+
         pinButton.Checked += (_, _) =>
         {
             if (_loading)
@@ -587,8 +658,9 @@ public partial class ToolDetailView : UserControl
             }
 
             State.SetPinnedParameter(name, widget.ReadValue());
-            widget.Element.IsEnabled = true;
             RefreshPinVisuals(amberBar, pinnedPill, pinButton, isPinned: true);
+            widget.Element.IsEnabled = !State.HiddenParameters.Contains(name);
+            RebuildDefinition();
             MarkChanged();
         };
         pinButton.Unchecked += (_, _) =>
@@ -600,12 +672,43 @@ public partial class ToolDetailView : UserControl
 
             State.RemovePinnedParameter(name);
             widget.WriteValue(defaultValue);
-            widget.Element.IsEnabled = false;
             RefreshPinVisuals(amberBar, pinnedPill, pinButton, isPinned: false);
+            widget.Element.IsEnabled = false;
+            RebuildDefinition();
             MarkChanged();
         };
-        Grid.SetColumn(pinButton, 2);
-        grid.Children.Add(pinButton);
+
+        if (hideButton is not null)
+        {
+            hideButton.Checked += (_, _) =>
+            {
+                if (_loading)
+                {
+                    return;
+                }
+
+                State.HideParameter(name);
+                State.RemovePinnedParameter(name); // hidden and pinned are mutually exclusive
+                widget.WriteValue(defaultValue);
+                ApplyRowState(hidden: true);
+                RebuildDefinition();
+                MarkChanged();
+            };
+            hideButton.Unchecked += (_, _) =>
+            {
+                if (_loading)
+                {
+                    return;
+                }
+
+                State.UnhideParameter(name);
+                ApplyRowState(hidden: false);
+                RebuildDefinition();
+                MarkChanged();
+            };
+        }
+
+        ApplyRowState(isHidden);
 
         return new Border
         {
@@ -1277,7 +1380,9 @@ public partial class ToolDetailView : UserControl
         AiPreset working = BuildWorkingPreset();
         JsonObject definition = Registry.BuildToolDefinition(State.Tool, working);
         _cleanDefinitionJson = definition.ToJsonString(new JsonSerializerOptions { WriteIndented = true });
-        DefinitionText.Text = AddPinnedMarkers(_cleanDefinitionJson, State.PinnedParameters.Keys);
+        DefinitionText.Text = AddHiddenMarker(
+            AddPinnedMarkers(_cleanDefinitionJson, State.PinnedParameters.Keys),
+            State.HiddenParameters);
     }
 
     private AiPreset BuildWorkingPreset()
@@ -1297,6 +1402,14 @@ public partial class ToolDetailView : UserControl
             working.PinnedParameters = new Dictionary<string, Dictionary<string, JsonElement>>(StringComparer.Ordinal)
             {
                 [State.Tool.Name] = new Dictionary<string, JsonElement>(State.PinnedParameters, StringComparer.Ordinal)
+            };
+        }
+
+        if (State.HiddenParameters.Count > 0)
+        {
+            working.HiddenParameters = new Dictionary<string, HashSet<string>>(StringComparer.Ordinal)
+            {
+                [State.Tool.Name] = new HashSet<string>(State.HiddenParameters, StringComparer.Ordinal)
             };
         }
 
@@ -1323,6 +1436,22 @@ public partial class ToolDetailView : UserControl
         }
 
         return json;
+    }
+
+    /// <summary>
+    /// Appends an annotation comment naming the parameters that were hidden for this
+    /// tool, so the preview makes clear they were removed rather than never existing.
+    /// The clipboard copy (<see cref="_cleanDefinitionJson"/>) stays valid JSON.
+    /// </summary>
+    private static string AddHiddenMarker(string json, IEnumerable<string> hiddenKeys)
+    {
+        List<string> hidden = hiddenKeys.ToList();
+        if (hidden.Count == 0)
+        {
+            return json;
+        }
+
+        return json + Environment.NewLine + "// hidden parameters: " + string.Join(", ", hidden);
     }
 
     private void CopyDefinition_Click(object sender, RoutedEventArgs e)

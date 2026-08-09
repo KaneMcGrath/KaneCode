@@ -215,14 +215,14 @@ Under the description panel, a tab row controls the remaining detail area:
 
 ### 6.4 Parameters tab
 
-Section header: **PARAMETERS** + right-aligned `4 shown · 2 pinned`.
+Section header: **PARAMETERS** + right-aligned `4 shown · 2 pinned · 1 hidden`.
 
 Rows are generated from the tool's `ParametersSchema`:
 
 ```
-[amber bar] paramName  [type chip] [required|optional chip]
+[amber bar] paramName  [type chip] [required|optional chip] [Pinned] [Hidden]
             short description (truncated)
-[ editor widget ............... ] [🔒] [Pinned]
+[ editor widget ............... ] [Hide] [🔒]
 ```
 
 - **Type-aware widgets** from the schema:
@@ -233,8 +233,15 @@ Rows are generated from the tool's `ParametersSchema`:
 - **Pinned override**: the 🔒 lock pins a value for the agent; pinned params get an
   amber left bar and a `Pinned` pill. Locked values are sent to the model verbatim
   (merged over the schema defaults).
+- **Hide/disable override**: a `Hide` toggle sits next to the lock and is only shown
+  on **non-required** parameters. Hiding removes the parameter from the model-facing
+  tool definition so the agent never sees it. Hidden rows grey out (muted
+  name/description, reduced opacity), gain a `Hidden` pill, and their value widget
+  and pin button are disabled. Hiding automatically unpins the parameter (pin and
+  hide are mutually exclusive); toggling to `Show` restores it.
 - Unpinned rows show the schema default.
-- "Pinned" count feeds the section header and the row badge count in the list.
+- "Pinned" and "Hidden" counts feed the section header and the row badge count in
+  the list.
 
 ### 6.5 Backend Options tab (NEW)
 
@@ -359,6 +366,9 @@ Dictionary<string, Dictionary<string, JsonElement>>? PinnedParameters { get; set
 
 /// <summary>Per-tool backend option overrides. Tool name -> option overrides.</summary>
 Dictionary<string, Dictionary<string, JsonElement>>? ToolOptions { get; set; }
+
+/// <summary>Per-tool hidden (disabled) parameters. Tool name -> set of param names.</summary>
+Dictionary<string, HashSet<string>>? HiddenParameters { get; set; }
 ```
 
 - `AllowedTools` semantics unchanged (`null` = unrestricted).
@@ -396,7 +406,11 @@ The tool's `ExecuteAsync` reads from the resolved options (constructor-injected
 provider or `AsyncLocal`/parameter), so presets do not change tool code paths other
 than through declared options. Description/param overrides are merged into
 `AgentToolRegistry.SerializeToolDefinitions` via a new overload that accepts the
-preset (see §11).
+preset (see §11). Hidden parameters are pruned from the emitted parameters schema
+(properties and any matching `required` entries) by
+`AgentToolRegistry.ResolveParametersSchema`; the editor only allows hiding
+non-required parameters, and hidden parameters that were pinned are ignored at
+serialize time.
 
 ---
 
@@ -486,7 +500,7 @@ Use the existing dynamic resources where possible
    the emitted tool definitions.
 6. **Persistence** — `AiPresetManager` unchanged in mechanism; new members on
    `AiPreset` serialize automatically (JSON options already skip unmapped members).
-   Bump `SchemaVersion` to 2 and migrate v1 files (missing new members = null).
+   Bump `SchemaVersion` to 3 and migrate older files (missing new members = null).
 7. **Backend options plumbing** — thread the effective options into tools that
    declare `BackendOptionsSchema`; keep the default path unchanged for tools that
    don't.
@@ -502,7 +516,8 @@ Use the existing dynamic resources where possible
 - [x] Description editor: modified indicator, Use default, `{param}` tokens
       highlighted, insert chips insert at caret, orphaned refs flagged.
 - [x] Parameters tab renders type-aware widgets from `ParametersSchema`; lock pins
-      values; pinned rows show amber bar + Pinned pill.
+      values; pinned rows show amber bar + Pinned pill; non-required params can be
+      hidden (greyed out, `Hidden` pill, removed from the model-facing schema).
 - [x] Backend Options tab: engine radio cards, engine-scoped options, execution &
       safety card, amber override bars, summary count, Show diff.
 - [x] Tool definition tab shows live JSON incl. pinned markers; Copy works;
@@ -532,6 +547,10 @@ Use the existing dynamic resources where possible
 - Pinned parameters are injected into the model-facing parameters schema as
   `default` values; backend options are resolved at execution time through
   `AgentToolContext` (AsyncLocal) pushed by the agent/orchestrator execution path.
+- Hidden (disabled) parameters are stored per tool as `HiddenParameters` and pruned
+  from the model-facing parameters schema (properties + `required`) by
+  `AgentToolRegistry.ResolveParametersSchema`. The Parameters tab is the default
+  detail tab so pin/hide overrides are the first thing a user sees per tool.
 - Test call executes the tool with currently pinned parameter values (it does not
   intercept side effects); it requires all required parameters to be pinned.
 

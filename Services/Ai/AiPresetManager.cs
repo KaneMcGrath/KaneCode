@@ -63,9 +63,10 @@ internal static class AiPresetManager
 
             var container = new PresetContainer
             {
-                // v2 adds per-tool description overrides, pinned parameters, and
-                // backend option overrides. v1 files load fine (members default to null).
-                SchemaVersion = 2,
+                // v3 adds per-tool hidden (disabled) parameters. v2 added per-tool
+                // description overrides, pinned parameters, and backend option
+                // overrides. Older files load fine (new members default to null).
+                SchemaVersion = 3,
                 Presets = [.. presets]
             };
 

@@ -54,6 +54,15 @@ internal sealed class AiPreset
     public Dictionary<string, Dictionary<string, JsonElement>>? ToolOptions { get; set; }
 
     /// <summary>
+    /// Per-tool hidden (disabled) parameters. Maps tool name to the set of parameter
+    /// names that are removed from the model-facing tool definition, so the agent
+    /// never sees them. In the editor they render greyed out with a "Hidden" badge.
+    /// Only non-required parameters can be hidden (the editor enforces this; the
+    /// registry also prunes hidden names from <c>required</c> defensively).
+    /// </summary>
+    public Dictionary<string, HashSet<string>>? HiddenParameters { get; set; }
+
+    /// <summary>
     /// Creates a deep copy of this preset. Dictionary members are copied so the
     /// clone can be edited independently (used for Revert snapshots in the editor).
     /// </summary>
@@ -71,8 +80,26 @@ internal sealed class AiPreset
                 ? null
                 : new Dictionary<string, string>(ToolDescriptions, StringComparer.Ordinal),
             PinnedParameters = CloneNested(PinnedParameters),
-            ToolOptions = CloneNested(ToolOptions)
+            ToolOptions = CloneNested(ToolOptions),
+            HiddenParameters = CloneHidden(HiddenParameters)
         };
+    }
+
+    private static Dictionary<string, HashSet<string>>? CloneHidden(
+        Dictionary<string, HashSet<string>>? source)
+    {
+        if (source is null)
+        {
+            return null;
+        }
+
+        Dictionary<string, HashSet<string>> clone = new(StringComparer.Ordinal);
+        foreach ((string toolName, HashSet<string> names) in source)
+        {
+            clone[toolName] = new HashSet<string>(names, StringComparer.Ordinal);
+        }
+
+        return clone;
     }
 
     private static Dictionary<string, Dictionary<string, JsonElement>>? CloneNested(

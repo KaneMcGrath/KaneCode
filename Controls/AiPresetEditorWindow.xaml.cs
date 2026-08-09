@@ -143,6 +143,15 @@ internal partial class AiPresetEditorWindow : Window
                 }
             }
 
+            if (preset?.HiddenParameters is { } hidden &&
+                hidden.TryGetValue(tool.Name, out HashSet<string>? hiddenNames))
+            {
+                foreach (string name in hiddenNames)
+                {
+                    state.HiddenParameters.Add(name);
+                }
+            }
+
             if (preset?.ToolOptions is { } options &&
                 options.TryGetValue(tool.Name, out Dictionary<string, JsonElement>? optionOverrides))
             {
@@ -517,6 +526,7 @@ internal partial class AiPresetEditorWindow : Window
         int total = _toolRegistry.Tools.Count();
         int enabled = _toolStates.Values.Count(s => s.IsEnabled);
         int customizedOptions = _toolStates.Values.Sum(s => s.OptionOverrides.Count);
+        int hiddenParams = _toolStates.Values.Sum(s => s.HiddenParameters.Count);
         int customizedTotal = _toolStates.Values.Sum(s => s.OverrideCount);
 
         EnabledPillText.Text = $"{enabled} / {total} tools enabled";
@@ -529,7 +539,8 @@ internal partial class AiPresetEditorWindow : Window
         }
         else
         {
-            status = $"Schema valid — {customizedOptions} backend option{(customizedOptions == 1 ? "" : "s")} customized · {enabled}/{total} tools enabled";
+            status = $"Schema valid — {customizedOptions} backend option{(customizedOptions == 1 ? "" : "s")} customized · " +
+                     $"{hiddenParams} hidden param{(hiddenParams == 1 ? "" : "s")} · {enabled}/{total} tools enabled";
         }
 
         StatusText.Text = status;
@@ -585,6 +596,14 @@ internal partial class AiPresetEditorWindow : Window
                 s => new Dictionary<string, JsonElement>(s.OptionOverrides, StringComparer.Ordinal),
                 StringComparer.Ordinal);
         _currentPreset.ToolOptions = options.Count == 0 ? null : options;
+
+        Dictionary<string, HashSet<string>> hidden = _toolStates.Values
+            .Where(s => s.HiddenParameters.Count > 0)
+            .ToDictionary(
+                s => s.Tool.Name,
+                s => new HashSet<string>(s.HiddenParameters, StringComparer.Ordinal),
+                StringComparer.Ordinal);
+        _currentPreset.HiddenParameters = hidden.Count == 0 ? null : hidden;
     }
 
     // ── Header actions ─────────────────────────────────────────────
@@ -728,7 +747,8 @@ internal partial class AiPresetEditorWindow : Window
             AllowedTools = source.AllowedTools is null ? null : new HashSet<string>(source.AllowedTools, StringComparer.Ordinal),
             ToolDescriptions = clone.ToolDescriptions,
             PinnedParameters = clone.PinnedParameters,
-            ToolOptions = clone.ToolOptions
+            ToolOptions = clone.ToolOptions,
+            HiddenParameters = clone.HiddenParameters
         };
 
         AddAndSelectNewPreset(newPreset);
@@ -792,6 +812,9 @@ internal partial class AiPresetEditorWindow : Window
         _currentPreset.ToolOptions = _revertSnapshot.ToolOptions is null
             ? null
             : _revertSnapshot.Clone().ToolOptions;
+        _currentPreset.HiddenParameters = _revertSnapshot.HiddenParameters is null
+            ? null
+            : _revertSnapshot.Clone().HiddenParameters;
 
         SelectPreset(_currentPreset);
     }
@@ -913,17 +936,21 @@ internal partial class AiPresetEditorWindow : Window
         int total = _toolRegistry.Tools.Count();
         int overriddenTools = _toolStates.Values.Count(s => s.OverrideCount > 0);
         int pinnedParams = _toolStates.Values.Sum(s => s.PinnedParameters.Count);
+        int hiddenParams = _toolStates.Values.Sum(s => s.HiddenParameters.Count);
         int backendOptions = _toolStates.Values.Sum(s => s.OptionOverrides.Count);
 
         return
-            $"Schema version: 2 (ai-presets.json)\n" +
+            $"Schema version: 3 (ai-presets.json)\n" +
             $"Registered tools: {total}\n" +
             $"Tools with overrides: {overriddenTools}\n" +
             $"Pinned parameters: {pinnedParams}\n" +
+            $"Hidden parameters: {hiddenParams}\n" +
             $"Backend options customized: {backendOptions}\n\n" +
             "Per-tool overrides are stored in the preset: description overrides, " +
             "pinned parameter values (merged into the model-facing schema as defaults), " +
-            "and backend options (execution configuration that is never sent to the model). " +
+            "hidden parameters (removed from the model-facing schema so the agent " +
+            "never sees them), and backend options (execution configuration that is " +
+            "never sent to the model). " +
             "Tool definitions for the model are resolved at runtime by AgentToolRegistry.";
     }
 
