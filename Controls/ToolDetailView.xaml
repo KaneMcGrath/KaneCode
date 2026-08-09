@@ -138,7 +138,8 @@
                                              VerticalScrollBarVisibility="Auto"
                                              MinHeight="76"
                                              MaxHeight="160"
-                                             TextChanged="DescriptionEditor_TextChanged" />
+                                             TextChanged="DescriptionEditor_TextChanged"
+                                             LostFocus="DescriptionEditor_LostFocus" />
                             </Grid>
                         </Border>
 

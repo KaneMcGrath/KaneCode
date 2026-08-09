@@ -39,7 +39,7 @@ public partial class ToolDetailView : UserControl
     private bool _loading = true;
     private string _cleanDefinitionJson = string.Empty;
     private bool _reflowPending;
-    private int _pendingCaretOffset;
+    private bool _descriptionHighlightDirty;
 
     public ToolDetailView()
     {
@@ -189,18 +189,40 @@ public partial class ToolDetailView : UserControl
         string text = GetDescriptionText();
         State.DescriptionOverride = text;
 
-        // The highlight rebuild must not replace DescriptionEditor.Document
-        // in here: TextChanged fires while the editing pipeline is inside a
-        // DeclareChangeBlock/BeginChange scope, and WPF throws
-        // InvalidOperationException when the Document property is set then.
-        // Capture the caret position now and defer the reflow to the
-        // dispatcher, which runs after the current change block completes.
-        _pendingCaretOffset = new TextRange(DescriptionEditor.Document.ContentStart, DescriptionEditor.CaretPosition).Text.Length;
+        // The {param} highlighting is applied by replacing the whole FlowDocument,
+        // which resets the caret. Never do that while the user is actively typing —
+        // defer it until the editor loses focus (or the tool is reloaded) so the
+        // caret always stays exactly where the user put it.
+        if (DescriptionEditor.IsKeyboardFocusWithin)
+        {
+            _descriptionHighlightDirty = true;
+        }
+        else
+        {
+            QueueDescriptionReflow();
+        }
 
         UpdateDescriptionVisuals(text);
         MarkChanged();
+    }
 
-        QueueDescriptionReflow();
+    private void DescriptionEditor_LostFocus(object sender, RoutedEventArgs e)
+    {
+        if (_loading || !_descriptionHighlightDirty)
+        {
+            return;
+        }
+
+        // Keep the reflow deferred by one dispatcher turn: if focus moved straight
+        // back into the editor (e.g. clicking a param chip), the highlight still
+        // does not need to be rebuilt.
+        Dispatcher.BeginInvoke(DispatcherPriority.Background, new Action(() =>
+        {
+            if (_descriptionHighlightDirty && !DescriptionEditor.IsKeyboardFocusWithin)
+            {
+                QueueDescriptionReflow();
+            }
+        }));
     }
 
     private void QueueDescriptionReflow()
@@ -217,6 +239,7 @@ public partial class ToolDetailView : UserControl
     private void ReflowDescription()
     {
         _reflowPending = false;
+        _descriptionHighlightDirty = false;
         if (_loading || State is null)
         {
             return;
@@ -226,8 +249,12 @@ public partial class ToolDetailView : UserControl
         _loading = true;
         try
         {
+            // The caret is restored after the rebuild by plain-text offset. This
+            // runs only while the editor is unfocused, so a slightly off position
+            // is harmless — it can never move the caret out from under the user.
+            int caretOffset = new TextRange(DescriptionEditor.Document.ContentStart, DescriptionEditor.CaretPosition).Text.Length;
             DescriptionEditor.Document = BuildHighlightedDocument(text);
-            RestoreCaret(_pendingCaretOffset);
+            RestoreCaret(caretOffset);
         }
         finally
         {
