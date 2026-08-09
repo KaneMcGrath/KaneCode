@@ -79,6 +79,21 @@ public sealed class ProjectItem : ObservableObject
         set => SetProperty(ref _isSelected, value);
     }
 
+    private bool _isVisible = true;
+    /// <summary>
+    /// Whether this node passes the explorer's active filter. Hidden nodes are
+    /// collapsed out of the tree; ancestors of a matching node stay visible.
+    /// </summary>
+    public bool IsVisible
+    {
+        get => _isVisible;
+        set => SetProperty(ref _isVisible, value);
+    }
+
+    /// <summary>Lower-case file extension without the leading dot ("" for folders).</summary>
+    public string FileExtension =>
+        IsDirectory ? string.Empty : Path.GetExtension(FullPath).TrimStart('.').ToLowerInvariant();
+
     private GitStatusBadge _gitBadge;
     /// <summary>Git status badge shown next to the file name in the explorer tree.</summary>
     public GitStatusBadge GitBadge

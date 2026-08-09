@@ -70,6 +70,21 @@ internal static class ThemeResourceKeys
     public const string TreeViewItemSelectedForeground = nameof(TreeViewItemSelectedForeground);
     public const string TreeViewItemMouseOverBackground = nameof(TreeViewItemMouseOverBackground);
 
+    // Explorer panel
+    public const string ExplorerExpanderForeground = nameof(ExplorerExpanderForeground);
+    public const string ExplorerItemInactiveSelectedBackground = nameof(ExplorerItemInactiveSelectedBackground);
+    public const string ExplorerGitBadgeBackground = nameof(ExplorerGitBadgeBackground);
+    public const string ExplorerFolderIconForeground = nameof(ExplorerFolderIconForeground);
+    public const string ExplorerFileIconForeground = nameof(ExplorerFileIconForeground);
+    public const string ExplorerCsFileIconForeground = nameof(ExplorerCsFileIconForeground);
+    public const string ExplorerConfigFileIconForeground = nameof(ExplorerConfigFileIconForeground);
+    public const string ExplorerMarkdownFileIconForeground = nameof(ExplorerMarkdownFileIconForeground);
+    public const string ExplorerProjectIconForeground = nameof(ExplorerProjectIconForeground);
+    public const string ExplorerSolutionIconForeground = nameof(ExplorerSolutionIconForeground);
+    public const string ExplorerDependenciesIconForeground = nameof(ExplorerDependenciesIconForeground);
+    public const string ExplorerFrameworkIconForeground = nameof(ExplorerFrameworkIconForeground);
+    public const string ExplorerPackageIconForeground = nameof(ExplorerPackageIconForeground);
+
     // Roslyn semantic classification
     public const string RoslynTypeForeground = nameof(RoslynTypeForeground);
     public const string RoslynInterfaceForeground = nameof(RoslynInterfaceForeground);

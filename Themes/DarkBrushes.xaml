@@ -100,6 +100,21 @@
     <SolidColorBrush x:Key="TreeViewItemSelectedForeground" Color="#E0E0E0" />
     <SolidColorBrush x:Key="TreeViewItemMouseOverBackground" Color="#BF3000" />
 
+    <!-- Explorer panel -->
+    <SolidColorBrush x:Key="ExplorerExpanderForeground" Color="#9C9C9C" />
+    <SolidColorBrush x:Key="ExplorerItemInactiveSelectedBackground" Color="#3A3A3D" />
+    <SolidColorBrush x:Key="ExplorerGitBadgeBackground" Color="#3A3A3D" />
+    <SolidColorBrush x:Key="ExplorerFolderIconForeground" Color="#C09553" />
+    <SolidColorBrush x:Key="ExplorerFileIconForeground" Color="#8A8A8A" />
+    <SolidColorBrush x:Key="ExplorerCsFileIconForeground" Color="#4EC9B0" />
+    <SolidColorBrush x:Key="ExplorerConfigFileIconForeground" Color="#C586C0" />
+    <SolidColorBrush x:Key="ExplorerMarkdownFileIconForeground" Color="#75BEFF" />
+    <SolidColorBrush x:Key="ExplorerProjectIconForeground" Color="#CE9178" />
+    <SolidColorBrush x:Key="ExplorerSolutionIconForeground" Color="#B08CE0" />
+    <SolidColorBrush x:Key="ExplorerDependenciesIconForeground" Color="#73C991" />
+    <SolidColorBrush x:Key="ExplorerFrameworkIconForeground" Color="#D19A66" />
+    <SolidColorBrush x:Key="ExplorerPackageIconForeground" Color="#D8C45A" />
+
     <!-- Roslyn semantic classification -->
     <SolidColorBrush x:Key="RoslynTypeForeground" Color="#4EC9B0" />
     <SolidColorBrush x:Key="RoslynInterfaceForeground" Color="#B8D7A3" />

@@ -1,0 +1,45 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <!-- ═══════════════════════════════════════════════════════════
+         Explorer panel vector icons (16x16 design space).
+         All icons are stroked outlines so they inherit the themed
+         foreground brushes and stay crisp at any DPI.
+         ═══════════════════════════════════════════════════════════ -->
+
+    <!-- Folder -->
+    <Geometry x:Key="ExplorerIconGeometry.Folder">
+        M2,4.5 C2,3.7 2.7,3 3.5,3 L6.3,3 C6.5,3 6.7,3.1 6.9,3.3 L7.5,4 L12.5,4 C13.3,4 14,4.7 14,5.5 L14,11.5 C14,12.3 13.3,13 12.5,13 L3.5,13 C2.7,13 2,12.3 2,11.5 Z
+    </Geometry>
+
+    <!-- Generic file (document with folded corner) -->
+    <Geometry x:Key="ExplorerIconGeometry.File">
+        M4.5,1.5 L9,1.5 L12.5,5 L12.5,13.5 C12.5,14.3 11.8,15 11,15 L4.5,15 C3.7,15 3,14.3 3,13.5 L3,3 C3,2.2 3.7,1.5 4.5,1.5 Z M9,1.5 L9,5 L12.5,5
+    </Geometry>
+
+    <!-- Project (.csproj) — 3D cube -->
+    <Geometry x:Key="ExplorerIconGeometry.Project">
+        M2.5,5 L8,2.5 L13.5,5 L13.5,11 L8,13.5 L2.5,11 Z M2.5,5 L8,7.5 L13.5,5 M8,7.5 L8,13.5
+    </Geometry>
+
+    <!-- Solution (.sln) — stacked documents -->
+    <Geometry x:Key="ExplorerIconGeometry.Solution">
+        M3.5,3 L8.5,3 L8.5,8 L3.5,8 Z M6,6 L11,6 L11,11 L6,11 Z M8.5,9 L13.5,9 L13.5,14 L8.5,14 Z
+    </Geometry>
+
+    <!-- Dependencies — plug -->
+    <Geometry x:Key="ExplorerIconGeometry.Dependencies">
+        M5.5,2 L5.5,4 M10.5,2 L10.5,4 M4,4 L12,4 L12,9.5 C12,10.6 11.1,11.5 10,11.5 L6,11.5 C4.9,11.5 4,10.6 4,9.5 Z
+    </Geometry>
+
+    <!-- Framework — hexagon -->
+    <Geometry x:Key="ExplorerIconGeometry.Framework">
+        M8,2.5 L12.8,5.2 L12.8,10.8 L8,13.5 L3.2,10.8 L3.2,5.2 Z
+    </Geometry>
+
+    <!-- Package — cube with center dot (dot drawn separately in the item template) -->
+    <Geometry x:Key="ExplorerIconGeometry.Package">
+        M2.5,5 L8,2.5 L13.5,5 L13.5,11 L8,13.5 L2.5,11 Z M2.5,5 L8,7.5 L13.5,5 M8,7.5 L8,13.5
+    </Geometry>
+
+</ResourceDictionary>

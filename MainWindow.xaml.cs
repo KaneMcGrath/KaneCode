@@ -1323,90 +1323,6 @@ public partial class MainWindow : Window
         e.Handled = true;
     }
 
-    private void FileTree_MouseDoubleClick(object sender, MouseButtonEventArgs e)
-    {
-        if (sender is TreeView tree && tree.SelectedItem is ProjectItem item)
-        {
-            _viewModel.OnProjectItemSelected(item);
-            e.Handled = true;
-        }
-    }
-
-    // ── Explorer drag-to-AI-chat ─────────────────────────────────────
-
-    private Point _fileTreeDragStartPoint;
-    private bool _isFileTreeDragging;
-
-    private void FileTree_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
-    {
-        _fileTreeDragStartPoint = e.GetPosition(null);
-        _isFileTreeDragging = false;
-    }
-
-    /// <summary>
-    /// Starts an OLE drag when the user drags a file, folder, project, or solution
-    /// node out of the explorer tree. The payload uses the standard
-    /// <see cref="DataFormats.FileDrop"/> format so it can be dropped into the
-    /// AI chat (added to context) or into other applications (e.g. Windows Explorer).
-    /// </summary>
-    private void FileTree_PreviewMouseMove(object sender, MouseEventArgs e)
-    {
-        if (e.LeftButton != MouseButtonState.Pressed)
-        {
-            return;
-        }
-
-        Point currentPosition = e.GetPosition(null);
-        Vector delta = _fileTreeDragStartPoint - currentPosition;
-
-        if (!_isFileTreeDragging &&
-            (Math.Abs(delta.X) <= SystemParameters.MinimumHorizontalDragDistance &&
-             Math.Abs(delta.Y) <= SystemParameters.MinimumVerticalDragDistance))
-        {
-            return;
-        }
-
-        if (FindProjectItemUnderMouse(e.OriginalSource as DependencyObject) is not ProjectItem item ||
-            !IsDraggableProjectItem(item))
-        {
-            return;
-        }
-
-        _isFileTreeDragging = true;
-
-        var dataObject = new DataObject();
-        dataObject.SetData(DataFormats.FileDrop, new[] { item.FullPath });
-        DragDrop.DoDragDrop(FileTree, dataObject, DragDropEffects.Copy);
-    }
-
-    /// <summary>
-    /// Walks up the visual tree from the event source to find the
-    /// <see cref="TreeViewItem"/> under the mouse and returns its data context.
-    /// </summary>
-    private static ProjectItem? FindProjectItemUnderMouse(DependencyObject? source)
-    {
-        DependencyObject? current = source;
-        while (current is not null && current is not TreeViewItem)
-        {
-            current = VisualTreeHelper.GetParent(current);
-        }
-
-        return (current as TreeViewItem)?.DataContext as ProjectItem;
-    }
-
-    /// <summary>
-    /// Returns true for explorer nodes backed by a real file-system path that can
-    /// be meaningfully added to chat context (files, folders, projects, solutions).
-    /// Virtual nodes (Dependencies, Framework, Package) are excluded.
-    /// </summary>
-    private static bool IsDraggableProjectItem(ProjectItem item)
-    {
-        return item.ItemType is ProjectItemType.File
-            or ProjectItemType.Folder
-            or ProjectItemType.Project
-            or ProjectItemType.Solution;
-    }
-
     // ── Tab drag-drop reordering ──────────────────────────────────────
 
     private Point _tabDragStartPoint;
@@ -2459,121 +2375,64 @@ public partial class MainWindow : Window
         AiChatPanel.FocusInput();
     }
 
-    // ── Explorer context menu ──────────────────────────────────────────
+    // ── Explorer panel actions ────────────────────────────────────────
 
-    private void ExplorerContextMenu_Open(object sender, RoutedEventArgs e)
+    /// <summary>
+    /// Handles requests from the explorer panel (open / delete / rename / new
+    /// folder / new file / refresh / template lookup) by delegating to the view model.
+    /// </summary>
+    private void ExplorerPanel_ActionRequested(object sender, ExplorerActionEventArgs e)
     {
-        if (FileTree.SelectedItem is ProjectItem item)
+        switch (e.Action)
         {
-            _viewModel.OnProjectItemSelected(item);
+            case ExplorerAction.Open:
+                _viewModel.OpenExplorerItems(e.Items);
+                break;
+
+            case ExplorerAction.Delete:
+                _viewModel.DeleteExplorerItems(e.Items);
+                break;
+
+            case ExplorerAction.Rename:
+                if (e.Items.Count > 0)
+                {
+                    _viewModel.RenameExplorerItem(e.Items[0]);
+                }
+                break;
+
+            case ExplorerAction.NewFolder:
+                _viewModel.CreateNewFolder(e.Items.Count > 0 ? e.Items[0] : null);
+                break;
+
+            case ExplorerAction.NewBlankFile:
+                _viewModel.CreateBlankFile(e.Items.Count > 0 ? e.Items[0] : null);
+                break;
+
+            case ExplorerAction.NewFileFromTemplate:
+                _viewModel.CreateFileFromTemplate(e.TemplateName ?? string.Empty, e.Items.Count > 0 ? e.Items[0] : null);
+                break;
+
+            case ExplorerAction.Refresh:
+                _viewModel.RefreshExplorerItems();
+                break;
+
+            case ExplorerAction.RequestTemplates:
+                try
+                {
+                    e.Templates = _viewModel.GetExplorerFileTemplates();
+                }
+                catch (IOException ex)
+                {
+                    MessageBox.Show($"Could not load templates:\n{ex.Message}", "Template Error",
+                        MessageBoxButton.OK, MessageBoxImage.Error);
+                }
+                catch (JsonException ex)
+                {
+                    MessageBox.Show($"Template file is invalid JSON:\n{ex.Message}", "Template Error",
+                        MessageBoxButton.OK, MessageBoxImage.Error);
+                }
+                break;
         }
-    }
-
-    private void ExplorerContextMenu_NewFile_SubmenuOpened(object sender, RoutedEventArgs e)
-    {
-        if (sender is not MenuItem templateMenu)
-        {
-            return;
-        }
-
-        templateMenu.Items.Clear();
-
-        IReadOnlyList<FileTemplate> templates;
-        try
-        {
-            templates = _viewModel.GetExplorerFileTemplates();
-        }
-        catch (IOException ex)
-        {
-            MessageBox.Show($"Could not load templates:\n{ex.Message}", "Template Error",
-                MessageBoxButton.OK, MessageBoxImage.Error);
-            return;
-        }
-        catch (JsonException ex)
-        {
-            MessageBox.Show($"Template file is invalid JSON:\n{ex.Message}", "Template Error",
-                MessageBoxButton.OK, MessageBoxImage.Error);
-            return;
-        }
-
-        foreach (var template in templates)
-        {
-            var item = new MenuItem
-            {
-                Header = template.Name,
-                Tag = template.Name
-            };
-
-            item.Click += ExplorerContextMenu_NewFileFromTemplate;
-            templateMenu.Items.Add(item);
-        }
-
-        if (templateMenu.Items.Count == 0)
-        {
-            templateMenu.Items.Add(new MenuItem
-            {
-                Header = "(No templates)",
-                IsEnabled = false
-            });
-        }
-    }
-
-    private void ExplorerContextMenu_NewFileFromTemplate(object sender, RoutedEventArgs e)
-    {
-        if (sender is not MenuItem { Tag: string templateName })
-        {
-            return;
-        }
-
-        _viewModel.CreateFileFromTemplate(templateName, FileTree.SelectedItem as ProjectItem);
-    }
-
-    private void ExplorerContextMenu_CopyPath(object sender, RoutedEventArgs e)
-    {
-        if (FileTree.SelectedItem is ProjectItem item)
-        {
-            Clipboard.SetText(item.FullPath);
-        }
-    }
-
-    private void ExplorerContextMenu_OpenInFileExplorer(object sender, RoutedEventArgs e)
-    {
-        if (FileTree.SelectedItem is not ProjectItem item)
-        {
-            return;
-        }
-
-        // Project/Solution nodes point to a file; resolve to directory
-        var path = item.ItemType switch
-        {
-            ProjectItemType.Project or ProjectItemType.Solution => Path.GetDirectoryName(item.FullPath),
-            _ when item.IsDirectory => item.FullPath,
-            _ => Path.GetDirectoryName(item.FullPath)
-        };
-
-        if (!string.IsNullOrEmpty(path) && Directory.Exists(path))
-        {
-            Process.Start(new ProcessStartInfo
-            {
-                FileName = path,
-                UseShellExecute = true
-            });
-        }
-    }
-
-    private void ExplorerContextMenu_Delete(object sender, RoutedEventArgs e)
-    {
-        _viewModel.DeleteExplorerItem(FileTree.SelectedItem as ProjectItem);
-    }
-
-    private void ExplorerContextMenu_Rename(object sender, RoutedEventArgs e)
-    {
-        _viewModel.RenameExplorerItem(FileTree.SelectedItem as ProjectItem);
-    }
-
-    private void ExplorerContextMenu_NewFolder(object sender, RoutedEventArgs e)
-    {
-        _viewModel.CreateNewFolder(FileTree.SelectedItem as ProjectItem);
     }
 
     // ── Tab strip context menu ─────────────────────────────────────────

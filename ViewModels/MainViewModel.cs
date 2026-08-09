@@ -2259,6 +2259,80 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
     }
 
     /// <summary>
+    /// Opens (or toggles expansion for) multiple explorer items at once.
+    /// </summary>
+    internal void OpenExplorerItems(IReadOnlyList<ProjectItem> items)
+    {
+        if (items is null)
+        {
+            return;
+        }
+
+        foreach (var item in items)
+        {
+            OnProjectItemSelected(item);
+        }
+    }
+
+    /// <summary>
+    /// Rebuilds the explorer tree from disk (used by the explorer's Refresh button).
+    /// </summary>
+    internal void RefreshExplorerItems() => RefreshProjectItems();
+
+    /// <summary>
+    /// Creates a new blank file under the selected item (or project root) and opens it.
+    /// </summary>
+    internal void CreateBlankFile(ProjectItem? selectedItem)
+    {
+        if (string.IsNullOrWhiteSpace(ProjectRootPath) || !Directory.Exists(ProjectRootPath))
+        {
+            MessageBox.Show("Load a project or folder before creating a file.", "New File",
+                MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        // Virtual dependency nodes are not real filesystem folders
+        if (selectedItem?.ItemType is ProjectItemType.Dependencies or ProjectItemType.Framework or ProjectItemType.Package)
+        {
+            MessageBox.Show("Cannot create a file under a dependency node.",
+                "New File", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        var targetFolder = ResolveTemplateTargetFolder(selectedItem, ProjectRootPath);
+        var fileName = PromptForFileName("NewFile.cs");
+        if (string.IsNullOrWhiteSpace(fileName))
+        {
+            return;
+        }
+
+        if (string.IsNullOrEmpty(Path.GetExtension(fileName)))
+        {
+            fileName += ".cs";
+        }
+
+        var fullPath = Path.Combine(targetFolder, fileName);
+        if (File.Exists(fullPath))
+        {
+            MessageBox.Show($"File already exists:\n{fullPath}", "New File",
+                MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        try
+        {
+            EditorService.WriteFile(fullPath, string.Empty);
+            RefreshProjectItems();
+            OpenFileByPath(fullPath);
+        }
+        catch (IOException ex)
+        {
+            MessageBox.Show($"Could not create file:\n{ex.Message}", "Error",
+                MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
+
+    /// <summary>
     /// Deletes a file or empty folder from disk and refreshes the explorer tree.
     /// Closes any open tab for a deleted file.
     /// </summary>
@@ -2269,79 +2343,100 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
             return;
         }
 
-        // Don't allow deleting project/solution root nodes
-        if (item.ItemType is ProjectItemType.Project or ProjectItemType.Solution)
+        DeleteExplorerItems([item]);
+    }
+
+    /// <summary>
+    /// Deletes the given files/folders from disk (multi-select aware) and refreshes
+    /// the explorer tree. Closes any open tab for a deleted file.
+    /// </summary>
+    internal void DeleteExplorerItems(IReadOnlyList<ProjectItem> items)
+    {
+        if (items is null || items.Count == 0)
         {
-            MessageBox.Show("Cannot delete a project or solution node from the explorer.",
+            return;
+        }
+
+        // Only real filesystem nodes can be deleted; virtual/project/solution nodes cannot.
+        var deletable = items
+            .Where(i => i.ItemType is not (
+                ProjectItemType.Project or
+                ProjectItemType.Solution or
+                ProjectItemType.Dependencies or
+                ProjectItemType.Framework or
+                ProjectItemType.Package))
+            .Distinct()
+            .ToList();
+
+        if (items.Count > deletable.Count)
+        {
+            MessageBox.Show("Project, solution, and dependency nodes cannot be deleted from the explorer.",
                 "Delete", MessageBoxButton.OK, MessageBoxImage.Information);
-            return;
         }
 
-        // Don't allow deleting virtual dependency nodes
-        if (item.ItemType is ProjectItemType.Dependencies or ProjectItemType.Framework or ProjectItemType.Package)
-        {
-            MessageBox.Show("Cannot delete a dependency node from the explorer.",
-                "Delete", MessageBoxButton.OK, MessageBoxImage.Information);
-            return;
-        }
-
-        var displayName = item.Name;
-        var isDir = item.IsDirectory;
-        var prompt = isDir
-            ? $"Delete folder \"{displayName}\" and all its contents?"
-            : $"Delete file \"{displayName}\"?";
-
-        var result = MessageBox.Show(prompt, "Confirm Delete",
-            MessageBoxButton.YesNo, MessageBoxImage.Warning);
-
-        if (result != MessageBoxResult.Yes)
+        if (deletable.Count == 0)
         {
             return;
         }
 
-        try
+        var prompt = deletable.Count == 1
+            ? deletable[0].IsDirectory
+                ? $"Delete folder \"{deletable[0].Name}\" and all its contents?"
+                : $"Delete file \"{deletable[0].Name}\"?"
+            : $"Delete {deletable.Count} items?";
+
+        if (MessageBox.Show(prompt, "Confirm Delete",
+                MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes)
         {
-            if (isDir)
+            return;
+        }
+
+        foreach (var item in deletable)
+        {
+            try
             {
-                // Close any tabs for files inside this directory
-                var dirPath = item.FullPath + Path.DirectorySeparatorChar;
-                var affectedTabs = OpenTabs
-                    .Where(t => t.FilePath.StartsWith(dirPath, StringComparison.OrdinalIgnoreCase))
-                    .ToList();
-
-                foreach (var tab in affectedTabs)
+                if (item.IsDirectory)
                 {
-                    CloseTabCommand.Execute(tab);
-                }
+                    // Close any tabs for files inside this directory
+                    var dirPath = item.FullPath + Path.DirectorySeparatorChar;
+                    var affectedTabs = OpenTabs
+                        .Where(t => t.FilePath.StartsWith(dirPath, StringComparison.OrdinalIgnoreCase))
+                        .ToList();
 
-                Directory.Delete(item.FullPath, recursive: true);
+                    foreach (var tab in affectedTabs)
+                    {
+                        CloseTabCommand.Execute(tab);
+                    }
+
+                    Directory.Delete(item.FullPath, recursive: true);
+                }
+                else
+                {
+                    // Close the tab if the file is open
+                    var tab = OpenTabs.FirstOrDefault(t =>
+                        string.Equals(t.FilePath, item.FullPath, StringComparison.OrdinalIgnoreCase));
+
+                    if (tab is not null)
+                    {
+                        CloseTabCommand.Execute(tab);
+                    }
+
+                    File.Delete(item.FullPath);
+                }
             }
-            else
+            catch (IOException ex)
             {
-                // Close the tab if the file is open
-                var tab = OpenTabs.FirstOrDefault(t =>
-                    string.Equals(t.FilePath, item.FullPath, StringComparison.OrdinalIgnoreCase));
-
-                if (tab is not null)
-                {
-                    CloseTabCommand.Execute(tab);
-                }
-
-                File.Delete(item.FullPath);
+                MessageBox.Show($"Could not delete \"{item.Name}\":\n{ex.Message}", "Error",
+                    MessageBoxButton.OK, MessageBoxImage.Error);
             }
+            catch (UnauthorizedAccessException ex)
+            {
+                MessageBox.Show($"Access denied for \"{item.Name}\":\n{ex.Message}", "Error",
+                    MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
 
-            RefreshProjectItems();
-        }
-        catch (IOException ex)
-        {
-            MessageBox.Show($"Could not delete:\n{ex.Message}", "Error",
-                MessageBoxButton.OK, MessageBoxImage.Error);
-        }
-        catch (UnauthorizedAccessException ex)
-        {
-            MessageBox.Show($"Access denied:\n{ex.Message}", "Error",
-                MessageBoxButton.OK, MessageBoxImage.Error);
-        }
+        RefreshProjectItems();
     }
 
     /// <summary>
