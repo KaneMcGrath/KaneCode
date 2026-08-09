@@ -866,8 +866,13 @@ public partial class AiChatPanel : UserControl
             return;
         }
 
-        AiConversation conversation = EnsureActiveConversation();
-        HashSet<string>? enabledTools = conversation.EnabledTools;
+        // The checkbox state mirrors the conversation's effective tool set:
+        // per-conversation EnabledTools when set, otherwise the active mode's
+        // allowed tools. IsConversationToolAllowed implements that fallback so
+        // a conversation that hasn't been through a mode switch (e.g. a new or
+        // loaded conversation) reflects the selected preset instead of
+        // rendering every tool as checked.
+        EnsureActiveConversation();
 
         // Group tools by category, preserving definition order for known groups
         // and appending any unknown categories at the end.
@@ -935,8 +940,8 @@ public partial class AiChatPanel : UserControl
             }
 
             // Group-level checkbox
-            bool allChecked = groupTools.All(t => enabledTools is null || enabledTools.Contains(t.Name));
-            bool anyChecked = groupTools.Any(t => enabledTools is null || enabledTools.Contains(t.Name));
+            bool allChecked = groupTools.All(t => IsConversationToolAllowed(t.Name));
+            bool anyChecked = groupTools.Any(t => IsConversationToolAllowed(t.Name));
             bool? groupIsChecked = allChecked ? true : anyChecked ? (bool?)null : false;
 
             CheckBox groupCheckBox = new()
@@ -984,7 +989,7 @@ public partial class AiChatPanel : UserControl
             // Individual tool checkboxes (indented)
             foreach (IAgentTool tool in groupTools)
             {
-                bool isChecked = enabledTools is null || enabledTools.Contains(tool.Name);
+                bool isChecked = IsConversationToolAllowed(tool.Name);
 
                 CheckBox checkBox = new()
                 {
@@ -2522,10 +2527,36 @@ public partial class AiChatPanel : UserControl
         RemoveAllSubAgents();
         SwitchToNormalView();
 
+        // Capture the previous conversation's manual tool selection before the
+        // active conversation changes, so a new conversation created while in
+        // Custom mode can inherit it (Custom mode stores tools per-conversation
+        // and has no default tool set of its own).
+        AiConversation previousConversation = EnsureActiveConversation();
+        HashSet<string>? previousEnabledTools = previousConversation.EnabledTools is null
+            ? null
+            : new HashSet<string>(previousConversation.EnabledTools, StringComparer.Ordinal);
+
         AiConversation conversation = CreateConversation();
         _conversationState.Conversations.Insert(0, conversation);
         _conversationState.ActiveConversationId = conversation.Id;
         _activeConversation = conversation;
+
+        // Initialize the new conversation's enabled tools from the currently
+        // selected mode/preset. Without this, EnabledTools stays null and the
+        // tools checkbox panel renders every tool as checked regardless of the
+        // selected agent preset's allowed tools.
+        if (_activeMode is not null)
+        {
+            if (string.Equals(_activeMode.Id, "custom", StringComparison.Ordinal))
+            {
+                conversation.EnabledTools = previousEnabledTools;
+            }
+            else
+            {
+                ApplyModePreset(_activeMode);
+            }
+        }
+
         ApplyAutoContextRules(conversation);
         RefreshConversationSelector();
         RenderActiveConversation();
