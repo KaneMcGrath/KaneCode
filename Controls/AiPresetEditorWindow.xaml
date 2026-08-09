@@ -81,9 +81,35 @@
                            Foreground="{DynamicResource PanelHeaderForeground}" VerticalAlignment="Center" Margin="0,0,8,0" />
 
                 <ComboBox Grid.Column="1" x:Name="PresetSelector"
-                          DisplayMemberPath="Name" MinHeight="24" FontSize="12"
+                          MinHeight="24" FontSize="12"
                           VerticalContentAlignment="Center"
-                          SelectionChanged="PresetSelector_SelectionChanged" />
+                          SelectionChanged="PresetSelector_SelectionChanged">
+                    <ComboBox.ItemTemplate>
+                        <DataTemplate>
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="{Binding Name}" VerticalAlignment="Center" />
+                                <Border Background="{DynamicResource ABrush.AccentTone2.Background.Static}"
+                                        CornerRadius="8"
+                                        Padding="6,0"
+                                        Margin="8,0,0,0"
+                                        VerticalAlignment="Center">
+                                    <Border.Style>
+                                        <Style TargetType="Border">
+                                            <Setter Property="Visibility" Value="Collapsed" />
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding IsDefault}" Value="True">
+                                                    <Setter Property="Visibility" Value="Visible" />
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </Border.Style>
+                                    <TextBlock Text="Default" FontSize="9" FontWeight="SemiBold"
+                                               Foreground="White" VerticalAlignment="Center" />
+                                </Border>
+                            </StackPanel>
+                        </DataTemplate>
+                    </ComboBox.ItemTemplate>
+                </ComboBox>
 
                 <StackPanel Grid.Column="2" Orientation="Horizontal" Margin="8,0,0,0">
                     <Button x:Name="NewPresetButton" Content="New" MinWidth="52"
@@ -120,11 +146,12 @@
                 </StackPanel>
             </Grid>
 
-            <!-- Row 2: name + hint -->
+            <!-- Row 2: name + default + hint -->
             <Grid Grid.Row="1" Margin="0,6,0,0">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="420" />
+                    <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="*" />
                 </Grid.ColumnDefinitions>
                 <TextBlock Grid.Column="0" Text="Name" FontSize="12"
@@ -133,7 +160,15 @@
                          MinHeight="24" VerticalContentAlignment="Center"
                          Padding="6,3"
                          TextChanged="PresetNameBox_TextChanged" />
-                <TextBlock Grid.Column="2" Text="Autosaves to ai-presets.json" FontSize="11"
+                <CheckBox Grid.Column="2" x:Name="DefaultPresetCheckBox"
+                          Content="Set as default agent mode"
+                          FontSize="11.5"
+                          Foreground="{DynamicResource WindowForeground}"
+                          VerticalAlignment="Center"
+                          Margin="12,0,0,0"
+                          ToolTip="When checked, KaneCode automatically switches to this preset (instead of Agent mode) whenever a project is loaded. Application mode remains the startup mode until a project is opened."
+                          Click="DefaultPresetCheckBox_Click" />
+                <TextBlock Grid.Column="3" Text="Autosaves to ai-presets.json" FontSize="11"
                            Foreground="{DynamicResource ControlDisabledForeground}" HorizontalAlignment="Right"
                            VerticalAlignment="Center" />
             </Grid>

@@ -329,9 +329,11 @@ public partial class MainWindow : Window
         if (e.PropertyName == nameof(MainViewModel.ProjectRootPath)
             && !string.IsNullOrWhiteSpace(_viewModel.ProjectRootPath))
         {
-            // A project, solution, or folder was loaded — switch from Application mode to Agent mode
-            // so the AI can inspect files, gather diagnostics, and make edits.
-            AiChatPanel.SwitchToMode("agent");
+            // A project, solution, or folder was loaded — switch from Application mode
+            // to the user's default agent mode (their chosen default preset, or the
+            // built-in Agent mode when no preset is marked as default) so the AI can
+            // inspect files, gather diagnostics, and make edits.
+            AiChatPanel.SwitchToMode(GetDefaultAgentModeId());
         }
     }
 
@@ -578,7 +580,8 @@ public partial class MainWindow : Window
     /// <summary>
     /// Registers the available AI chat modes. Application mode is registered first
     /// so it becomes the default mode when KaneCode launches. When a project is
-    /// subsequently loaded, the IDE automatically switches to agent mode.
+    /// subsequently loaded, the IDE automatically switches to the user's default
+    /// agent mode (a preset marked as default, or the built-in Agent mode).
     /// </summary>
     private void RegisterAiChatModes()
     {
@@ -595,6 +598,19 @@ public partial class MainWindow : Window
         _aiChatModeRegistry.Register(new TeacherMode());
         _aiChatModeRegistry.Register(new NoToolsMode());
         _aiChatModeRegistry.Register(new CustomMode());
+    }
+
+    /// <summary>
+    /// Returns the mode id the chat panel should switch to when a project is
+    /// loaded: the user's default preset (<c>preset:&lt;id&gt;</c>) when one is
+    /// configured, otherwise the built-in Agent mode (<c>"agent"</c>). Application
+    /// mode remains the startup mode until a project is opened, regardless of
+    /// which preset is marked as default.
+    /// </summary>
+    private string GetDefaultAgentModeId()
+    {
+        AiPreset? defaultPreset = AiPresetManager.LoadDefaultPreset();
+        return defaultPreset is null ? "agent" : "preset:" + defaultPreset.Id;
     }
 
     /// <summary>

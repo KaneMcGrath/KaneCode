@@ -21,6 +21,15 @@ internal sealed class AiPreset
     public string Name { get; set; } = "New Preset";
 
     /// <summary>
+    /// True when this preset is the user's chosen default agent mode.
+    /// KaneCode still launches in Application mode, but once a project is
+    /// loaded the IDE automatically switches to this preset instead of the
+    /// built-in Agent mode. Only one preset can be the default at a time;
+    /// <see cref="Services.Ai.AiPresetManager"/> enforces that on save.
+    /// </summary>
+    public bool IsDefault { get; set; }
+
+    /// <summary>
     /// Optional custom system prompt. When null/empty, no mode-level system prompt is injected.
     /// </summary>
     public string? SystemPrompt { get; set; }
@@ -72,6 +81,7 @@ internal sealed class AiPreset
         {
             Id = Id,
             Name = Name,
+            IsDefault = IsDefault,
             SystemPrompt = SystemPrompt,
             AllowedTools = AllowedTools is null
                 ? null

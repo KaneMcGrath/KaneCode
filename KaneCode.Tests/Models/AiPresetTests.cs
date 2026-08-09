@@ -11,6 +11,7 @@ public sealed class AiPresetTests
         AiPreset original = new()
         {
             Name = "Prototype",
+            IsDefault = true,
             SystemPrompt = "prompt",
             AllowedTools = new HashSet<string>(StringComparer.Ordinal) { "read", "write" },
             ToolDescriptions = new Dictionary<string, string>(StringComparer.Ordinal)
@@ -41,6 +42,7 @@ public sealed class AiPresetTests
 
         Assert.Equal(original.Id, clone.Id);
         Assert.Equal(original.Name, clone.Name);
+        Assert.Equal(original.IsDefault, clone.IsDefault);
         Assert.NotSame(original.AllowedTools, clone.AllowedTools);
         Assert.NotSame(original.ToolDescriptions, clone.ToolDescriptions);
         Assert.NotSame(original.PinnedParameters, clone.PinnedParameters);
@@ -81,6 +83,7 @@ public sealed class AiPresetTests
         AiPreset preset = new()
         {
             Name = "Round Trip",
+            IsDefault = true,
             ToolDescriptions = new Dictionary<string, string>(StringComparer.Ordinal)
             {
                 ["write"] = "Write files carefully to {filePath}"
@@ -111,6 +114,7 @@ public sealed class AiPresetTests
 
         Assert.NotNull(deserialized);
         Assert.Equal(preset.Name, deserialized!.Name);
+        Assert.True(deserialized.IsDefault);
         Assert.Equal("Write files carefully to {filePath}", deserialized.ToolDescriptions!["write"]);
         Assert.Equal("\"src/out.txt\"", deserialized.PinnedParameters!["write"]["filePath"].GetRawText());
         Assert.Equal("true", deserialized.PinnedParameters!["write"]["overwrite"].GetRawText());
@@ -138,6 +142,7 @@ public sealed class AiPresetTests
         Assert.NotNull(preset);
         Assert.Equal("Legacy", preset!.Name);
         Assert.Equal("old prompt", preset.SystemPrompt);
+        Assert.False(preset.IsDefault);
         Assert.Equal(2, preset.AllowedTools!.Count);
         Assert.Null(preset.ToolDescriptions);
         Assert.Null(preset.PinnedParameters);

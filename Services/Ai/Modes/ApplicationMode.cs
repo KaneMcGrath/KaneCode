@@ -8,7 +8,8 @@ namespace KaneCode.Services.Ai.Modes;
 /// Provides tools to load projects, create new projects, browse the file system, and
 /// answer questions. Recent projects are listed in the system prompt so the AI can
 /// use <c>load_project</c> to open them by path.
-/// When a project is loaded, the IDE automatically switches to agent mode.
+/// When a project is loaded, the IDE automatically switches to the user's default
+/// agent mode (a preset marked as default in the preset editor, or Agent mode).
 /// </summary>
 internal sealed class ApplicationMode : IAiChatMode
 {
@@ -74,7 +75,8 @@ internal sealed class ApplicationMode : IAiChatMode
             {recentProjectsSection}
             {defaultLocationSection}
             When a project is successfully loaded, the IDE will automatically switch to agent mode
-            so you can inspect files, gather diagnostics, and make precise edits.
+            (or to the user's default preset when one is configured) so you can inspect files,
+            gather diagnostics, and make precise edits.
 
             Use the `load_project` tool with a full path to open any project.
             Use the `new_project` tool to create a new .NET project from a template.

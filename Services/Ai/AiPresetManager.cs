@@ -51,6 +51,54 @@ internal static class AiPresetManager
     }
 
     /// <summary>
+    /// Returns the preset marked as the user's default agent mode, or <c>null</c>
+    /// when none has been chosen. When null, the built-in Agent mode is used as
+    /// the default agent mode after a project is loaded.
+    /// </summary>
+    public static AiPreset? LoadDefaultPreset()
+    {
+        foreach (AiPreset preset in Load())
+        {
+            if (preset.IsDefault)
+            {
+                return preset;
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Ensures at most one preset is marked as the default agent mode.
+    /// The first default found wins; any additional defaults are cleared.
+    /// Returns the same list for chaining.
+    /// </summary>
+    internal static List<AiPreset> NormalizeDefaults(List<AiPreset> presets)
+    {
+        ArgumentNullException.ThrowIfNull(presets);
+
+        bool defaultSeen = false;
+        foreach (AiPreset preset in presets)
+        {
+            if (!preset.IsDefault)
+            {
+                continue;
+            }
+
+            if (defaultSeen)
+            {
+                preset.IsDefault = false;
+            }
+            else
+            {
+                defaultSeen = true;
+            }
+        }
+
+        return presets;
+    }
+
+    /// <summary>
     /// Persists the given presets to disk.
     /// </summary>
     public static void Save(IReadOnlyList<AiPreset> presets)
@@ -63,11 +111,12 @@ internal static class AiPresetManager
 
             var container = new PresetContainer
             {
-                // v3 adds per-tool hidden (disabled) parameters. v2 added per-tool
-                // description overrides, pinned parameters, and backend option
-                // overrides. Older files load fine (new members default to null).
-                SchemaVersion = 3,
-                Presets = [.. presets]
+                // v4 adds the default-preset flag (IsDefault). v3 added per-tool
+                // hidden (disabled) parameters. v2 added per-tool description
+                // overrides, pinned parameters, and backend option overrides.
+                // Older files load fine (new members default to null/false).
+                SchemaVersion = 4,
+                Presets = NormalizeDefaults([.. presets])
             };
 
             string json = JsonSerializer.Serialize(container, JsonOptions);

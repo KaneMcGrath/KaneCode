@@ -139,22 +139,42 @@
                                 </DataTemplate>
 
                                 <DataTemplate x:Key="ModeDropdownPresetTemplate">
-                                    <TextBlock Text="{Binding Preset.Name}"
-                                               FontSize="11"
-                                               Foreground="{DynamicResource AiChatForeground}"
-                                               Padding="4,2">
-                                        <TextBlock.Style>
-                                            <Style TargetType="TextBlock">
-                                                <Setter Property="FontStyle" Value="Normal" />
-                                                <Style.Triggers>
-                                                    <DataTrigger Binding="{Binding Preset.Name}" Value="">
-                                                        <Setter Property="FontStyle" Value="Italic" />
-                                                        <Setter Property="Foreground" Value="{DynamicResource AiChatSecondaryForeground}" />
-                                                    </DataTrigger>
-                                                </Style.Triggers>
-                                            </Style>
-                                        </TextBlock.Style>
-                                    </TextBlock>
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock Text="{Binding Preset.Name}"
+                                                   FontSize="11"
+                                                   Foreground="{DynamicResource AiChatForeground}"
+                                                   Padding="4,2">
+                                            <TextBlock.Style>
+                                                <Style TargetType="TextBlock">
+                                                    <Setter Property="FontStyle" Value="Normal" />
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding Preset.Name}" Value="">
+                                                            <Setter Property="FontStyle" Value="Italic" />
+                                                            <Setter Property="Foreground" Value="{DynamicResource AiChatSecondaryForeground}" />
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </TextBlock.Style>
+                                        </TextBlock>
+                                        <Border Background="{DynamicResource ABrush.AccentTone2.Background.Static}"
+                                                CornerRadius="8"
+                                                Padding="5,0"
+                                                Margin="4,3,4,0"
+                                                VerticalAlignment="Center">
+                                            <Border.Style>
+                                                <Style TargetType="Border">
+                                                    <Setter Property="Visibility" Value="Collapsed" />
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding Preset.IsDefault}" Value="True">
+                                                            <Setter Property="Visibility" Value="Visible" />
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </Border.Style>
+                                            <TextBlock Text="Default" FontSize="9" FontWeight="SemiBold"
+                                                       Foreground="White" VerticalAlignment="Center" />
+                                        </Border>
+                                    </StackPanel>
                                 </DataTemplate>
 
                                 <DataTemplate x:Key="ModeDropdownHeaderTemplate">

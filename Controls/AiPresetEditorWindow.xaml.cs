@@ -484,6 +484,7 @@ internal partial class AiPresetEditorWindow : Window
         _suppressEvents = true;
         PresetNameBox.Text = preset?.Name ?? string.Empty;
         SystemPromptBox.Text = preset?.SystemPrompt ?? string.Empty;
+        DefaultPresetCheckBox.IsChecked = preset?.IsDefault == true;
         _suppressEvents = false;
 
         BuildToolStates(preset);
@@ -491,6 +492,7 @@ internal partial class AiPresetEditorWindow : Window
         bool editable = preset is not null;
         ToolsMainPanel.IsEnabled = editable;
         SystemPromptPanel.IsEnabled = editable;
+        DefaultPresetCheckBox.IsEnabled = editable;
 
         if (editable && _toolStates.Count > 0)
         {
@@ -544,6 +546,12 @@ internal partial class AiPresetEditorWindow : Window
         }
 
         StatusText.Text = status;
+
+        AiPreset? defaultPreset = _presets.FirstOrDefault(p => p.IsDefault);
+        if (defaultPreset is not null)
+        {
+            StatusText.Text += $" · Default agent mode: {defaultPreset.Name}";
+        }
 
         if (_lastSaved is DateTime saved)
         {
@@ -800,6 +808,7 @@ internal partial class AiPresetEditorWindow : Window
         // Restore fields from the snapshot.
         _currentPreset.Name = _revertSnapshot.Name;
         _currentPreset.SystemPrompt = _revertSnapshot.SystemPrompt;
+        _currentPreset.IsDefault = _revertSnapshot.IsDefault;
         _currentPreset.AllowedTools = _revertSnapshot.AllowedTools is null
             ? null
             : new HashSet<string>(_revertSnapshot.AllowedTools, StringComparer.Ordinal);
@@ -861,6 +870,30 @@ internal partial class AiPresetEditorWindow : Window
 
         _currentPreset.SystemPrompt = string.IsNullOrWhiteSpace(SystemPromptBox.Text) ? null : SystemPromptBox.Text;
         MarkDirty();
+    }
+
+    private void DefaultPresetCheckBox_Click(object sender, RoutedEventArgs e)
+    {
+        if (_suppressEvents || _currentPreset is null)
+        {
+            return;
+        }
+
+        if (DefaultPresetCheckBox.IsChecked == true)
+        {
+            // Only one preset can be the default — clear the flag on every other preset.
+            foreach (AiPreset preset in _presets)
+            {
+                preset.IsDefault = ReferenceEquals(preset, _currentPreset);
+            }
+        }
+        else
+        {
+            _currentPreset.IsDefault = false;
+        }
+
+        MarkDirty();
+        RefreshPresetSelector();
     }
 
     // ── Search / filter / select all ───────────────────────────────
