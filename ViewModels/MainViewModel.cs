@@ -666,6 +666,9 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
 
         _searchPanel = SearchPanel.Install(_editor.TextArea);
 
+        // Ctrl+MouseWheel zooms the editor by adjusting the rendered font size.
+        _editor.PreviewMouseWheel += OnEditorPreviewMouseWheel;
+
         _editor.TextArea.TextEntering += OnTextEntering;
         _editor.TextArea.TextEntered += OnTextEntered;
         _editor.TextArea.Caret.PositionChanged += OnCaretPositionChanged;
@@ -2551,6 +2554,30 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
         RoslynClassificationColorizer.ClearBrushCache();
 
         _editor.TextArea.TextView.Redraw();
+    }
+
+    /// <summary>
+    /// Zooms the editor in/out when the user holds Ctrl and scrolls the mouse wheel
+    /// by adjusting the rendered font size.
+    /// </summary>
+    private void OnEditorPreviewMouseWheel(object sender, System.Windows.Input.MouseWheelEventArgs e)
+    {
+        if (_editor is null || (Keyboard.Modifiers & ModifierKeys.Control) == 0)
+        {
+            return;
+        }
+
+        // One standard wheel notch reports Delta = ±120. Scale proportionally so
+        // precision touchpads that emit smaller deltas still zoom smoothly.
+        const double MinFontSize = 8;
+        const double MaxFontSize = 48;
+        const double FontSizePerNotch = 1.5;
+
+        double steps = e.Delta / 120.0;
+        _editor.FontSize = Math.Clamp(_editor.FontSize + steps * FontSizePerNotch, MinFontSize, MaxFontSize);
+
+        // Consume the event so the editor does not also scroll vertically.
+        e.Handled = true;
     }
 
     private void OnTextEntering(object? sender, System.Windows.Input.TextCompositionEventArgs e)
