@@ -95,9 +95,28 @@ internal partial class AiPresetEditorWindow : Window
 
         LoadPresets();
         ShowTab("tools");
-        SelectPreset(_presets.Count > 0 ? _presets[0] : null);
+        SelectPreset(FindInitialPreset());
         RefreshPresetSelector();
         UpdateStatusBar();
+    }
+
+    /// <summary>
+    /// Determines which preset the editor opens on. When a user-created preset
+    /// is the currently active chat mode, that preset is selected so the user
+    /// edits the agent they are currently using; otherwise the first preset wins.
+    /// </summary>
+    private AiPreset? FindInitialPreset()
+    {
+        if (_activeMode is PresetMode presetMode)
+        {
+            AiPreset? activePreset = _presets.FirstOrDefault(p => p.Id == presetMode.Preset.Id);
+            if (activePreset is not null)
+            {
+                return activePreset;
+            }
+        }
+
+        return _presets.Count > 0 ? _presets[0] : null;
     }
 
     /// <summary>
