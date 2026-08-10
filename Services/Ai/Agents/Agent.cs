@@ -15,8 +15,11 @@ namespace KaneCode.Services.Ai.Agents;
 ///   5. Repeat until the task is complete or the limit is reached
 ///
 /// File-locking integration: before executing a write tool on a file path,
-/// the agent acquires a lock via <see cref="FileLockManager"/>. Conflicts
-/// are reported back to the model as tool errors so it can retry or adjust.
+/// the agent acquires a lock via <see cref="FileLockManager"/>. If another
+/// agent holds the lock, the agent waits for it to be released (up to the
+/// lock wait timeout) so edits queue instead of failing. Only a timeout
+/// produces a conflict, which is reported back to the model as a tool error
+/// so it can retry or adjust.
 /// </summary>
 internal sealed class Agent : IAgent
 {
@@ -425,14 +428,19 @@ internal sealed class Agent : IAgent
             ? default
             : argumentsDocument.RootElement;
 
-        // Acquire file locks for write tools
-        FileLockResult? lockResult = AcquireFileLockIfNeeded(toolName, args, fileLockManager);
+        // Acquire file locks for write tools. When another agent holds a lock on
+        // the target file, wait for it to be released (up to the lock wait timeout)
+        // instead of failing the tool call immediately, so concurrent agents queue
+        // their edits rather than erroring out.
+        FileLockResult? lockResult = await AcquireFileLockIfNeeded(
+            toolName, args, fileLockManager, cancellationToken).ConfigureAwait(false);
         if (lockResult is not null && !lockResult.Acquired)
         {
             return ToolCallResult.Conflict(
                 $"File is locked by agent '{lockResult.ConflictingAgentId}' " +
                 $"since {lockResult.ConflictingLockAcquiredAt:O}. " +
-                "Wait for the lock to be released and retry.");
+                $"Timed out after {FileLockManager.DefaultLockWaitTimeout.TotalSeconds:F0} seconds " +
+                "waiting for the lock to be released. Retry once the other agent has finished editing the file.");
         }
 
         try
@@ -513,13 +521,15 @@ internal sealed class Agent : IAgent
     }
 
     /// <summary>
-    /// Attempts to acquire a file lock for write-type tools.
+    /// Waits to acquire a file lock for write-type tools, delaying until the
+    /// current holder releases it (or the lock wait timeout elapses).
     /// Returns null if the tool doesn't need locking (read-only tools).
     /// </summary>
-    private FileLockResult? AcquireFileLockIfNeeded(
+    private async Task<FileLockResult?> AcquireFileLockIfNeeded(
         string toolName,
         JsonElement args,
-        FileLockManager fileLockManager)
+        FileLockManager fileLockManager,
+        CancellationToken cancellationToken)
     {
         // Tools that write/modify files and need locking
         string? filePath = ExtractFilePath(toolName, args);
@@ -528,7 +538,11 @@ internal sealed class Agent : IAgent
             return null;
         }
 
-        return fileLockManager.TryAcquireWriteLockWithResult(filePath, Id);
+        return await fileLockManager.WaitForWriteLockAsync(
+            filePath,
+            Id,
+            FileLockManager.DefaultLockWaitTimeout,
+            cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>

@@ -203,14 +203,19 @@ internal sealed class AgentOrchestrator : IDisposable
             return ToolCallResult.Fail($"Tool '{toolName}' is not allowed in {agent.Mode.DisplayName} mode.");
         }
 
-        // Acquire file locks for write tools
-        FileLockResult? lockResult = AcquireFileLockIfNeeded(toolName, args, agent.Id);
+        // Acquire file locks for write tools. When another agent holds a lock on
+        // the target file, wait for it to be released (up to the lock wait timeout)
+        // instead of failing the tool call immediately, so concurrent agents queue
+        // their edits rather than erroring out.
+        FileLockResult? lockResult = await AcquireFileLockIfNeeded(
+            toolName, args, agent.Id, cancellationToken).ConfigureAwait(false);
         if (lockResult is not null && !lockResult.Acquired)
         {
             return ToolCallResult.Conflict(
                 $"File is locked by agent '{lockResult.ConflictingAgentId}' " +
                 $"since {lockResult.ConflictingLockAcquiredAt:O}. " +
-                "Wait for the lock to be released and retry.");
+                $"Timed out after {FileLockManager.DefaultLockWaitTimeout.TotalSeconds:F0} seconds " +
+                "waiting for the lock to be released. Retry once the other agent has finished editing the file.");
         }
 
         // Resolve the preset's backend options for this tool and execute within
@@ -562,7 +567,16 @@ internal sealed class AgentOrchestrator : IDisposable
         }
     }
 
-    private FileLockResult? AcquireFileLockIfNeeded(string toolName, JsonElement args, string agentId)
+    /// <summary>
+    /// Waits to acquire a file lock for write-type tools, delaying until the
+    /// current holder releases it (or the lock wait timeout elapses).
+    /// Returns null if the tool doesn't need locking (read-only tools).
+    /// </summary>
+    private async Task<FileLockResult?> AcquireFileLockIfNeeded(
+        string toolName,
+        JsonElement args,
+        string agentId,
+        CancellationToken cancellationToken)
     {
         string? filePath = ExtractFilePath(toolName, args);
         if (filePath is null)
@@ -570,7 +584,11 @@ internal sealed class AgentOrchestrator : IDisposable
             return null;
         }
 
-        return FileLockManager.TryAcquireWriteLockWithResult(filePath, agentId);
+        return await FileLockManager.WaitForWriteLockAsync(
+            filePath,
+            agentId,
+            FileLockManager.DefaultLockWaitTimeout,
+            cancellationToken).ConfigureAwait(false);
     }
 
     private static string? ExtractFilePath(string toolName, JsonElement args)

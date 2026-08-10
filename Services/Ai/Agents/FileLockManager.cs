@@ -7,7 +7,10 @@ namespace KaneCode.Services.Ai.Agents;
 /// Tracks file locks across agents to prevent conflicting simultaneous edits.
 ///
 /// Before a write tool executes, the agent must acquire a lock on the target file.
-/// If another agent holds a lock on the same file, the tool receives a conflict
+/// If another agent holds a lock on the same file, the tool waits (up to
+/// <see cref="DefaultLockWaitTimeout"/>) for the lock to be released instead of
+/// failing immediately, so concurrent agents queue their edits rather than
+/// erroring out. Only when the wait times out does the tool receive a conflict
 /// result so the model can retry or take alternative action.
 ///
 /// Locks are released when the agent completes its tool loop or explicitly releases them.
@@ -93,6 +96,70 @@ internal sealed class FileLockManager
 
         // Should not happen, but be safe
         return FileLockResult.Conflict("unknown", DateTimeOffset.UtcNow);
+    }
+
+    /// <summary>
+    /// Default maximum time an agent will wait for a file lock to be released
+    /// before giving up and reporting a conflict. Generous by design so that a
+    /// waiting agent queues behind the current holder for the duration of its
+    /// run rather than failing immediately.
+    /// </summary>
+    internal static readonly TimeSpan DefaultLockWaitTimeout = TimeSpan.FromMinutes(5);
+
+    /// <summary>
+    /// How long to pause between polls while waiting for a file lock to be released.
+    /// </summary>
+    private static readonly TimeSpan LockPollInterval = TimeSpan.FromMilliseconds(100);
+
+    /// <summary>
+    /// Waits for a write lock on <paramref name="filePath"/> to become available,
+    /// acquiring it as soon as the current holder releases it. If the lock is
+    /// still held by another agent when <paramref name="timeout"/> elapses — or
+    /// the operation is cancelled — no lock is acquired and the conflict details
+    /// are returned (or cancellation is propagated).
+    /// </summary>
+    public async Task<FileLockResult> WaitForWriteLockAsync(
+        string filePath,
+        string agentId,
+        TimeSpan timeout,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(filePath);
+        ArgumentException.ThrowIfNullOrWhiteSpace(agentId);
+
+        if (timeout < TimeSpan.Zero)
+        {
+            throw new ArgumentOutOfRangeException(nameof(timeout), "Timeout cannot be negative.");
+        }
+
+        // Fast path: acquire immediately when the lock is free or already ours.
+        FileLockResult immediate = TryAcquireWriteLockWithResult(filePath, agentId);
+        if (immediate.Acquired)
+        {
+            return immediate;
+        }
+
+        DateTimeOffset deadline = DateTimeOffset.UtcNow + timeout;
+
+        while (true)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            if (DateTimeOffset.UtcNow >= deadline)
+            {
+                // Give one final chance in case the holder released between
+                // polls, then report the conflict with holder details.
+                return TryAcquireWriteLockWithResult(filePath, agentId);
+            }
+
+            await Task.Delay(LockPollInterval, cancellationToken).ConfigureAwait(false);
+
+            FileLockResult acquired = TryAcquireWriteLockWithResult(filePath, agentId);
+            if (acquired.Acquired)
+            {
+                return acquired;
+            }
+        }
     }
 
     /// <summary>
