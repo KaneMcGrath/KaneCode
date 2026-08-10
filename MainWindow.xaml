@@ -181,6 +181,10 @@ ResizeMode="CanResizeWithGrip">
                           IsEnabled="False" />
             </MenuItem>
             <MenuItem Header="_Help">
+                <MenuItem Header="Open _Config Folder"
+                          Click="HelpMenu_OpenConfigFolder_Click"
+                          ToolTip="Opens the folder where KaneCode stores its settings and config files." />
+                <Separator />
                 <MenuItem Header="_About" />
             </MenuItem>
             <!-- Quick Build and Run Buttons (Right side) -->

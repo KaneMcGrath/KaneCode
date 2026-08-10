@@ -425,6 +425,34 @@ public partial class MainWindow : Window
         OpenLaunchSettingsDialog();
     }
 
+    /// <summary>
+    /// Opens the folder where KaneCode stores its settings and config files.
+    /// In portable mode this is the "portable" folder next to the executable;
+    /// otherwise it is <c>%LocalAppData%\KaneCode</c>.
+    /// </summary>
+    private void HelpMenu_OpenConfigFolder_Click(object? sender, RoutedEventArgs e)
+    {
+        try
+        {
+            string configFolder = PortablePathProvider.BaseDirectory;
+
+            // The settings folder is normally created at startup, but make sure it
+            // exists so the user always lands on an existing folder.
+            Directory.CreateDirectory(configFolder);
+
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = configFolder,
+                UseShellExecute = true
+            });
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(this, $"Could not open the config folder:\n{ex.Message}",
+                "Open Config Folder", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
+
     private void OpenLaunchSettingsDialog()
     {
         BuildTargetItem? target = _viewModel.SelectedBuildTarget;
