@@ -136,6 +136,8 @@ internal sealed class WriteFileTool : IAgentTool
 
         try
         {
+            bool existedBeforeWrite = File.Exists(resolvedPath);
+
             string? directory = Path.GetDirectoryName(resolvedPath);
             if (!string.IsNullOrWhiteSpace(directory))
             {
@@ -146,8 +148,26 @@ internal sealed class WriteFileTool : IAgentTool
             _onFileChanged?.Invoke(resolvedPath);
 
             int bytes = System.Text.Encoding.UTF8.GetByteCount(content);
-            return Task.FromResult(ToolCallResult.Ok(
-                $"Wrote {bytes} bytes to '{resolvedPath}'."));
+            int chars = content.Length;
+            int lineCount = ToolResultDetails.CountLines(content);
+            string summary = $"Wrote {bytes} bytes to '{resolvedPath}'.";
+
+            string? projectRoot = GetProjectRootSafely();
+            string displayPath = ToolResultDetails.GetDisplayPath(resolvedPath, projectRoot);
+
+            var sb = new System.Text.StringBuilder();
+            sb.AppendLine(existedBeforeWrite ? $"Overwrote '{displayPath}'" : $"Created '{displayPath}'");
+            sb.AppendLine($"{ToolResultDetails.FormatByteSize(bytes)} · {chars:N0} chars · {lineCount:N0} lines");
+
+            string? preview = ToolResultDetails.BuildContentPreview(content);
+            if (preview is not null)
+            {
+                sb.AppendLine();
+                sb.AppendLine("Preview:");
+                sb.AppendLine(preview);
+            }
+
+            return Task.FromResult(ToolCallResult.OkWithDetails(summary, sb.ToString().TrimEnd()));
         }
         catch (IOException ex)
         {
@@ -164,6 +184,22 @@ internal sealed class WriteFileTool : IAgentTool
         catch (NotSupportedException ex)
         {
             return Task.FromResult(ToolCallResult.Fail($"Unsupported path: {ex.Message}"));
+        }
+    }
+
+    /// <summary>
+    /// Resolves the project root for display purposes, or null when no project
+    /// is loaded (e.g. direct tool invocation in tests). Never throws.
+    /// </summary>
+    private string? GetProjectRootSafely()
+    {
+        try
+        {
+            return AgentToolPathResolver.GetProjectRootDirectory(_projectRootProvider);
+        }
+        catch
+        {
+            return null;
         }
     }
 

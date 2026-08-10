@@ -15,8 +15,20 @@ internal sealed record ToolCallResult
     /// </summary>
     public string Output { get; init; } = string.Empty;
 
-    /// <summary>Error message returned to the model on failure.</summary>
+    /// <summary>
+    /// Error message returned to the model on failure.
+    /// </summary>
     public string? Error { get; init; }
+
+    /// <summary>
+    /// Optional rich, human-readable detail content displayed in the chat panel
+    /// inside the tool-call section when the tool succeeds.
+    ///
+    /// Unlike <see cref="Output"/>, this text is <b>not</b> sent back to the
+    /// model — it is UI-only, so tools can surface useful diagnostics (file
+    /// stats, line ranges, diff previews) without consuming context budget.
+    /// </summary>
+    public string? Details { get; init; }
 
     /// <summary>
     /// Optional SVG markup content to be rendered inline in the chat.
@@ -26,6 +38,19 @@ internal sealed record ToolCallResult
 
     /// <summary>Creates a successful result with the given output.</summary>
     public static ToolCallResult Ok(string output) => new() { Success = true, Output = output };
+
+    /// <summary>
+    /// Creates a successful result with concise model-facing output plus
+    /// richer UI-only detail content. The <paramref name="output"/> text is
+    /// returned to the model; <paramref name="details"/> is rendered only in
+    /// the chat panel's tool-call section.
+    /// </summary>
+    public static ToolCallResult OkWithDetails(string output, string details) => new()
+    {
+        Success = true,
+        Output = output,
+        Details = details
+    };
 
     /// <summary>
     /// Creates a successful result with SVG content to be rendered inline.

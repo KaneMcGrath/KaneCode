@@ -2076,6 +2076,24 @@ public partial class AiChatPanel : UserControl
         return true;
     }
 
+    /// <summary>
+    /// Reconstructs a <see cref="ToolCallResult"/> when re-rendering a persisted
+    /// tool message. Carries the saved <paramref name="details"/> so the rich
+    /// UI-only detail content (file stats, diff previews) is retained across
+    /// conversation reloads.
+    /// </summary>
+    private static ToolCallResult BuildToolCallResult(string output, bool success, string? details)
+    {
+        if (!success)
+        {
+            return ToolCallResult.Fail(output);
+        }
+
+        return string.IsNullOrWhiteSpace(details)
+            ? ToolCallResult.Ok(output)
+            : ToolCallResult.OkWithDetails(output, details);
+    }
+
     private void ClearConversationReferences()
     {
         AiConversation conversation = EnsureActiveConversation();
@@ -2809,9 +2827,7 @@ public partial class AiChatPanel : UserControl
                         toolCallBlocks.TryGetValue(message.ToolCallId, out ToolCallSectionVisual? toolCallBlock))
                     {
                         TryParseToolResult(message.Content, out bool success, out string resultText);
-                        ToolCallResult toolCallResult = success
-                            ? ToolCallResult.Ok(resultText)
-                            : ToolCallResult.Fail(resultText);
+                        ToolCallResult toolCallResult = BuildToolCallResult(resultText, success, message.Details);
                         FinalizeToolCallBlock(toolCallBlock, toolCallResult);
                     }
                     else
@@ -5307,6 +5323,7 @@ public partial class AiChatPanel : UserControl
                         AiChatMessage toolMessage = new(AiChatRole.Tool, resultContent)
                         {
                             ToolCallId = item.ToolCallId,
+                            Details = result.Details,
                             Images = toolMessageImages
                         };
                         AddMessageToHistories(requestConversationHistory, toolMessage);
@@ -6292,9 +6309,7 @@ public partial class AiChatPanel : UserControl
                         toolCallBlocks.TryGetValue(message.ToolCallId, out ToolCallSectionVisual? toolCallBlock))
                     {
                         TryParseToolResult(message.Content, out bool success, out string resultText);
-                        ToolCallResult toolCallResult = success
-                            ? ToolCallResult.Ok(resultText)
-                            : ToolCallResult.Fail(resultText);
+                        ToolCallResult toolCallResult = BuildToolCallResult(resultText, success, message.Details);
                         FinalizeToolCallBlock(toolCallBlock, toolCallResult);
                     }
                     else
@@ -7343,7 +7358,9 @@ public partial class AiChatPanel : UserControl
         if (result.Success)
         {
             Brush successForeground = FindBrush(GetToolCallHeaderForegroundKey(success: true));
-            block.ResultBlock.Text = result.Output;
+            block.ResultBlock.Text = string.IsNullOrWhiteSpace(result.Details)
+                ? result.Output
+                : result.Details;
             block.ResultBlock.Foreground = successForeground;
             SetInlineSectionForeground(block.Section, successForeground);
         }

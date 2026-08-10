@@ -317,10 +317,51 @@ internal sealed class EditFileTool : IAgentTool
             return Task.FromResult(ToolCallResult.Fail($"Access denied: {ex.Message}"));
         }
 
-        // Calculate line number in the normalized content
-        int lineNumber = GetLineNumber(normalizedContent, match.StartIndex);
-        return Task.FromResult(ToolCallResult.Ok(
-            $"Edit applied at line {lineNumber} in '{resolvedPath}'."));
+        // Calculate line numbers in the normalized content
+        int startLine = GetLineNumber(normalizedContent, match.StartIndex);
+        int removedLineCount = ToolResultDetails.CountLines(oldText);
+        int addedLineCount = ToolResultDetails.CountLines(newText);
+        int endLine = startLine + Math.Max(0, removedLineCount - 1);
+
+        string summary = $"Edit applied at line {startLine} in '{resolvedPath}'.";
+
+        string? projectRoot = GetProjectRootSafely();
+        string displayPath = ToolResultDetails.GetDisplayPath(resolvedPath, projectRoot);
+
+        var sb = new System.Text.StringBuilder();
+        sb.AppendLine($"Edited '{displayPath}'");
+        sb.AppendLine(endLine == startLine ? $"Line {startLine}" : $"Lines {startLine}-{endLine}");
+
+        if (removedLineCount != addedLineCount)
+        {
+            sb.AppendLine($"Removed {removedLineCount} line(s), added {addedLineCount} line(s)");
+        }
+
+        string diff = ToolResultDetails.BuildLineDiff(oldText, newText);
+        if (!string.IsNullOrWhiteSpace(diff))
+        {
+            sb.AppendLine();
+            sb.AppendLine("Diff:");
+            sb.AppendLine(diff);
+        }
+
+        return Task.FromResult(ToolCallResult.OkWithDetails(summary, sb.ToString().TrimEnd()));
+    }
+
+    /// <summary>
+    /// Resolves the project root for display purposes, or null when no project
+    /// is loaded (e.g. direct tool invocation in tests). Never throws.
+    /// </summary>
+    private string? GetProjectRootSafely()
+    {
+        try
+        {
+            return AgentToolPathResolver.GetProjectRootDirectory(_projectRootProvider);
+        }
+        catch
+        {
+            return null;
+        }
     }
 
     /// <summary>

@@ -51,6 +51,15 @@ internal sealed record AiChatMessage(AiChatRole Role, string Content)
     public string? ToolCallId { get; init; }
 
     /// <summary>
+    /// Optional rich, human-readable detail content shown in the chat panel's
+    /// tool-call section (e.g. file stats or a diff preview). Populated from
+    /// <see cref="ToolCallResult.Details"/> on <see cref="AiChatRole.Tool"/>
+    /// messages so the detail survives conversation save/reload.
+    /// This text is never sent to the model.
+    /// </summary>
+    public string? Details { get; init; }
+
+    /// <summary>
     /// Images attached to a user message for vision-capable providers.
     /// Each entry contains base64-encoded image data and its MIME type.
     /// When set, the provider serializes <c>content</c> as an array of

@@ -290,7 +290,8 @@ internal sealed class Agent : IAgent
 
                 AiChatMessage toolMessage = new(AiChatRole.Tool, resultContent)
                 {
-                    ToolCallId = toolCallId
+                    ToolCallId = toolCallId,
+                    Details = result.Details
                 };
                 _messages.Add(toolMessage);
                 requestHistory.Add(toolMessage);

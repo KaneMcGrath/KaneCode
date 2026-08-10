@@ -220,4 +220,60 @@ public sealed class EditFileToolEngineTests : IDisposable
         Assert.Equal("30", defaults["timeout"].GetRawText());
         Assert.Equal("true", defaults["require_confirmation"].GetRawText());
     }
+
+    [Fact]
+    public async Task WhenEditSucceedsThenDetailsContainPathLineRangeAndDiff()
+    {
+        string path = Path.Combine(_tempDir, "detail.txt");
+        await File.WriteAllTextAsync(path, "line one\nline two\nline three\n");
+
+        ToolCallResult result = await ExecuteEditAsync("detail.txt", "line two", "LINE TWO");
+
+        Assert.True(result.Success, result.Error);
+        Assert.NotNull(result.Details);
+        // Path is shown relative to the project root.
+        Assert.Contains("detail.txt", result.Details, StringComparison.Ordinal);
+        // The edit is at line 2.
+        Assert.Contains("Line 2", result.Details, StringComparison.Ordinal);
+        // The diff shows the removed and added lines.
+        Assert.Contains("- line two", result.Details, StringComparison.Ordinal);
+        Assert.Contains("+ LINE TWO", result.Details, StringComparison.Ordinal);
+        // Model-facing output stays concise.
+        Assert.StartsWith("Edit applied at line 2 in '", result.Output, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task WhenEditChangesLineCountThenDetailsReportRemovedAndAdded()
+    {
+        string path = Path.Combine(_tempDir, "multiline.txt");
+        await File.WriteAllTextAsync(path, "alpha\nbeta\ngamma\ndelta\n");
+
+        ToolCallResult result = await ExecuteEditAsync(
+            "multiline.txt",
+            "beta\ngamma",
+            "BETA AND GAMMA");
+
+        Assert.True(result.Success, result.Error);
+        Assert.NotNull(result.Details);
+        // Two lines removed (lines 2-3), one line added.
+        Assert.Contains("Lines 2-3", result.Details, StringComparison.Ordinal);
+        Assert.Contains("Removed 2 line(s), added 1 line(s)", result.Details, StringComparison.Ordinal);
+        Assert.Contains("- beta", result.Details, StringComparison.Ordinal);
+        Assert.Contains("- gamma", result.Details, StringComparison.Ordinal);
+        Assert.Contains("+ BETA AND GAMMA", result.Details, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task WhenEditSucceedsThenDetailsDoNotConsumeModelOutput()
+    {
+        string path = Path.Combine(_tempDir, "output.txt");
+        await File.WriteAllTextAsync(path, "same\n");
+
+        ToolCallResult result = await ExecuteEditAsync("output.txt", "same", "changed");
+
+        Assert.True(result.Success, result.Error);
+        // Output stays the concise, model-bound text; the rich detail is separate.
+        Assert.Equal("Edit applied at line 1 in '" + Path.Combine(_tempDir, "output.txt") + "'.", result.Output);
+        Assert.NotEqual(result.Output, result.Details);
+    }
 }

@@ -41,6 +41,25 @@ public class ToolCallResultTests
     }
 
     [Fact]
+    public void WhenOkWithDetailsCalledThenSuccessOutputAndDetailsAreSet()
+    {
+        ToolCallResult result = ToolCallResult.OkWithDetails("Wrote 10 bytes to 'file.txt'.", "Created 'file.txt'\n10 B · 10 chars · 1 line");
+
+        Assert.True(result.Success);
+        Assert.Equal("Wrote 10 bytes to 'file.txt'.", result.Output);
+        Assert.Equal("Created 'file.txt'\n10 B · 10 chars · 1 line", result.Details);
+        Assert.Null(result.Error);
+    }
+
+    [Fact]
+    public void WhenOkCalledThenDetailsDefaultsToNull()
+    {
+        ToolCallResult result = ToolCallResult.Ok("output");
+
+        Assert.Null(result.Details);
+    }
+
+    [Fact]
     public void WhenTwoOkResultsHaveSameOutputThenTheyAreEqual()
     {
         ToolCallResult result1 = ToolCallResult.Ok("data");

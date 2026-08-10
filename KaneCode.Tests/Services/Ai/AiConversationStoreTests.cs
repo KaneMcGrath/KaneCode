@@ -51,6 +51,39 @@ public sealed class AiConversationStoreTests : IDisposable
     }
 
     [Fact]
+    public void WhenSavingToolMessageWithDetailsThenDetailsRoundTrip()
+    {
+        AiConversation conversation = new()
+        {
+            Title = "Tool details"
+        };
+        conversation.Messages.Add(new AiChatMessage(AiChatRole.Assistant, "Let me edit the file.")
+        {
+            ToolCalls = [new AiToolCallRequest("call-1", "edit", """{"filePath":"Program.cs","oldText":"old","newText":"new"}""")]
+        });
+        conversation.Messages.Add(new AiChatMessage(AiChatRole.Tool, "Edit applied at line 1 in 'Program.cs'.")
+        {
+            ToolCallId = "call-1",
+            Details = "Edited 'Program.cs'\nLine 1\nDiff:\n- old\n+ new"
+        });
+
+        AiConversationState state = new()
+        {
+            ActiveConversationId = conversation.Id
+        };
+        state.Conversations.Add(conversation);
+
+        AiConversationStore.SaveState(_projectKey, state);
+
+        AiConversationState loadedState = AiConversationStore.LoadState(_projectKey);
+
+        AiChatMessage toolMessage = Assert.Single(
+            loadedState.Conversations[0].Messages, m => m.Role == AiChatRole.Tool);
+        Assert.Equal("Edit applied at line 1 in 'Program.cs'.", toolMessage.Content);
+        Assert.Equal("Edited 'Program.cs'\nLine 1\nDiff:\n- old\n+ new", toolMessage.Details);
+    }
+
+    [Fact]
     public void WhenLoadingLegacyHistoryThenSingleConversationIsCreated()
     {
         string filePath = GetHistoryFilePath(_projectKey);

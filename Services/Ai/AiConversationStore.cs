@@ -137,6 +137,7 @@ internal static class AiConversationStore
             Content = message.Content,
             ThinkingContent = message.ThinkingContent,
             ToolCallId = message.ToolCallId,
+            Details = message.Details,
             ToolCalls = message.ToolCalls?.Select(tc => new AiToolCallRequestRecord
             {
                 Id = tc.Id,
@@ -178,6 +179,7 @@ internal static class AiConversationStore
         {
             ThinkingContent = record.ThinkingContent,
             ToolCallId = record.ToolCallId,
+            Details = record.Details,
             ToolCalls = record.ToolCalls?.Select(tc => new AiToolCallRequest(tc.Id, tc.FunctionName, tc.ArgumentsJson)).ToList()
         };
     }
@@ -263,6 +265,8 @@ internal static class AiConversationStore
         public string? ThinkingContent { get; init; }
 
         public string? ToolCallId { get; init; }
+
+        public string? Details { get; init; }
 
         public List<AiToolCallRequestRecord>? ToolCalls { get; init; }
     }
