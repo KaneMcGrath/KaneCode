@@ -85,6 +85,10 @@ public partial class MainWindow : Window
         RegisterAiChatModes();
         RegisterAgentTools();
         WirePresentationOverlay();
+
+        // Reset the view model's active event when the panel is cleared so output
+        // received after clearing starts a fresh event instead of a detached one.
+        BuildOutput.ClearRequested += (_, _) => _viewModel.ClearBuildOutput();
     }
 
     /// <summary>
@@ -825,12 +829,25 @@ public partial class MainWindow : Window
 
     private AiBuildOutputSnapshot? GetBuildOutputSnapshot()
     {
-        if (string.IsNullOrWhiteSpace(_viewModel.BuildSummary) && _viewModel.BuildOutputLines.Count == 0)
+        if (string.IsNullOrWhiteSpace(_viewModel.BuildSummary) && _viewModel.BuildOutputEvents.Count == 0)
         {
             return null;
         }
 
-        return new AiBuildOutputSnapshot(_viewModel.BuildSummary, _viewModel.BuildOutputLines.ToList());
+        // Flatten the per-event text areas into a single line list for AI context,
+        // separating events with a blank line.
+        List<string> lines = [];
+        foreach (BuildOutputEvent outputEvent in _viewModel.BuildOutputEvents)
+        {
+            if (lines.Count > 0)
+            {
+                lines.Add(string.Empty);
+            }
+
+            lines.AddRange(outputEvent.Lines);
+        }
+
+        return new AiBuildOutputSnapshot(_viewModel.BuildSummary, lines);
     }
 
     /// <summary>

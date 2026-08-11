@@ -559,7 +559,7 @@ ResizeMode="CanResizeWithGrip">
                                                          CanAutoHide="True"
                                                          ContentId="BuildOutputPane">
                                 <controls:BuildOutputPanel x:Name="BuildOutput"
-                                                           OutputLines="{Binding BuildOutputLines}"
+                                                           OutputEvents="{Binding BuildOutputEvents}"
                                                            BuildSummary="{Binding BuildSummary}" />
                             </avalonDock:LayoutAnchorable>
                             <avalonDock:LayoutAnchorable x:Name="FindReferencesAnchorable" Title="Find References"

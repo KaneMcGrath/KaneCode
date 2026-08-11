@@ -30,25 +30,14 @@
             </DockPanel>
         </Border>
 
-        <!-- Output text (selectable read-only TextBox so users can copy output) -->
+        <!-- Each build/run/test event is rendered in its own read-only text area,
+             separated from the previous event by a horizontal rule. The sections
+             are built in code-behind as events are added to OutputEvents. -->
         <ScrollViewer x:Name="OutputScroller"
                       VerticalScrollBarVisibility="Auto"
                       HorizontalScrollBarVisibility="Auto"
                       Background="{DynamicResource ErrorListBackground}">
-            <TextBox x:Name="OutputText"
-                     FontFamily="Cascadia Code, Consolas, Courier New"
-                     FontSize="12"
-                     Foreground="{DynamicResource ErrorListForeground}"
-                     Padding="8,4"
-                     TextWrapping="NoWrap"
-                     IsReadOnly="True"
-                     BorderThickness="0"
-                     Background="Transparent"
-                     AcceptsReturn="True"
-                     AcceptsTab="True"
-                     VerticalScrollBarVisibility="Hidden"
-                     HorizontalScrollBarVisibility="Hidden"
-                     IsReadOnlyCaretVisible="False" />
+            <StackPanel x:Name="EventsPanel" />
         </ScrollViewer>
     </DockPanel>
 </UserControl>

@@ -348,9 +348,13 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
     public ObservableCollection<OpenFileTab> OpenTabs { get; } = [];
 
     /// <summary>
-    /// Output lines from build/run processes, displayed in the Build Output panel.
+    /// Build/run/test events displayed in the Build Output panel. Each event keeps
+    /// its own lines so the panel can show every event in a separate text area,
+    /// separated from previous events by a horizontal rule.
     /// </summary>
-    public ObservableCollection<string> BuildOutputLines { get; } = [];
+    public ObservableCollection<BuildOutputEvent> BuildOutputEvents { get; } = [];
+
+    private BuildOutputEvent? _activeBuildOutputEvent;
 
     private string _buildSummary = string.Empty;
     /// <summary>Summary text shown in the Build Output panel header.</summary>
@@ -4522,19 +4526,19 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
         ArgumentException.ThrowIfNullOrWhiteSpace(operationName);
         ArgumentNullException.ThrowIfNull(operation);
 
-        BuildOutputLines.Clear();
         BuildSummary = $"Git {operationName}...";
-        BuildOutputLines.Add($"> git {operationName.ToLowerInvariant()}");
-        BuildOutputLines.Add(string.Empty);
+        var outputEvent = BeginBuildOutputEvent();
+        outputEvent.AppendLine($"> git {operationName.ToLowerInvariant()}");
+        outputEvent.AppendLine(string.Empty);
 
-        var progress = new Progress<string>(line => BuildOutputLines.Add(line));
+        var progress = new Progress<string>(line => AppendBuildOutputLine(line));
 
         try
         {
             await operation(progress).ConfigureAwait(true);
             BuildSummary = $"Git {operationName} succeeded";
-            BuildOutputLines.Add(string.Empty);
-            BuildOutputLines.Add($"Git {operationName} completed successfully.");
+            AppendBuildOutputLine(string.Empty);
+            AppendBuildOutputLine($"Git {operationName} completed successfully.");
 
             RefreshGitStatus();
             UpdateGitRepositoryState();
@@ -4542,24 +4546,24 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
         catch (OperationCanceledException)
         {
             BuildSummary = $"Git {operationName} cancelled";
-            BuildOutputLines.Add("Operation cancelled.");
+            AppendBuildOutputLine("Operation cancelled.");
         }
         catch (ArgumentException ex)
         {
             BuildSummary = $"Git {operationName} failed";
-            BuildOutputLines.Add($"Error: {ex.Message}");
+            AppendBuildOutputLine($"Error: {ex.Message}");
             MessageBox.Show(ex.Message, $"Git {operationName}", MessageBoxButton.OK, MessageBoxImage.Warning);
         }
         catch (InvalidOperationException ex)
         {
             BuildSummary = $"Git {operationName} failed";
-            BuildOutputLines.Add($"Error: {ex.Message}");
+            AppendBuildOutputLine($"Error: {ex.Message}");
             MessageBox.Show(ex.Message, $"Git {operationName}", MessageBoxButton.OK, MessageBoxImage.Warning);
         }
         catch (LibGit2Sharp.LibGit2SharpException ex)
         {
             BuildSummary = $"Git {operationName} failed";
-            BuildOutputLines.Add($"Error: {ex.Message}");
+            AppendBuildOutputLine($"Error: {ex.Message}");
             MessageBox.Show($"Git {operationName} failed:\n{ex.Message}",
                 $"Git {operationName}", MessageBoxButton.OK, MessageBoxImage.Warning);
         }
@@ -4941,6 +4945,37 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
     }
 
     /// <summary>
+    /// Starts a new build/run/test event in the Build Output panel. Completed events
+    /// are preserved so the panel keeps every event in its own text area.
+    /// </summary>
+    private BuildOutputEvent BeginBuildOutputEvent()
+    {
+        _activeBuildOutputEvent = new BuildOutputEvent();
+        BuildOutputEvents.Add(_activeBuildOutputEvent);
+        return _activeBuildOutputEvent;
+    }
+
+    /// <summary>
+    /// Clears all build output events (invoked by the panel's Clear button).
+    /// </summary>
+    public void ClearBuildOutput()
+    {
+        BuildOutputEvents.Clear();
+        _activeBuildOutputEvent = null;
+    }
+
+    /// <summary>
+    /// Appends a line to the current build output event, creating one if necessary
+    /// (e.g. output received after the panel was cleared mid-operation).
+    /// </summary>
+    private BuildOutputEvent AppendBuildOutputLine(string line)
+    {
+        BuildOutputEvent outputEvent = _activeBuildOutputEvent ??= BeginBuildOutputEvent();
+        outputEvent.AppendLine(line);
+        return outputEvent;
+    }
+
+    /// <summary>
     /// Builds the currently selected build target (solution or project) using the selected configuration.
     /// </summary>
     private async Task BuildProjectAsync()
@@ -4952,10 +4987,10 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
         }
 
         BeginBuildOperation(BuildOperation.Build, null);
-        BuildOutputLines.Clear();
         BuildSummary = $"Building ({_selectedConfiguration})...";
-        BuildOutputLines.Add($"> dotnet build \"{target.FullPath}\" --configuration {_selectedConfiguration}");
-        BuildOutputLines.Add(string.Empty);
+        var outputEvent = BeginBuildOutputEvent();
+        outputEvent.AppendLine($"> dotnet build \"{target.FullPath}\" --configuration {_selectedConfiguration}");
+        outputEvent.AppendLine(string.Empty);
 
         await _buildService.BuildAsync(target.FullPath, _selectedConfiguration).ConfigureAwait(false);
     }
@@ -4973,12 +5008,12 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
 
         var runnableProjectPath = ResolveRunnableProjectPath();
 
-        BuildOutputLines.Clear();
         if (string.IsNullOrEmpty(runnableProjectPath))
         {
             BuildSummary = "Run failed";
-            BuildOutputLines.Add("No runnable project (.csproj) could be resolved from the current selection.");
-            BuildOutputLines.Add("Select a .csproj target or load a project directly.");
+            var failureEvent = BeginBuildOutputEvent();
+            failureEvent.AppendLine("No runnable project (.csproj) could be resolved from the current selection.");
+            failureEvent.AppendLine("Select a .csproj target or load a project directly.");
             return;
         }
 
@@ -5002,9 +5037,10 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
         BuildSummary = string.IsNullOrWhiteSpace(profile?.Name)
             ? $"Running ({_selectedConfiguration})..."
             : $"Running {profile.Name} ({_selectedConfiguration})...";
-        BuildOutputLines.Add($"> dotnet run --project \"{runnableProjectPath}\" --configuration {_selectedConfiguration}"
+        var outputEvent = BeginBuildOutputEvent();
+        outputEvent.AppendLine($"> dotnet run --project \"{runnableProjectPath}\" --configuration {_selectedConfiguration}"
             + (string.IsNullOrWhiteSpace(profileArguments) ? string.Empty : $" -- {profileArguments}"));
-        BuildOutputLines.Add(string.Empty);
+        outputEvent.AppendLine(string.Empty);
 
         await _buildService.RunProjectAsync(
             runnableProjectPath,
@@ -5060,7 +5096,7 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
 
     private void OnBuildOutputReceived(string line)
     {
-        Application.Current.Dispatcher.BeginInvoke(() => BuildOutputLines.Add(line));
+        Application.Current.Dispatcher.BeginInvoke(() => AppendBuildOutputLine(line));
     }
 
     private void OnBuildProcessExited(int exitCode)
@@ -5068,8 +5104,8 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
         Application.Current.Dispatcher.BeginInvoke(() =>
         {
             BuildOperation completedOperation = _activeBuildOperation;
-            BuildOutputLines.Add(string.Empty);
-            BuildOutputLines.Add(GetProcessExitLine(exitCode, _isOperationCancellationRequested));
+            AppendBuildOutputLine(string.Empty);
+            AppendBuildOutputLine(GetProcessExitLine(exitCode, _isOperationCancellationRequested));
             BuildSummary = GetBuildSummary(completedOperation, exitCode, _isOperationCancellationRequested);
             EndBuildOperation(completedOperation);
         });
