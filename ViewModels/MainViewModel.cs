@@ -57,7 +57,7 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
     private readonly TemplateService _templateService = new();
     private RoslynClassificationColorizer? _classificationColorizer;
     private RoslynDiagnosticRenderer? _diagnosticRenderer;
-    private GitGutterChangeRenderer? _gitGutterRenderer;
+    private GitChangeMargin? _gitGutterMargin;
     private LightBulbMargin? _lightBulbMargin;
     private SearchPanel? _searchPanel;
     private CompletionWindow? _completionWindow;
@@ -686,12 +686,14 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
         _diagnosticRenderer = new RoslynDiagnosticRenderer();
         _editor.TextArea.TextView.BackgroundRenderers.Add(_diagnosticRenderer);
 
-        _gitGutterRenderer = new GitGutterChangeRenderer();
-        _editor.TextArea.TextView.BackgroundRenderers.Add(_gitGutterRenderer);
+        // Git change indicators (VS Code style) live in the far-left gutter, with the
+        // lightbulb margin immediately to their right, then line numbers and folds.
+        _gitGutterMargin = new GitChangeMargin();
+        _editor.TextArea.LeftMargins.Insert(0, _gitGutterMargin);
 
         _lightBulbMargin = new LightBulbMargin();
         _lightBulbMargin.GlyphClicked += OnLightBulbGlyphClicked;
-        _editor.TextArea.LeftMargins.Insert(0, _lightBulbMargin);
+        _editor.TextArea.LeftMargins.Insert(1, _lightBulbMargin);
 
         _searchPanel = SearchPanel.Install(_editor.TextArea);
 
@@ -4282,7 +4284,7 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
 
     private void UpdateGitGutterMarkers()
     {
-        if (_gitGutterRenderer is null || _editor is null || ActiveTab is null)
+        if (_gitGutterMargin is null || _editor is null || ActiveTab is null)
         {
             return;
         }
@@ -4290,8 +4292,7 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
         if (!_gitService.IsRepositoryOpen || !_gitService.TryGetRelativePath(ActiveTab.FilePath, out var relativePath) || string.IsNullOrWhiteSpace(relativePath))
         {
             _gitGutterCts?.Cancel();
-            _gitGutterRenderer.UpdateChanges([]);
-            _editor.TextArea.TextView.Redraw();
+            _gitGutterMargin.UpdateChanges([]);
             return;
         }
 
@@ -4320,11 +4321,10 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
 
             string headText = _gitService.GetHeadFileText(relativePath);
             string currentText = document.Text;
-            int currentLineCount = document.LineCount;
 
             // The pure line-diff runs on a background thread.
             IReadOnlyList<GitLineChange> changes = await Task.Run(
-                () => BuildGitLineChanges(headText, currentText, currentLineCount),
+                () => GitLineDiff.ComputeChanges(headText, currentText),
                 cancellationToken).ConfigureAwait(false);
 
             cancellationToken.ThrowIfCancellationRequested();
@@ -4337,8 +4337,7 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
                     return;
                 }
 
-                _gitGutterRenderer?.UpdateChanges(changes);
-                _editor?.TextArea.TextView.Redraw();
+                _gitGutterMargin?.UpdateChanges(changes);
             }, System.Windows.Threading.DispatcherPriority.Background, cancellationToken);
         }
         catch (OperationCanceledException)
@@ -4350,41 +4349,6 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
             // The gutter is best-effort; never let a git read failure disrupt editing.
             Debug.WriteLine($"Git gutter update failed for '{filePath}': {ex.Message}");
         }
-    }
-
-    private static IReadOnlyList<GitLineChange> BuildGitLineChanges(string headText, string currentText, int currentLineCount)
-    {
-        var headLines = headText.Replace("\r\n", "\n", StringComparison.Ordinal).Replace('\r', '\n').Split('\n');
-        var currentLines = currentText.Replace("\r\n", "\n", StringComparison.Ordinal).Replace('\r', '\n').Split('\n');
-
-        var changes = new List<GitLineChange>();
-        var maxLines = Math.Max(headLines.Length, currentLines.Length);
-
-        for (var index = 0; index < maxLines; index++)
-        {
-            var hasHead = index < headLines.Length;
-            var hasCurrent = index < currentLines.Length;
-
-            if (!hasHead && hasCurrent)
-            {
-                changes.Add(new GitLineChange(index + 1, GitLineChangeType.Added));
-                continue;
-            }
-
-            if (hasHead && !hasCurrent)
-            {
-                var markerLine = Math.Min(index + 1, Math.Max(currentLineCount, 1));
-                changes.Add(new GitLineChange(markerLine, GitLineChangeType.Deleted));
-                continue;
-            }
-
-            if (!string.Equals(headLines[index], currentLines[index], StringComparison.Ordinal))
-            {
-                changes.Add(new GitLineChange(index + 1, GitLineChangeType.Modified));
-            }
-        }
-
-        return changes;
     }
 
     private async Task CheckoutSelectedBranchAsync(string? branchName)

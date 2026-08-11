@@ -1,5 +1,7 @@
 using ICSharpCode.AvalonEdit.Document;
 using ICSharpCode.AvalonEdit.Rendering;
+using KaneCode.Services;
+using System.Collections.Generic;
 using System.Windows.Controls;
 using System.Windows.Media;
 
@@ -38,35 +40,19 @@ public partial class GitDiffPanel : UserControl
 
     private void ApplyLineColorization(string leftText, string rightText)
     {
-        var leftLines = SplitLines(leftText);
-        var rightLines = SplitLines(rightText);
+        GitLineDiffResult result = GitLineDiff.ComputeSideChanges(leftText, rightText);
 
         var leftLineBrushes = new Dictionary<int, Brush>();
         var rightLineBrushes = new Dictionary<int, Brush>();
 
-        var maxLines = Math.Max(leftLines.Length, rightLines.Length);
-        for (var index = 0; index < maxLines; index++)
+        foreach (GitLineChange change in result.LeftChanges)
         {
-            var hasLeft = index < leftLines.Length;
-            var hasRight = index < rightLines.Length;
+            leftLineBrushes[change.LineNumber] = ResolveBrush(change.ChangeType);
+        }
 
-            if (!hasLeft && hasRight)
-            {
-                rightLineBrushes[index + 1] = s_addedBrush;
-                continue;
-            }
-
-            if (hasLeft && !hasRight)
-            {
-                leftLineBrushes[index + 1] = s_deletedBrush;
-                continue;
-            }
-
-            if (!string.Equals(leftLines[index], rightLines[index], StringComparison.Ordinal))
-            {
-                leftLineBrushes[index + 1] = s_modifiedBrush;
-                rightLineBrushes[index + 1] = s_modifiedBrush;
-            }
+        foreach (GitLineChange change in result.RightChanges)
+        {
+            rightLineBrushes[change.LineNumber] = ResolveBrush(change.ChangeType);
         }
 
         LeftEditor.TextArea.TextView.LineTransformers.Clear();
@@ -79,13 +65,12 @@ public partial class GitDiffPanel : UserControl
         RightEditor.TextArea.TextView.Redraw();
     }
 
-    private static string[] SplitLines(string text)
+    private static Brush ResolveBrush(GitLineChangeType changeType) => changeType switch
     {
-        return text
-            .Replace("\r\n", "\n", StringComparison.Ordinal)
-            .Replace('\r', '\n')
-            .Split('\n');
-    }
+        GitLineChangeType.Added => s_addedBrush,
+        GitLineChangeType.Deleted => s_deletedBrush,
+        _ => s_modifiedBrush
+    };
 
     private sealed class DiffLineColorizer : DocumentColorizingTransformer
     {
