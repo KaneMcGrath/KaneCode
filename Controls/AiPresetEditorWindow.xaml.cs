@@ -504,6 +504,9 @@ internal partial class AiPresetEditorWindow : Window
         PresetNameBox.Text = preset?.Name ?? string.Empty;
         SystemPromptBox.Text = preset?.SystemPrompt ?? string.Empty;
         DefaultPresetCheckBox.IsChecked = preset?.IsDefault == true;
+        SubagentCheckBox.IsChecked = preset?.IsSubagent == true;
+        SubagentDescriptionBox.Text = preset?.SubagentDescription ?? string.Empty;
+        UpdateSubagentDescriptionVisibility();
         _suppressEvents = false;
 
         BuildToolStates(preset);
@@ -512,6 +515,8 @@ internal partial class AiPresetEditorWindow : Window
         ToolsMainPanel.IsEnabled = editable;
         SystemPromptPanel.IsEnabled = editable;
         DefaultPresetCheckBox.IsEnabled = editable;
+        SubagentCheckBox.IsEnabled = editable;
+        SubagentDescriptionBox.IsEnabled = editable;
 
         if (editable && _toolStates.Count > 0)
         {
@@ -572,6 +577,12 @@ internal partial class AiPresetEditorWindow : Window
             StatusText.Text += $" · Default agent mode: {defaultPreset.Name}";
         }
 
+        int subagentCount = _presets.Count(p => p.IsSubagent);
+        if (subagentCount > 0)
+        {
+            StatusText.Text += $" · {subagentCount} subagent preset{(subagentCount == 1 ? "" : "s")}";
+        }
+
         if (_lastSaved is DateTime saved)
         {
             TimeSpan ago = DateTime.Now - saved;
@@ -597,6 +608,10 @@ internal partial class AiPresetEditorWindow : Window
 
         _currentPreset.Name = PresetNameBox.Text;
         _currentPreset.SystemPrompt = string.IsNullOrWhiteSpace(SystemPromptBox.Text) ? null : SystemPromptBox.Text;
+        _currentPreset.IsSubagent = SubagentCheckBox.IsChecked == true;
+        _currentPreset.SubagentDescription = string.IsNullOrWhiteSpace(SubagentDescriptionBox.Text)
+            ? null
+            : SubagentDescriptionBox.Text.Trim();
 
         int enabledCount = _toolStates.Values.Count(s => s.IsEnabled);
         _currentPreset.AllowedTools = enabledCount == _toolStates.Count
@@ -771,6 +786,8 @@ internal partial class AiPresetEditorWindow : Window
         {
             Name = $"{source.Name} (Copy)",
             SystemPrompt = source.SystemPrompt,
+            IsSubagent = source.IsSubagent,
+            SubagentDescription = source.SubagentDescription,
             AllowedTools = source.AllowedTools is null ? null : new HashSet<string>(source.AllowedTools, StringComparer.Ordinal),
             ToolDescriptions = clone.ToolDescriptions,
             PinnedParameters = clone.PinnedParameters,
@@ -828,6 +845,8 @@ internal partial class AiPresetEditorWindow : Window
         _currentPreset.Name = _revertSnapshot.Name;
         _currentPreset.SystemPrompt = _revertSnapshot.SystemPrompt;
         _currentPreset.IsDefault = _revertSnapshot.IsDefault;
+        _currentPreset.IsSubagent = _revertSnapshot.IsSubagent;
+        _currentPreset.SubagentDescription = _revertSnapshot.SubagentDescription;
         _currentPreset.AllowedTools = _revertSnapshot.AllowedTools is null
             ? null
             : new HashSet<string>(_revertSnapshot.AllowedTools, StringComparer.Ordinal);
@@ -915,6 +934,44 @@ internal partial class AiPresetEditorWindow : Window
         RefreshPresetSelector();
     }
 
+    private void SubagentCheckBox_Click(object sender, RoutedEventArgs e)
+    {
+        if (_suppressEvents || _currentPreset is null)
+        {
+            return;
+        }
+
+        _currentPreset.IsSubagent = SubagentCheckBox.IsChecked == true;
+        UpdateSubagentDescriptionVisibility();
+        MarkDirty();
+    }
+
+    private void SubagentDescriptionBox_TextChanged(object sender, TextChangedEventArgs e)
+    {
+        if (_suppressEvents || _currentPreset is null)
+        {
+            return;
+        }
+
+        _currentPreset.SubagentDescription =
+            string.IsNullOrWhiteSpace(SubagentDescriptionBox.Text)
+                ? null
+                : SubagentDescriptionBox.Text.Trim();
+        MarkDirty();
+    }
+
+    /// <summary>
+    /// Shows the single-line subagent description field only while the
+    /// "Set as subagent" checkbox is checked.
+    /// </summary>
+    private void UpdateSubagentDescriptionVisibility()
+    {
+        bool visible = SubagentCheckBox.IsChecked == true;
+        Visibility visibility = visible ? Visibility.Visible : Visibility.Collapsed;
+        SubagentDescriptionLabel.Visibility = visibility;
+        SubagentDescriptionBox.Visibility = visibility;
+    }
+
     // ── Search / filter / select all ───────────────────────────────
 
     private void ToolSearchBox_TextChanged(object sender, TextChangedEventArgs e)
@@ -992,7 +1049,7 @@ internal partial class AiPresetEditorWindow : Window
         int backendOptions = _toolStates.Values.Sum(s => s.OptionOverrides.Count);
 
         return
-            $"Schema version: 3 (ai-presets.json)\n" +
+            $"Schema version: 5 (ai-presets.json)\n" +
             $"Registered tools: {total}\n" +
             $"Tools with overrides: {overriddenTools}\n" +
             $"Pinned parameters: {pinnedParams}\n" +
@@ -1003,7 +1060,11 @@ internal partial class AiPresetEditorWindow : Window
             "hidden parameters (removed from the model-facing schema so the agent " +
             "never sees them), and backend options (execution configuration that is " +
             "never sent to the model). " +
-            "Tool definitions for the model are resolved at runtime by AgentToolRegistry.";
+            "Tool definitions for the model are resolved at runtime by AgentToolRegistry.\n\n" +
+            "A preset checked as \"Set as subagent\" becomes available to agents through " +
+            "the spawn_agent tool: its name (and the short description typed next to " +
+            "the checkbox) is listed in the spawn_agent tool description, and agents " +
+            "can delegate to it by passing the preset name in the tool's 'preset' parameter.";
     }
 
     private void SetTabActive(Button button, bool active)

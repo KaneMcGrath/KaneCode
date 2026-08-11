@@ -99,6 +99,19 @@ internal static class AiPresetManager
     }
 
     /// <summary>
+    /// Returns the presets currently marked as subagent presets (<see cref="AiPreset.IsSubagent"/>),
+    /// ordered by name. These are the presets an agent can reference via the spawn_agent
+    /// tool's <c>preset</c> parameter, and they are listed in the tool's description.
+    /// </summary>
+    public static IReadOnlyList<AiPreset> LoadSubagentPresets()
+    {
+        return Load()
+            .Where(p => p.IsSubagent)
+            .OrderBy(p => p.Name, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
+    /// <summary>
     /// Persists the given presets to disk.
     /// </summary>
     public static void Save(IReadOnlyList<AiPreset> presets)
@@ -111,11 +124,12 @@ internal static class AiPresetManager
 
             var container = new PresetContainer
             {
-                // v4 adds the default-preset flag (IsDefault). v3 added per-tool
-                // hidden (disabled) parameters. v2 added per-tool description
-                // overrides, pinned parameters, and backend option overrides.
-                // Older files load fine (new members default to null/false).
-                SchemaVersion = 4,
+                // v5 adds the subagent preset flag (IsSubagent) and its description
+                // (SubagentDescription). v4 added the default-preset flag (IsDefault).
+                // v3 added per-tool hidden (disabled) parameters. v2 added per-tool
+                // description overrides, pinned parameters, and backend option
+                // overrides. Older files load fine (new members default to null/false).
+                SchemaVersion = 5,
                 Presets = NormalizeDefaults([.. presets])
             };
 

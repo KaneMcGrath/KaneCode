@@ -281,6 +281,7 @@ internal sealed class AgentOrchestrator : IDisposable
         string? agentDisplayName = null;
         string? providerRef = null;
         string? model = null;
+        string? presetName = null;
         string? modeId = null;
         string? systemPrompt = null;
         int maxIterations = 50;
@@ -318,6 +319,15 @@ internal sealed class AgentOrchestrator : IDisposable
                 model = modelElement.GetString();
             }
 
+            if (args.TryGetProperty("preset", out JsonElement presetElement) &&
+                presetElement.ValueKind == JsonValueKind.String)
+            {
+                presetName = presetElement.GetString();
+            }
+
+            // Legacy fallback: the 'mode' parameter (built-in mode IDs and
+            // "preset:&lt;guid&gt;" references) is still honored so older tool
+            // calls keep working after the schema switched to 'preset'.
             if (args.TryGetProperty("mode", out JsonElement modeElement) &&
                 modeElement.ValueKind == JsonValueKind.String)
             {
@@ -350,10 +360,36 @@ internal sealed class AgentOrchestrator : IDisposable
             }
         }
 
-        // Resolve mode — supports built-in mode IDs and preset mode IDs
-        // (e.g. "preset:&lt;guid&gt;" copied from the chat panel's preset dropdown).
+        // Resolve mode. The 'preset' parameter accepts the name of a preset marked
+        // as a subagent (see the spawn_agent tool description, e.g. "Code Reviewer").
+        // Falls back to the parent's mode when omitted. The legacy 'mode' parameter
+        // (built-in mode IDs and "preset:&lt;guid&gt;" refs copied from the chat
+        // panel's preset dropdown) is still honored for backward compatibility.
         IAiChatMode? mode = parentAgent.Mode;
-        if (!string.IsNullOrWhiteSpace(modeId))
+        if (!string.IsNullOrWhiteSpace(presetName))
+        {
+            IReadOnlyList<AiPreset> subagentPresets = AiPresetManager.LoadSubagentPresets();
+            AiPreset? preset = subagentPresets.FirstOrDefault(p =>
+                string.Equals(p.Name, presetName, StringComparison.OrdinalIgnoreCase));
+
+            if (preset is not null)
+            {
+                mode = new PresetMode(preset, _toolRegistry);
+            }
+            else if (subagentPresets.Count == 0)
+            {
+                return ToolCallResult.Fail(
+                    $"Unknown subagent preset '{presetName}': no subagent presets are configured. " +
+                    "Open the Preset Editor and check \"Set as subagent\" on a preset to make it available.");
+            }
+            else
+            {
+                return ToolCallResult.Fail(
+                    $"Unknown subagent preset '{presetName}'. Available subagent presets: " +
+                    string.Join(", ", subagentPresets.Select(p => p.Name)) + ".");
+            }
+        }
+        else if (!string.IsNullOrWhiteSpace(modeId))
         {
             IAiChatMode? found = _modeRegistry.Get(modeId);
             if (found is not null)

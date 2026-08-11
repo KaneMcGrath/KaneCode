@@ -65,6 +65,7 @@
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
             </Grid.RowDefinitions>
 
             <!-- Row 1: selector + actions -->
@@ -172,6 +173,30 @@
                            Foreground="{DynamicResource ControlDisabledForeground}" HorizontalAlignment="Right"
                            VerticalAlignment="Center" />
             </Grid>
+
+            <!-- Row 3: subagent -->
+            <StackPanel Grid.Row="2" Orientation="Horizontal" Margin="0,8,0,0">
+                <CheckBox x:Name="SubagentCheckBox"
+                          Content="Set as subagent"
+                          FontSize="11.5"
+                          Foreground="{DynamicResource WindowForeground}"
+                          VerticalAlignment="Center"
+                          ToolTip="When checked, this preset becomes available to agents through the spawn_agent tool's 'preset' parameter. Its name (and the description below) is listed in the spawn_agent tool description so agents can delegate to it by name."
+                          Click="SubagentCheckBox_Click" />
+                <TextBlock x:Name="SubagentDescriptionLabel"
+                           Text="Description shown to agents:" FontSize="11.5"
+                           Foreground="{DynamicResource PanelHeaderForeground}"
+                           VerticalAlignment="Center"
+                           Margin="16,0,6,0"
+                           Visibility="Collapsed" />
+                <TextBox x:Name="SubagentDescriptionBox"
+                         MinHeight="22" MinWidth="380" MaxWidth="560"
+                         VerticalContentAlignment="Center"
+                         Padding="6,2"
+                         Visibility="Collapsed"
+                         ToolTip="Short, single-line description of this subagent preset. It appears next to the preset's name in the spawn_agent tool description so agents know when to delegate to it."
+                         TextChanged="SubagentDescriptionBox_TextChanged" />
+            </StackPanel>
         </Grid>
 
         <Border Grid.Row="0" Height="1" Background="{DynamicResource ControlBorder}" VerticalAlignment="Bottom" />

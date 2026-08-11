@@ -30,6 +30,21 @@ internal sealed class AiPreset
     public bool IsDefault { get; set; }
 
     /// <summary>
+    /// True when this preset is marked as a subagent preset, making it available
+    /// to agents through the spawn_agent tool's <c>preset</c> parameter (referenced
+    /// by name). Subagent presets are listed in the spawn_agent tool description so
+    /// agents know they can delegate to them.
+    /// </summary>
+    public bool IsSubagent { get; set; }
+
+    /// <summary>
+    /// Optional short, single-line description of this subagent preset. It is shown
+    /// next to the preset's name in the spawn_agent tool description so agents know
+    /// when to delegate to it. Only meaningful when <see cref="IsSubagent"/> is true.
+    /// </summary>
+    public string? SubagentDescription { get; set; }
+
+    /// <summary>
     /// Optional custom system prompt. When null/empty, no mode-level system prompt is injected.
     /// </summary>
     public string? SystemPrompt { get; set; }
@@ -82,6 +97,8 @@ internal sealed class AiPreset
             Id = Id,
             Name = Name,
             IsDefault = IsDefault,
+            IsSubagent = IsSubagent,
+            SubagentDescription = SubagentDescription,
             SystemPrompt = SystemPrompt,
             AllowedTools = AllowedTools is null
                 ? null

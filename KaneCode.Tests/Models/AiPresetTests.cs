@@ -12,6 +12,8 @@ public sealed class AiPresetTests
         {
             Name = "Prototype",
             IsDefault = true,
+            IsSubagent = true,
+            SubagentDescription = "Reviews code changes",
             SystemPrompt = "prompt",
             AllowedTools = new HashSet<string>(StringComparer.Ordinal) { "read", "write" },
             ToolDescriptions = new Dictionary<string, string>(StringComparer.Ordinal)
@@ -43,6 +45,8 @@ public sealed class AiPresetTests
         Assert.Equal(original.Id, clone.Id);
         Assert.Equal(original.Name, clone.Name);
         Assert.Equal(original.IsDefault, clone.IsDefault);
+        Assert.Equal(original.IsSubagent, clone.IsSubagent);
+        Assert.Equal(original.SubagentDescription, clone.SubagentDescription);
         Assert.NotSame(original.AllowedTools, clone.AllowedTools);
         Assert.NotSame(original.ToolDescriptions, clone.ToolDescriptions);
         Assert.NotSame(original.PinnedParameters, clone.PinnedParameters);
@@ -75,6 +79,8 @@ public sealed class AiPresetTests
         Assert.Null(clone.PinnedParameters);
         Assert.Null(clone.ToolOptions);
         Assert.Null(clone.HiddenParameters);
+        Assert.False(clone.IsSubagent);
+        Assert.Null(clone.SubagentDescription);
     }
 
     [Fact]
@@ -84,6 +90,8 @@ public sealed class AiPresetTests
         {
             Name = "Round Trip",
             IsDefault = true,
+            IsSubagent = true,
+            SubagentDescription = "Focused code reviewer",
             ToolDescriptions = new Dictionary<string, string>(StringComparer.Ordinal)
             {
                 ["write"] = "Write files carefully to {filePath}"
@@ -115,6 +123,8 @@ public sealed class AiPresetTests
         Assert.NotNull(deserialized);
         Assert.Equal(preset.Name, deserialized!.Name);
         Assert.True(deserialized.IsDefault);
+        Assert.True(deserialized.IsSubagent);
+        Assert.Equal("Focused code reviewer", deserialized.SubagentDescription);
         Assert.Equal("Write files carefully to {filePath}", deserialized.ToolDescriptions!["write"]);
         Assert.Equal("\"src/out.txt\"", deserialized.PinnedParameters!["write"]["filePath"].GetRawText());
         Assert.Equal("true", deserialized.PinnedParameters!["write"]["overwrite"].GetRawText());
@@ -143,6 +153,8 @@ public sealed class AiPresetTests
         Assert.Equal("Legacy", preset!.Name);
         Assert.Equal("old prompt", preset.SystemPrompt);
         Assert.False(preset.IsDefault);
+        Assert.False(preset.IsSubagent);
+        Assert.Null(preset.SubagentDescription);
         Assert.Equal(2, preset.AllowedTools!.Count);
         Assert.Null(preset.ToolDescriptions);
         Assert.Null(preset.PinnedParameters);

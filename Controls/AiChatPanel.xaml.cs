@@ -4275,8 +4275,9 @@ public partial class AiChatPanel : UserControl
     /// right-clicks an item in the dropdown, the copy targets that item; when the
     /// parent ComboBox is right-clicked (dropdown closed), the current selection
     /// is targeted. Preset items copy the preset's mode ID (<c>preset:&lt;guid&gt;</c>),
-    /// built-in mode items copy the mode ID — both are valid <c>mode</c> values for
-    /// the spawn_agent subagent tool.
+    /// built-in mode items copy the mode ID — both are accepted by the spawn_agent
+    /// tool's legacy <c>mode</c> fallback. Subagent presets are referenced by name
+    /// through the spawn_agent <c>preset</c> parameter instead.
     /// </summary>
     private void ModeSelector_ContextMenuOpening(object sender, ContextMenuEventArgs e)
     {
@@ -4294,13 +4295,13 @@ public partial class AiChatPanel : UserControl
         if (item is ModeDropdownPresetItem)
         {
             ModeCopyMenuItem.Header = "Copy preset";
-            ModeCopyMenuItem.ToolTip = "Copy the preset mode ID (e.g. preset:1a2b3c) — a valid value for the spawn_agent 'mode' parameter.";
+            ModeCopyMenuItem.ToolTip = "Copy the preset mode ID (e.g. preset:1a2b3c) — accepted by the spawn_agent tool's legacy 'mode' fallback. Subagent presets are referenced by name via the 'preset' parameter instead.";
             ModeCopyMenuItem.IsEnabled = true;
         }
         else if (item is ModeDropdownModeItem)
         {
             ModeCopyMenuItem.Header = "Copy mode";
-            ModeCopyMenuItem.ToolTip = "Copy the mode ID — a valid value for the spawn_agent 'mode' parameter.";
+            ModeCopyMenuItem.ToolTip = "Copy the mode ID — accepted by the spawn_agent tool's legacy 'mode' fallback. Prefer the 'preset' parameter with a subagent preset name.";
             ModeCopyMenuItem.IsEnabled = true;
         }
         else
@@ -5521,6 +5522,7 @@ public partial class AiChatPanel : UserControl
         string? displayName = null;
         string? providerId = null;
         string? modelOverride = null;
+        string? presetName = null;
         string? modeId = null;
         string? systemPrompt = null;
         int maxIterations = 50;
@@ -5540,6 +5542,8 @@ public partial class AiChatPanel : UserControl
                     providerId = provEl.GetString();
                 if (root.TryGetProperty("model", out JsonElement modelEl) && modelEl.ValueKind == JsonValueKind.String)
                     modelOverride = modelEl.GetString();
+                if (root.TryGetProperty("preset", out JsonElement presetEl) && presetEl.ValueKind == JsonValueKind.String)
+                    presetName = presetEl.GetString();
                 if (root.TryGetProperty("mode", out JsonElement modeEl) && modeEl.ValueKind == JsonValueKind.String)
                     modeId = modeEl.GetString();
                 if (root.TryGetProperty("systemPrompt", out JsonElement promptEl) && promptEl.ValueKind == JsonValueKind.String)
@@ -5565,9 +5569,35 @@ public partial class AiChatPanel : UserControl
             }
         }
 
-        // Resolve mode
+        // Resolve mode. The 'preset' parameter accepts the name of a preset marked
+        // as a subagent (see the spawn_agent tool description). Falls back to the
+        // parent's mode when omitted. The legacy 'mode' parameter (built-in mode
+        // IDs) is still honored for backward compatibility.
         IAiChatMode? mode = rootAgent.Mode;
-        if (!string.IsNullOrWhiteSpace(modeId) && _modeRegistry is not null)
+        if (!string.IsNullOrWhiteSpace(presetName))
+        {
+            IReadOnlyList<AiPreset> subagentPresets = AiPresetManager.LoadSubagentPresets();
+            AiPreset? preset = subagentPresets.FirstOrDefault(p =>
+                string.Equals(p.Name, presetName, StringComparison.OrdinalIgnoreCase));
+
+            if (preset is not null)
+            {
+                mode = new PresetMode(preset, _toolRegistry ?? new AgentToolRegistry());
+            }
+            else if (subagentPresets.Count == 0)
+            {
+                return ToolCallResult.Fail(
+                    $"Unknown subagent preset '{presetName}': no subagent presets are configured. " +
+                    "Open the Preset Editor and check \"Set as subagent\" on a preset to make it available.");
+            }
+            else
+            {
+                return ToolCallResult.Fail(
+                    $"Unknown subagent preset '{presetName}'. Available subagent presets: " +
+                    string.Join(", ", subagentPresets.Select(p => p.Name)) + ".");
+            }
+        }
+        else if (!string.IsNullOrWhiteSpace(modeId) && _modeRegistry is not null)
         {
             IAiChatMode? found = _modeRegistry.Get(modeId);
             if (found is not null)
