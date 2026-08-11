@@ -12,6 +12,7 @@ using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.Text;
 using Microsoft.Win32;
 using System.Collections.ObjectModel;
+using System.Collections.Specialized;
 using System.Diagnostics;
 using System.IO;
 using System.Windows;
@@ -247,6 +248,10 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
         _buildService.ProcessExited += OnBuildProcessExited;
         _gitService.StatusChanged += OnGitStatusChanged;
 
+        // Mirror file tabs and diff tabs into the combined editor tab strip.
+        OpenTabs.CollectionChanged += OnOpenTabsChanged;
+        DiffTabs.CollectionChanged += OnDiffTabsChanged;
+
         // Seed the run profile dropdown with the default fallback entry so the
         // run button always has something meaningful to display before a project loads.
         RefreshLaunchProfiles();
@@ -346,6 +351,19 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
     }
 
     public ObservableCollection<OpenFileTab> OpenTabs { get; } = [];
+
+    /// <summary>
+    /// Git diff tabs shown in the main editor area, opened on demand (e.g., from the
+    /// Git Changes panel) instead of in a permanently docked panel.
+    /// </summary>
+    public ObservableCollection<GitDiffTab> DiffTabs { get; } = [];
+
+    /// <summary>
+    /// Combined tab collection bound to the editor tab strip: every open file tab
+    /// followed by any open diff tabs. Kept in sync with <see cref="OpenTabs"/> and
+    /// <see cref="DiffTabs"/> so the tab strip shows both kinds of tabs.
+    /// </summary>
+    public ObservableCollection<object> EditorTabs { get; } = [];
 
     /// <summary>
     /// Build/run/test events displayed in the Build Output panel. Each event keeps
@@ -4795,6 +4813,7 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
         }
 
         OpenTabs.Clear();
+        DiffTabs.Clear();
         ActiveTab = null;
         DiagnosticItems.Clear();
         _diagnosticRenderer?.UpdateDiagnostics([]);
@@ -4867,6 +4886,133 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
         }
 
         OpenTabs.Move(fromIndex, toIndex);
+    }
+
+    // ── Diff tabs in the editor tab strip ─────────────────────────────
+
+    /// <summary>
+    /// Opens (or re-selects) a Git diff tab in the main editor area. If a diff tab
+    /// for the same relative path already exists, its content is refreshed instead
+    /// of creating a duplicate. Returns the tab that the caller should select.
+    /// </summary>
+    public GitDiffTab OpenDiffTab(GitDiffTab tab)
+    {
+        ArgumentNullException.ThrowIfNull(tab);
+
+        GitDiffTab? existing = DiffTabs.FirstOrDefault(d =>
+            string.Equals(d.RelativePath, tab.RelativePath, StringComparison.OrdinalIgnoreCase));
+        if (existing is not null)
+        {
+            existing.Update(tab.OriginalText, tab.ModifiedText);
+            return existing;
+        }
+
+        DiffTabs.Add(tab);
+        return tab;
+    }
+
+    /// <summary>Closes a Git diff tab.</summary>
+    public void CloseDiffTab(GitDiffTab tab)
+    {
+        ArgumentNullException.ThrowIfNull(tab);
+        DiffTabs.Remove(tab);
+    }
+
+    /// <summary>
+    /// Mirrors file tab changes into <see cref="EditorTabs"/>. File tabs always
+    /// occupy the leading segment of the editor tab strip, so their indices map
+    /// directly onto the combined collection.
+    /// </summary>
+    private void OnOpenTabsChanged(object? sender, NotifyCollectionChangedEventArgs e)
+    {
+        switch (e.Action)
+        {
+            case NotifyCollectionChangedAction.Add:
+                for (int i = 0; i < e.NewItems!.Count; i++)
+                {
+                    EditorTabs.Insert(e.NewStartingIndex + i, e.NewItems[i]!);
+                }
+                break;
+            case NotifyCollectionChangedAction.Remove:
+                foreach (object item in e.OldItems!)
+                {
+                    EditorTabs.Remove(item);
+                }
+                break;
+            case NotifyCollectionChangedAction.Replace:
+                for (int i = 0; i < e.OldItems!.Count; i++)
+                {
+                    EditorTabs[e.OldStartingIndex + i] = e.NewItems![i]!;
+                }
+                break;
+            case NotifyCollectionChangedAction.Move:
+                for (int i = 0; i < e.OldItems!.Count; i++)
+                {
+                    EditorTabs.Move(e.OldStartingIndex + i, e.NewStartingIndex + i);
+                }
+                break;
+            case NotifyCollectionChangedAction.Reset:
+                RebuildEditorTabs();
+                break;
+        }
+    }
+
+    /// <summary>
+    /// Mirrors diff tab changes into <see cref="EditorTabs"/>. Diff tabs are always
+    /// appended after the file tabs, so relative moves translate to the same relative
+    /// move at the end of the combined collection.
+    /// </summary>
+    private void OnDiffTabsChanged(object? sender, NotifyCollectionChangedEventArgs e)
+    {
+        switch (e.Action)
+        {
+            case NotifyCollectionChangedAction.Add:
+                foreach (object item in e.NewItems!)
+                {
+                    EditorTabs.Add(item);
+                }
+                break;
+            case NotifyCollectionChangedAction.Remove:
+                foreach (object item in e.OldItems!)
+                {
+                    EditorTabs.Remove(item);
+                }
+                break;
+            case NotifyCollectionChangedAction.Replace:
+                foreach (object item in e.OldItems!)
+                {
+                    EditorTabs.Remove(item);
+                }
+                foreach (object item in e.NewItems!)
+                {
+                    EditorTabs.Add(item);
+                }
+                break;
+            case NotifyCollectionChangedAction.Move:
+                for (int i = 0; i < e.OldItems!.Count; i++)
+                {
+                    EditorTabs.Move(OpenTabs.Count + e.OldStartingIndex + i,
+                                    OpenTabs.Count + e.NewStartingIndex + i);
+                }
+                break;
+            case NotifyCollectionChangedAction.Reset:
+                RebuildEditorTabs();
+                break;
+        }
+    }
+
+    /// <summary>Rebuilds the combined editor tab strip from the two source collections.</summary>
+    private void RebuildEditorTabs()
+    {
+        EditorTabs.Clear();
+        foreach (OpenFileTab tab in OpenTabs)
+        {
+            EditorTabs.Add(tab);
+        }
+        foreach (GitDiffTab diffTab in DiffTabs)
+        {
+            EditorTabs.Add(diffTab);
+        }
     }
 
     /// <summary>

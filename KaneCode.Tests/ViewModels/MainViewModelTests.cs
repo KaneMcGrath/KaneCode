@@ -389,4 +389,102 @@ public class MainViewModelTests
         Assert.Equal(16, viewModel.EditorFontSize);
     }
 
+    [Fact]
+    public void WhenDiffTabOpenedThenItAppearsInDiffAndEditorTabs()
+    {
+        var viewModel = new MainViewModel();
+        var diff = new GitDiffTab("src/Program.cs", "old", "new");
+
+        GitDiffTab result = viewModel.OpenDiffTab(diff);
+
+        Assert.Same(diff, result);
+        Assert.Contains(diff, viewModel.DiffTabs);
+        Assert.Contains(diff, viewModel.EditorTabs);
+    }
+
+    [Fact]
+    public void WhenSameDiffOpenedTwiceThenSingleTabIsRefreshed()
+    {
+        var viewModel = new MainViewModel();
+        var first = new GitDiffTab("src/Program.cs", "old", "new");
+        var second = new GitDiffTab("src/Program.cs", "older", "newer");
+
+        GitDiffTab firstResult = viewModel.OpenDiffTab(first);
+        GitDiffTab secondResult = viewModel.OpenDiffTab(second);
+
+        Assert.Same(first, secondResult);
+        Assert.Single(viewModel.DiffTabs);
+        Assert.Equal("older", secondResult.OriginalText);
+        Assert.Equal("newer", secondResult.ModifiedText);
+        Assert.NotSame(firstResult, second);
+    }
+
+    [Fact]
+    public void WhenDifferentDiffsOpenedThenSeparateTabsAreCreated()
+    {
+        var viewModel = new MainViewModel();
+        var first = viewModel.OpenDiffTab(new GitDiffTab("src/Program.cs", "old", "new"));
+        var second = viewModel.OpenDiffTab(new GitDiffTab("src/Service.cs", "old", "new"));
+
+        Assert.NotSame(first, second);
+        Assert.Equal(2, viewModel.DiffTabs.Count);
+        Assert.Equal(2, viewModel.EditorTabs.Count);
+    }
+
+    [Fact]
+    public void WhenDiffTabClosedThenItIsRemovedFromDiffAndEditorTabs()
+    {
+        var viewModel = new MainViewModel();
+        var diff = viewModel.OpenDiffTab(new GitDiffTab("src/Program.cs", "old", "new"));
+
+        viewModel.CloseDiffTab(diff);
+
+        Assert.Empty(viewModel.DiffTabs);
+        Assert.DoesNotContain(diff, viewModel.EditorTabs);
+    }
+
+    [Fact]
+    public void WhenFileAndDiffTabsAreOpenThenEditorTabsKeepsFilesBeforeDiffs()
+    {
+        var viewModel = new MainViewModel();
+        var fileTab = new OpenFileTab(@"C:\repo\Program.cs", "content");
+        viewModel.OpenTabs.Add(fileTab);
+
+        var diff = viewModel.OpenDiffTab(new GitDiffTab("src/Program.cs", "old", "new"));
+        var secondFileTab = new OpenFileTab(@"C:\repo\Service.cs", "content");
+        viewModel.OpenTabs.Add(secondFileTab);
+
+        Assert.Equal(3, viewModel.EditorTabs.Count);
+        Assert.Same(fileTab, viewModel.EditorTabs[0]);
+        Assert.Same(secondFileTab, viewModel.EditorTabs[1]);
+        Assert.Same(diff, viewModel.EditorTabs[2]);
+    }
+
+    [Fact]
+    public void WhenFileTabIsRemovedThenEditorTabsMirrorsRemoval()
+    {
+        var viewModel = new MainViewModel();
+        var fileTab = new OpenFileTab(@"C:\repo\Program.cs", "content");
+        viewModel.OpenTabs.Add(fileTab);
+        var diff = viewModel.OpenDiffTab(new GitDiffTab("src/Program.cs", "old", "new"));
+
+        viewModel.OpenTabs.Remove(fileTab);
+
+        Assert.Single(viewModel.EditorTabs);
+        Assert.Same(diff, viewModel.EditorTabs[0]);
+    }
+
+    [Fact]
+    public void WhenAllTabsAreClosedThenEditorTabsIsEmpty()
+    {
+        var viewModel = new MainViewModel();
+        viewModel.OpenTabs.Add(new OpenFileTab(@"C:\repo\Program.cs", "content"));
+        viewModel.OpenDiffTab(new GitDiffTab("src/Program.cs", "old", "new"));
+
+        viewModel.OpenTabs.Clear();
+        viewModel.DiffTabs.Clear();
+
+        Assert.Empty(viewModel.EditorTabs);
+    }
+
 }

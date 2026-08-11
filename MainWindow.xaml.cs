@@ -314,7 +314,12 @@ public partial class MainWindow : Window
             // This is needed because we removed the SelectedItem two-way binding
             // to fix a circular-activation bug (the binding set ActiveTab before
             // SelectionChanged fired, causing SwitchToTab to short-circuit).
-            EditorTabControl.SelectedItem = _viewModel.ActiveTab;
+            // Only re-select when a file tab is active; if ActiveTab becomes null
+            // (last file tab closed) an open diff tab should stay selected.
+            if (_viewModel.ActiveTab is not null)
+            {
+                EditorTabControl.SelectedItem = _viewModel.ActiveTab;
+            }
             UpdatePresentationLineHighlight();
             UpdatePreviewToolbar();
         }
@@ -1375,9 +1380,64 @@ public partial class MainWindow : Window
 
     private void TabControl_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (sender is TabControl tabControl && tabControl.SelectedItem is OpenFileTab tab)
+        if (sender is not TabControl tabControl)
         {
-            _viewModel.SwitchToTab(tab);
+            return;
+        }
+
+        switch (tabControl.SelectedItem)
+        {
+            case OpenFileTab fileTab:
+                // A file tab was selected: hide the diff view (if shown) and
+                // activate the file as usual.
+                ShowFileEditorContent();
+                _viewModel.SwitchToTab(fileTab);
+                UpdatePreviewToolbar();
+                break;
+
+            case GitDiffTab diffTab:
+                ShowDiffContent(diffTab);
+                break;
+
+            default:
+                // Nothing selected (e.g., all tabs closed): fall back to the editor.
+                ShowFileEditorContent();
+                break;
+        }
+    }
+
+    /// <summary>
+    /// Shows the Git diff for the selected diff tab and hides the normal editor content.
+    /// </summary>
+    private void ShowDiffContent(GitDiffTab diffTab)
+    {
+        GitDiffPanel.SetDiff(diffTab.RelativePath, diffTab.OriginalText, diffTab.ModifiedText);
+        GitDiffPanel.Visibility = Visibility.Visible;
+        CodeEditor.Visibility = Visibility.Collapsed;
+        MarkdownPreview.Visibility = Visibility.Collapsed;
+        ImagePreview.Visibility = Visibility.Collapsed;
+        MarkdownToolbar.Visibility = Visibility.Collapsed;
+        ImageToolbar.Visibility = Visibility.Collapsed;
+        EditorInfoBar.Visibility = Visibility.Collapsed;
+    }
+
+    /// <summary>
+    /// Hides the Git diff view so the normal editor content is visible again.
+    /// The specific editor view (source / markdown preview / image preview) is
+    /// restored by <see cref="UpdatePreviewToolbar"/> after a file tab activates.
+    /// </summary>
+    private void ShowFileEditorContent()
+    {
+        GitDiffPanel.Visibility = Visibility.Collapsed;
+        EditorInfoBar.Visibility = Visibility.Visible;
+    }
+
+    /// <summary>Closes a diff tab from its tab-strip close button.</summary>
+    private void DiffTab_Close(object sender, RoutedEventArgs e)
+    {
+        if (sender is FrameworkElement { DataContext: GitDiffTab diffTab })
+        {
+            _viewModel.CloseDiffTab(diffTab);
         }
     }
 
@@ -1557,8 +1617,18 @@ public partial class MainWindow : Window
             return;
         }
 
-        GitDiffPanel.SetDiff(diff.RelativePath, diff.OriginalText, diff.ModifiedText);
-        ShowLayoutAnchorable(GitDiffAnchorable);
+        // Open (or re-select) the diff as a tab in the main editor area.
+        var diffTab = new GitDiffTab(diff.RelativePath, diff.OriginalText, diff.ModifiedText);
+        GitDiffTab tab = _viewModel.OpenDiffTab(diffTab);
+        if (EditorTabControl.SelectedItem == tab)
+        {
+            // The tab is already selected — refresh the visible diff content.
+            ShowDiffContent(tab);
+        }
+        else
+        {
+            EditorTabControl.SelectedItem = tab;
+        }
     }
 
     private void GitChangesPanel_AcceptCurrentConflictRequested(object? sender, GitChangesEntry entry)

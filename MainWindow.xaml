@@ -120,9 +120,6 @@ ResizeMode="CanResizeWithGrip">
                 <MenuItem Header="_Git Changes"
                           Tag="{Binding ElementName=GitChangesAnchorable}"
                           Click="ViewMenuPanel_Click" />
-                <MenuItem Header="Git _Diff"
-                          Tag="{Binding ElementName=GitDiffAnchorable}"
-                          Click="ViewMenuPanel_Click" />
                 <MenuItem Header="Git _Log"
                           Tag="{Binding ElementName=GitLogAnchorable}"
                           Click="ViewMenuPanel_Click" />
@@ -321,7 +318,7 @@ ResizeMode="CanResizeWithGrip">
                                     <!-- Tab strip with drag-drop reordering -->
                                     <TabControl x:Name="EditorTabControl"
                                                 DockPanel.Dock="Top"
-                                                ItemsSource="{Binding OpenTabs}"
+                                                ItemsSource="{Binding EditorTabs}"
                                                 SelectionChanged="TabControl_SelectionChanged"
                                                 Background="{DynamicResource TabStripBackground}"
                                                 BorderThickness="0"
@@ -331,7 +328,7 @@ ResizeMode="CanResizeWithGrip">
                                                 PreviewDrop="TabStrip_Drop"
                                                 PreviewDragOver="TabStrip_PreviewDragOver">
 
-                                        <TabControl.ItemTemplate>
+                                        <TabControl.Resources>
                                             <DataTemplate DataType="{x:Type models:OpenFileTab}">
                                                 <StackPanel Orientation="Horizontal">
                                                     <StackPanel.ContextMenu>
@@ -354,7 +351,18 @@ ResizeMode="CanResizeWithGrip">
                                                             CommandParameter="{Binding}" />
                                                 </StackPanel>
                                             </DataTemplate>
-                                        </TabControl.ItemTemplate>
+                                            <DataTemplate DataType="{x:Type models:GitDiffTab}">
+                                                <StackPanel Orientation="Horizontal">
+                                                    <TextBlock Text="{Binding DisplayName}" Margin="8,2,4,2" FontSize="12"
+                                                               VerticalAlignment="Center" />
+                                                    <Button Content="✕" FontSize="10" Padding="2,0"
+                                                            VerticalAlignment="Center"
+                                                            Foreground="{DynamicResource TabCloseButtonForeground}"
+                                                            Background="Transparent" BorderThickness="0" Cursor="Hand"
+                                                            Click="DiffTab_Close" />
+                                                </StackPanel>
+                                            </DataTemplate>
+                                        </TabControl.Resources>
 
                                         <TabControl.ItemContainerStyle>
                                             <Style TargetType="TabItem" BasedOn="{StaticResource NoOffsetTabItem}">
@@ -501,9 +509,11 @@ ResizeMode="CanResizeWithGrip">
                                             <controls:MarkdownPreviewPanel x:Name="MarkdownPreview" Grid.Row="0" Visibility="Collapsed" />
                                             <controls:ImagePreviewPanel x:Name="ImagePreview" Grid.Row="0" Visibility="Collapsed" />
                                             <controls:PresentationOverlay x:Name="PresentationOverlay" Grid.Row="0" />
+                                            <controls:GitDiffPanel x:Name="GitDiffPanel" Grid.Row="0" Visibility="Collapsed" />
 
                                             <!-- Editor info bar (more indicators will be added here later) -->
-                                            <Border Grid.Row="1"
+                                            <Border x:Name="EditorInfoBar"
+                                                    Grid.Row="1"
                                                     Height="22"
                                                     Background="{DynamicResource StatusBarBackground}">
                                                 <DockPanel>
@@ -574,13 +584,6 @@ ResizeMode="CanResizeWithGrip">
                                                               PeekContentText="{Binding ReferencePeekContentText}"
                                                               PreviewRequested="FindReferencesPanel_PreviewRequested"
                                                               NavigateRequested="FindReferencesPanel_NavigateRequested" />
-                            </avalonDock:LayoutAnchorable>
-                            <avalonDock:LayoutAnchorable x:Name="GitDiffAnchorable" Title="Git Diff"
-                                                         CanClose="False"
-                                                         CanHide="True"
-                                                         CanAutoHide="True"
-                                                         ContentId="GitDiffPane">
-                                <controls:GitDiffPanel x:Name="GitDiffPanel" />
                             </avalonDock:LayoutAnchorable>
                             <avalonDock:LayoutAnchorable x:Name="GitLogAnchorable" Title="Git Log"
                                                          CanClose="False"
