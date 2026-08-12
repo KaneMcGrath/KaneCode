@@ -42,4 +42,29 @@ public sealed class AiPresetManagerTests
         Assert.False(first.IsDefault);
         Assert.False(second.IsDefault);
     }
+
+    [Fact]
+    public void WhenCreatingDefaultSubagentPresetThenItIsMarkedAsSubagentWithBasicTools()
+    {
+        AiPreset preset = AiPresetManager.CreateDefaultSubagentPreset();
+
+        Assert.Equal("Default Worker", preset.Name);
+        Assert.True(preset.IsSubagent);
+        Assert.False(string.IsNullOrWhiteSpace(preset.SubagentDescription));
+        Assert.False(string.IsNullOrWhiteSpace(preset.SystemPrompt));
+        Assert.NotNull(preset.AllowedTools);
+
+        // Basic read/write/search tools are included…
+        Assert.Contains("read", preset.AllowedTools!);
+        Assert.Contains("write", preset.AllowedTools!);
+        Assert.Contains("edit", preset.AllowedTools!);
+        Assert.Contains("list", preset.AllowedTools!);
+        Assert.Contains("search", preset.AllowedTools!);
+        Assert.Contains("get_diagnostics", preset.AllowedTools!);
+
+        // …but nothing beyond the file-system basics.
+        Assert.DoesNotContain("git_commit", preset.AllowedTools!);
+        Assert.DoesNotContain("build", preset.AllowedTools!);
+        Assert.DoesNotContain("spawn_agent", preset.AllowedTools!);
+    }
 }

@@ -70,4 +70,90 @@ public sealed class SpawnAgentToolTests
 
         Assert.Contains("No subagent presets are currently configured", description);
     }
+
+    [Fact]
+    public void WhenBackendOptionsSchemaIsBuiltThenItExposesAllowedPresetsArray()
+    {
+        SpawnAgentTool tool = new();
+
+        JsonElement backend = tool.BackendOptionsSchema;
+        JsonElement properties = backend.GetProperty("properties");
+
+        Assert.True(properties.TryGetProperty("allowed_presets", out JsonElement allowed));
+        Assert.Equal("array", allowed.GetProperty("type").GetString());
+        Assert.Equal("string", allowed.GetProperty("items").GetProperty("type").GetString());
+        Assert.True(allowed.GetProperty("items").TryGetProperty("enum", out _));
+    }
+
+    [Fact]
+    public void WhenParentPresetAllowsPresetsThenOnlyThoseAreAllowed()
+    {
+        AiPreset parent = new()
+        {
+            ToolOptions = new Dictionary<string, Dictionary<string, JsonElement>>(StringComparer.Ordinal)
+            {
+                ["spawn_agent"] = new Dictionary<string, JsonElement>(StringComparer.Ordinal)
+                {
+                    ["allowed_presets"] = JsonDocument.Parse("[\"Code Reviewer\", \"Tester\"]").RootElement.Clone()
+                }
+            }
+        };
+
+        HashSet<string>? allowed = SpawnAgentTool.GetAllowedSubagentPresets(parent);
+
+        Assert.NotNull(allowed);
+        Assert.Equal(2, allowed.Count);
+        Assert.Contains("Code Reviewer", allowed);
+        Assert.Contains("Tester", allowed);
+    }
+
+    [Fact]
+    public void WhenParentPresetHasNoAllowListThenAllPresetsAreAllowed()
+    {
+        AiPreset parent = new();
+
+        HashSet<string>? allowed = SpawnAgentTool.GetAllowedSubagentPresets(parent);
+
+        Assert.Null(allowed);
+    }
+
+    [Fact]
+    public void WhenParentPresetBlocksAllThenEmptySetIsReturned()
+    {
+        AiPreset parent = new()
+        {
+            ToolOptions = new Dictionary<string, Dictionary<string, JsonElement>>(StringComparer.Ordinal)
+            {
+                ["spawn_agent"] = new Dictionary<string, JsonElement>(StringComparer.Ordinal)
+                {
+                    ["allowed_presets"] = JsonDocument.Parse("[]").RootElement.Clone()
+                }
+            }
+        };
+
+        HashSet<string>? allowed = SpawnAgentTool.GetAllowedSubagentPresets(parent);
+
+        Assert.NotNull(allowed);
+        Assert.Empty(allowed);
+    }
+
+    [Fact]
+    public void WhenAllowListIsPresentThenMatchingIsCaseInsensitive()
+    {
+        AiPreset parent = new()
+        {
+            ToolOptions = new Dictionary<string, Dictionary<string, JsonElement>>(StringComparer.Ordinal)
+            {
+                ["spawn_agent"] = new Dictionary<string, JsonElement>(StringComparer.Ordinal)
+                {
+                    ["allowed_presets"] = JsonDocument.Parse("[\"code reviewer\"]").RootElement.Clone()
+                }
+            }
+        };
+
+        HashSet<string>? allowed = SpawnAgentTool.GetAllowedSubagentPresets(parent);
+
+        Assert.NotNull(allowed);
+        Assert.Contains("CODE REVIEWER", allowed);
+    }
 }

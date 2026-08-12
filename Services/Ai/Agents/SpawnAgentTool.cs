@@ -36,10 +36,21 @@ internal sealed class SpawnAgentTool : IAgentTool
     public string Category => "Agent";
 
     /// <summary>
-    /// Built per access so the <c>preset</c> parameter description stays in sync
-    /// with the presets currently marked as subagents.
+    /// Built per access so the <c>preset</c> parameter's <c>enum</c> (the list of
+    /// subagent preset names) stays in sync with the presets currently marked as
+    /// subagents. The enum renders as a dropdown in the preset editor's Parameters
+    /// tab and constrains the model to valid preset names.
     /// </summary>
     public JsonElement ParametersSchema => BuildParametersSchema();
+
+    /// <summary>
+    /// Backend options for spawn_agent. Exposes <c>allowed_presets</c>, a per-agent-preset
+    /// allow-list of subagent preset names this tool may spawn (checked = allowed,
+    /// all allowed by default). Enforced at execution time by the orchestrator and
+    /// rendered as a checkbox list in the preset editor's Backend Options tab.
+    /// Not sent to the model.
+    /// </summary>
+    public JsonElement BackendOptionsSchema => BuildBackendOptionsSchema();
 
     public Task<ToolCallResult> ExecuteAsync(JsonElement arguments, CancellationToken cancellationToken = default)
     {
@@ -117,8 +128,38 @@ internal sealed class SpawnAgentTool : IAgentTool
             string.Join(", ", subagents.Select(p => p.Name)) + ".";
     }
 
+    /// <summary>
+    /// Resolves the effective <c>allowed_presets</c> allow-list for the given parent
+    /// preset, or <c>null</c> when unrestricted (every subagent preset may be spawned).
+    /// An empty set means no subagent presets may be spawned at all.
+    /// </summary>
+    internal static HashSet<string>? GetAllowedSubagentPresets(AiPreset? parentPreset)
+    {
+        IReadOnlyDictionary<string, JsonElement> options = AgentToolContext.Resolve(new SpawnAgentTool(), parentPreset);
+        if (!options.TryGetValue("allowed_presets", out JsonElement allowed) ||
+            allowed.ValueKind != JsonValueKind.Array)
+        {
+            return null;
+        }
+
+        HashSet<string> names = new(StringComparer.OrdinalIgnoreCase);
+        foreach (JsonElement item in allowed.EnumerateArray())
+        {
+            if (item.ValueKind == JsonValueKind.String &&
+                item.GetString() is { } name &&
+                !string.IsNullOrWhiteSpace(name))
+            {
+                names.Add(name);
+            }
+        }
+
+        return names;
+    }
+
     private static JsonElement BuildParametersSchema()
     {
+        IReadOnlyList<AiPreset> subagentPresets = AiPresetManager.LoadSubagentPresets();
+
         using System.IO.MemoryStream stream = new();
         using (Utf8JsonWriter writer = new(stream))
         {
@@ -149,6 +190,17 @@ internal sealed class SpawnAgentTool : IAgentTool
 
             writer.WriteStartObject("preset");
             writer.WriteString("type", "string");
+            if (subagentPresets.Count > 0)
+            {
+                writer.WriteStartArray("enum");
+                foreach (AiPreset subagent in subagentPresets)
+                {
+                    writer.WriteStringValue(subagent.Name);
+                }
+
+                writer.WriteEndArray();
+            }
+
             writer.WriteString("description", BuildPresetParameterDescription(AiPresetManager.Load()));
             writer.WriteEndObject();
 
@@ -168,6 +220,38 @@ internal sealed class SpawnAgentTool : IAgentTool
             writer.WriteStringValue("task");
             writer.WriteEndArray();
 
+            writer.WriteEndObject();
+        }
+
+        return JsonDocument.Parse(stream.ToArray()).RootElement.Clone();
+    }
+
+    private static JsonElement BuildBackendOptionsSchema()
+    {
+        using System.IO.MemoryStream stream = new();
+        using (Utf8JsonWriter writer = new(stream))
+        {
+            writer.WriteStartObject();
+            writer.WriteString("type", "object");
+
+            writer.WriteStartObject("properties");
+
+            writer.WriteStartObject("allowed_presets");
+            writer.WriteString("type", "array");
+            writer.WriteString("description", "Subagent presets this tool may spawn (checked = allowed). All subagent presets are allowed by default. Unchecking every preset blocks sub-agent spawning for this agent.");
+            writer.WriteStartObject("items");
+            writer.WriteString("type", "string");
+            writer.WriteStartArray("enum");
+            foreach (AiPreset subagent in AiPresetManager.LoadSubagentPresets())
+            {
+                writer.WriteStringValue(subagent.Name);
+            }
+
+            writer.WriteEndArray();
+            writer.WriteEndObject(); // items
+            writer.WriteEndObject(); // allowed_presets
+
+            writer.WriteEndObject(); // properties
             writer.WriteEndObject();
         }
 

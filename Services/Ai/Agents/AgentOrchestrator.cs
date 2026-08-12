@@ -360,6 +360,12 @@ internal sealed class AgentOrchestrator : IDisposable
             }
         }
 
+        // Resolve the parent preset's spawn_agent backend options so a per-agent
+        // allow-list of spawnable subagent presets is enforced at execution time.
+        // Null means unrestricted (all subagent presets may be spawned).
+        AiPreset? parentPreset = (parentAgent.Mode as PresetMode)?.Preset;
+        HashSet<string>? allowedPresets = SpawnAgentTool.GetAllowedSubagentPresets(parentPreset);
+
         // Resolve mode. The 'preset' parameter accepts the name of a preset marked
         // as a subagent (see the spawn_agent tool description, e.g. "Code Reviewer").
         // Falls back to the parent's mode when omitted. The legacy 'mode' parameter
@@ -368,6 +374,16 @@ internal sealed class AgentOrchestrator : IDisposable
         IAiChatMode? mode = parentAgent.Mode;
         if (!string.IsNullOrWhiteSpace(presetName))
         {
+            if (allowedPresets is not null && !allowedPresets.Contains(presetName))
+            {
+                string allowedText = allowedPresets.Count == 0
+                    ? "(none — spawning sub-agents is disabled for this agent)"
+                    : string.Join(", ", allowedPresets);
+                return ToolCallResult.Fail(
+                    $"Subagent preset '{presetName}' is not allowed for this agent. " +
+                    $"Allowed subagent presets: {allowedText}.");
+            }
+
             IReadOnlyList<AiPreset> subagentPresets = AiPresetManager.LoadSubagentPresets();
             AiPreset? preset = subagentPresets.FirstOrDefault(p =>
                 string.Equals(p.Name, presetName, StringComparison.OrdinalIgnoreCase));

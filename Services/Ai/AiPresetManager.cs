@@ -35,7 +35,11 @@ internal static class AiPresetManager
     {
         if (!File.Exists(SettingsFilePath))
         {
-            return [];
+            // Fresh install — seed the built-in default subagent preset so the
+            // spawn_agent tool has something to work with out of the box. It is
+            // persisted (and becomes user-editable) the first time the preset
+            // editor is saved.
+            return [CreateDefaultSubagentPreset()];
         }
 
         try
@@ -102,6 +106,7 @@ internal static class AiPresetManager
     /// Returns the presets currently marked as subagent presets (<see cref="AiPreset.IsSubagent"/>),
     /// ordered by name. These are the presets an agent can reference via the spawn_agent
     /// tool's <c>preset</c> parameter, and they are listed in the tool's description.
+    /// On a fresh install this includes the built-in default worker.
     /// </summary>
     public static IReadOnlyList<AiPreset> LoadSubagentPresets()
     {
@@ -109,6 +114,39 @@ internal static class AiPresetManager
             .Where(p => p.IsSubagent)
             .OrderBy(p => p.Name, StringComparer.OrdinalIgnoreCase)
             .ToList();
+    }
+
+    /// <summary>
+    /// Builds the built-in default subagent preset ("Default Worker") that seeds a
+    /// fresh install so the spawn_agent tool works out of the box. It is returned by
+    /// <see cref="Load"/> when no presets file exists yet, shown in the preset editor,
+    /// and persisted once the user saves.
+    /// </summary>
+    internal static AiPreset CreateDefaultSubagentPreset()
+    {
+        return new AiPreset
+        {
+            Id = "default-subagent-worker",
+            Name = "Default Worker",
+            IsSubagent = true,
+            SubagentDescription = "General-purpose file worker — reads, writes, edits, and searches the codebase.",
+            SystemPrompt =
+                "You are a general-purpose sub-agent worker. Your job is to complete the task delegated to you " +
+                "by the parent agent.\n\n" +
+                "Rules:\n" +
+                "- Work directly in the codebase: read files before editing them, and use search to locate " +
+                "relevant code.\n" +
+                "- Make focused, minimal changes and verify your work by reading back edited files (run " +
+                "diagnostics when useful).\n" +
+                "- Use only the file-system, search, and diagnostics tools available to you — no Git, build, " +
+                "NuGet, presentation, or other tools.\n" +
+                "- When finished, report a concise summary of what you changed and any issues you noticed.",
+            AllowedTools = new HashSet<string>(StringComparer.Ordinal)
+            {
+                "read", "write", "edit", "delete", "rename_path",
+                "create_directory", "delete_directory", "list", "search", "get_diagnostics"
+            }
+        };
     }
 
     /// <summary>

@@ -1079,6 +1079,7 @@ public partial class ToolDetailView : UserControl
             {
                 "boolean" => BuildBooleanWidget(name, value, refreshVisuals),
                 "integer" or "number" => BuildNumberWidget(name, prop, value, isInteger: typeName == "integer", refreshVisuals),
+                "array" => BuildArrayChecklistWidget(name, prop, refreshVisuals),
                 _ => BuildTextWidget(name, prop, value, isMultiline: IsMultilineParameter(name, prop), refreshVisuals)
             };
         }
@@ -1216,6 +1217,143 @@ public partial class ToolDetailView : UserControl
             ReadValue = () => JsonSerializer.SerializeToElement(combo.SelectedItem as string ?? string.Empty),
             WriteValue = v => combo.SelectedItem = v.ValueKind == JsonValueKind.String ? v.GetString() : null
         };
+    }
+
+    /// <summary>
+    /// Builds a checkbox list for an array-of-enum option (e.g. spawn_agent's
+    /// <c>allowed_presets</c>). Checked items are the stored value. When no override
+    /// exists every item is checked (allow all); checking everything back removes
+    /// the override, while unchecking everything stores an empty array (allow none).
+    /// </summary>
+    private SchemaWidget BuildArrayChecklistWidget(string name, JsonElement prop, Action? refreshVisuals = null)
+    {
+        IReadOnlyList<string> values = GetArrayEnumValues(prop);
+        HashSet<string> selected = new(StringComparer.Ordinal);
+        if (State.OptionOverrides.TryGetValue(name, out JsonElement overrideValue) &&
+            overrideValue.ValueKind == JsonValueKind.Array)
+        {
+            foreach (JsonElement item in overrideValue.EnumerateArray())
+            {
+                if (item.ValueKind == JsonValueKind.String && item.GetString() is { } itemName)
+                {
+                    selected.Add(itemName);
+                }
+            }
+        }
+
+        bool noOverride = !State.OptionOverrides.ContainsKey(name);
+
+        StackPanel panel = new() { Margin = new Thickness(0, 4, 0, 2) };
+        if (values.Count == 0)
+        {
+            panel.Children.Add(new TextBlock
+            {
+                Text = "(no subagent presets available)",
+                FontSize = 10.5,
+                Foreground = Brush("Brush.Faint")
+            });
+        }
+        else
+        {
+            foreach (string item in values)
+            {
+                CheckBox checkBox = new()
+                {
+                    Content = item,
+                    Tag = item,
+                    IsChecked = noOverride || selected.Contains(item),
+                    Foreground = Brush("Brush.Text"),
+                    FontSize = 11.5,
+                    Margin = new Thickness(0, 1, 0, 1),
+                    VerticalAlignment = VerticalAlignment.Center,
+                    Cursor = System.Windows.Input.Cursors.Hand
+                };
+                checkBox.Checked += (_, _) => SyncChecklist();
+                checkBox.Unchecked += (_, _) => SyncChecklist();
+                panel.Children.Add(checkBox);
+            }
+        }
+
+        void SyncChecklist()
+        {
+            if (_loading)
+            {
+                return;
+            }
+
+            List<string> checkedItems = panel.Children.OfType<CheckBox>()
+                .Where(c => c.IsChecked == true && c.Tag is string)
+                .Select(c => (string)c.Tag!)
+                .ToList();
+
+            bool allSelected = values.Count > 0 &&
+                               checkedItems.Count == values.Count &&
+                               checkedItems.OrderBy(x => x, StringComparer.Ordinal)
+                                   .SequenceEqual(values.OrderBy(x => x, StringComparer.Ordinal));
+
+            if (allSelected)
+            {
+                // Checking everything back is the same as the tool default
+                // ("allow all subagent presets") — drop the override entirely.
+                State.RemoveOptionOverride(name);
+            }
+            else
+            {
+                State.SetOptionOverride(name, JsonSerializer.SerializeToElement(checkedItems));
+            }
+
+            MarkChanged();
+            refreshVisuals?.Invoke();
+        }
+
+        return new SchemaWidget
+        {
+            Element = panel,
+            ReadValue = () =>
+            {
+                List<string> checkedItems = panel.Children.OfType<CheckBox>()
+                    .Where(c => c.IsChecked == true && c.Tag is string)
+                    .Select(c => (string)c.Tag!)
+                    .ToList();
+                return JsonSerializer.SerializeToElement(checkedItems);
+            },
+            WriteValue = v =>
+            {
+                HashSet<string> set = new(StringComparer.Ordinal);
+                if (v.ValueKind == JsonValueKind.Array)
+                {
+                    foreach (JsonElement item in v.EnumerateArray())
+                    {
+                        if (item.ValueKind == JsonValueKind.String && item.GetString() is { } itemName)
+                        {
+                            set.Add(itemName);
+                        }
+                    }
+                }
+
+                foreach (CheckBox checkBox in panel.Children.OfType<CheckBox>())
+                {
+                    checkBox.IsChecked = set.Contains((string)checkBox.Tag!);
+                }
+            }
+        };
+    }
+
+    private static IReadOnlyList<string> GetArrayEnumValues(JsonElement prop)
+    {
+        if (prop.ValueKind == JsonValueKind.Object &&
+            prop.TryGetProperty("items", out JsonElement items) &&
+            items.ValueKind == JsonValueKind.Object &&
+            items.TryGetProperty("enum", out JsonElement enumArray) &&
+            enumArray.ValueKind == JsonValueKind.Array)
+        {
+            return enumArray.EnumerateArray()
+                .Where(e => e.ValueKind == JsonValueKind.String)
+                .Select(e => e.GetString()!)
+                .ToList();
+        }
+
+        return [];
     }
 
     private SchemaWidget BuildNumberWidget(string name, JsonElement prop, JsonElement value, bool isInteger, Action? refreshVisuals = null)
@@ -1538,6 +1676,7 @@ public partial class ToolDetailView : UserControl
             "boolean" => JsonSerializer.SerializeToElement(false),
             "integer" => JsonSerializer.SerializeToElement(0),
             "number" => JsonSerializer.SerializeToElement(0.0),
+            "array" => JsonSerializer.SerializeToElement(Array.Empty<string>()),
             _ => JsonSerializer.SerializeToElement(string.Empty)
         };
     }
@@ -1636,6 +1775,14 @@ public partial class ToolDetailView : UserControl
         if (!State.OptionOverrides.TryGetValue(name, out JsonElement overrideValue))
         {
             return false;
+        }
+
+        // Array options (e.g. multi-select allow-lists) have a dynamic "all" default
+        // that cannot be represented statically, so any stored override counts as
+        // customized (including an empty array, which means "allow none").
+        if (string.Equals(GetPropertyString(prop, "type"), "array", StringComparison.Ordinal))
+        {
+            return true;
         }
 
         JsonElement defaultValue = defaults.TryGetValue(name, out JsonElement d) ? d : GetSchemaDefault(prop, GetPropertyString(prop, "type") ?? "string");
