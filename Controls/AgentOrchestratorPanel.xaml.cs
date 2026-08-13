@@ -144,7 +144,12 @@ public partial class AgentOrchestratorPanel : UserControl
         public List<AgentTreeItem> Children { get; } = [];
         public bool IsSelected { get; set; }
         public bool IsExpanded { get; set; } = true;
-        public string Glyph => Agent.Role == AgentRole.Root ? "👑" : "🔧";
+        public string Glyph => Agent.Role switch
+        {
+            AgentRole.Root => "👑",
+            AgentRole.Ticket => "🎫",
+            _ => "🔧"
+        };
         public string DisplayName => Agent.DisplayName;
         public string Details => $"{Agent.Provider.DisplayName} · {Agent.Model} · {Agent.Messages.Count} msgs";
 

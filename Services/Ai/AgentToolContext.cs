@@ -19,6 +19,22 @@ internal static class AgentToolContext
     private static readonly AsyncLocal<IReadOnlyDictionary<string, JsonElement>?> CurrentOptions = new();
 
     /// <summary>
+    /// When non-null, overrides the project root that path-aware agent tools resolve
+    /// against. The ticket system sets this to a ticket's worktree root while an agent
+    /// runs so its file/build tools operate in isolation from the user's workspace.
+    /// Flows through the async execution context, so every tool call an agent makes
+    /// during a run observes the override.
+    /// </summary>
+    private static readonly AsyncLocal<string?> CurrentProjectRootOverride = new();
+
+    /// <summary>
+    /// When non-null, identifies the ticket the currently executing agent run is
+    /// working on. Read by the ticket status tools (<c>complete_ticket</c> and
+    /// <c>unable_to_complete</c>) so they update the correct ticket.
+    /// </summary>
+    private static readonly AsyncLocal<string?> CurrentTicketId = new();
+
+    /// <summary>
     /// The effective backend options for the tool currently executing, or null
     /// when no context was pushed (e.g. direct tool invocation in tests).
     /// </summary>
@@ -31,6 +47,34 @@ internal static class AgentToolContext
     public static IDisposable Push(IReadOnlyDictionary<string, JsonElement>? options)
     {
         return new Scope(options);
+    }
+
+    /// <summary>
+    /// Pushes an agent-run scope carrying the ticket's project-root override and
+    /// ticket id for the duration of the returned <see cref="IDisposable"/>.
+    /// Nested scopes restore the previous values on dispose.
+    /// </summary>
+    public static IDisposable PushRunContext(string? projectRootOverride, string? ticketId)
+    {
+        return new RunContextScope(projectRootOverride, ticketId);
+    }
+
+    /// <summary>
+    /// Returns the active project-root override, or null when agent tools should
+    /// resolve against the loaded project as usual.
+    /// </summary>
+    public static string? GetProjectRootOverride()
+    {
+        return CurrentProjectRootOverride.Value;
+    }
+
+    /// <summary>
+    /// Returns the ticket id for the currently executing agent run, or null when the
+    /// tool is not executing inside a ticket agent run.
+    /// </summary>
+    public static string? GetCurrentTicketId()
+    {
+        return CurrentTicketId.Value;
     }
 
     /// <summary>
@@ -121,6 +165,26 @@ internal static class AgentToolContext
         public void Dispose()
         {
             CurrentOptions.Value = _previous;
+        }
+    }
+
+    private sealed class RunContextScope : IDisposable
+    {
+        private readonly string? _previousProjectRootOverride;
+        private readonly string? _previousTicketId;
+
+        public RunContextScope(string? projectRootOverride, string? ticketId)
+        {
+            _previousProjectRootOverride = CurrentProjectRootOverride.Value;
+            _previousTicketId = CurrentTicketId.Value;
+            CurrentProjectRootOverride.Value = projectRootOverride;
+            CurrentTicketId.Value = ticketId;
+        }
+
+        public void Dispose()
+        {
+            CurrentProjectRootOverride.Value = _previousProjectRootOverride;
+            CurrentTicketId.Value = _previousTicketId;
         }
     }
 }

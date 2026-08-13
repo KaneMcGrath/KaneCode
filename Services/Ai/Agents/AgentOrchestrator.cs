@@ -134,6 +134,28 @@ internal sealed class AgentOrchestrator : IDisposable
     }
 
     /// <summary>
+    /// Creates a top-level ticket agent. Ticket agents are independent of the main
+    /// chat root and are dispatched by the ticket system to work on a ticket.
+    /// </summary>
+    public IAgent CreateTicketAgent(
+        string id,
+        string displayName,
+        IAiProvider provider,
+        string model,
+        IAiChatMode mode,
+        string? systemPrompt = null)
+    {
+        Agent agent = new(id, AgentRole.Ticket, displayName, provider, model, mode, systemPrompt)
+        {
+            ToolExecutionInterceptor = OnToolExecution
+        };
+
+        RegisterAgent(agent);
+        AgentChanged?.Invoke(this, new AgentEventArgs(agent, AgentEventType.Created));
+        return agent;
+    }
+
+    /// <summary>
     /// Removes an agent and all its descendants from the orchestrator.
     /// Releases all file locks held by the removed agents.
     /// </summary>
@@ -198,7 +220,9 @@ internal sealed class AgentOrchestrator : IDisposable
             return ToolCallResult.Fail($"Unknown tool: {toolName}");
         }
 
-        if (!agent.Mode.IsToolAllowed(toolName))
+        bool isTicketStatusTool = toolName is "complete_ticket" or "unable_to_complete";
+        if (!agent.Mode.IsToolAllowed(toolName) &&
+            !(isTicketStatusTool && agent.Role == AgentRole.Ticket))
         {
             return ToolCallResult.Fail($"Tool '{toolName}' is not allowed in {agent.Mode.DisplayName} mode.");
         }

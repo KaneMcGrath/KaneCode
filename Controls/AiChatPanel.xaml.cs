@@ -519,6 +519,13 @@ public partial class AiChatPanel : UserControl
     }
 
     /// <summary>
+    /// The chat mode currently active in the chat panel, or null when the mode
+    /// registry has not been configured yet. Used by the ticket system to inherit
+    /// the user's current agent mode when dispatching tickets.
+    /// </summary>
+    internal IAiChatMode? ActiveMode => _activeMode;
+
+    /// <summary>
     /// Configures the provider and model to use for chat completions.
     /// </summary>
     internal void Configure(IAiProvider? provider, string? model = null)
@@ -3237,7 +3244,7 @@ public partial class AiChatPanel : UserControl
 
         foreach (Services.Ai.Agents.IAgent agent in allAgents)
         {
-            if (agent.Role == Services.Ai.Agents.AgentRole.Root)
+            if (agent.Role is Services.Ai.Agents.AgentRole.Root or Services.Ai.Agents.AgentRole.Ticket)
             {
                 continue;
             }

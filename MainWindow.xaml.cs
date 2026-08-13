@@ -5,6 +5,7 @@ using KaneCode.Services;
 using KaneCode.Services.Ai;
 using KaneCode.Services.Ai.Modes;
 using KaneCode.Services.Ai.Tools;
+using KaneCode.Services.Tickets;
 using KaneCode.Theming;
 using KaneCode.ViewModels;
 using LibGit2Sharp;
@@ -44,6 +45,7 @@ public partial class MainWindow : Window
     private readonly AgentToolRegistry _agentToolRegistry = new();
     private readonly AiChatModeRegistry _aiChatModeRegistry = new();
     private readonly Services.Ai.Agents.AgentOrchestrator _agentOrchestrator;
+    private readonly TicketSystem _ticketSystem;
     private readonly AiDebugLogService _aiDebugLogService = new();
     private readonly ExternalContextDirectoryRegistry _externalContextDirectoryRegistry = new();
     private readonly PresentationService _presentationService = new();
@@ -62,6 +64,20 @@ public partial class MainWindow : Window
         // Initialize the multi-agent orchestrator (before modes/tools so spawn_agent can be registered)
         _agentOrchestrator = new Services.Ai.Agents.AgentOrchestrator(
             _agentToolRegistry, _aiProviderRegistry, _aiChatModeRegistry);
+
+        // Initialize the ticket system. It reuses the active provider/model/mode and
+        // the orchestrator to dispatch autonomous agents for tickets under .kanecode/tickets.
+        _ticketSystem = new TicketSystem(
+            new TicketFileStore(GetAgentProjectRoot),
+            _agentToolRegistry,
+            _aiProviderRegistry,
+            _aiChatModeRegistry,
+            _agentOrchestrator,
+            GetAgentProjectRoot,
+            () => _viewModel.GitService.RepositoryWorkingDirectory,
+            () => _aiProviderRegistry.ActiveProvider,
+            () => AiChatPanel.CurrentModel,
+            () => AiChatPanel.ActiveMode);
 
         // Fix maximize covering the taskbar when using custom WindowChrome
         WindowMaximizeHelper.Attach(this);
@@ -292,6 +308,11 @@ public partial class MainWindow : Window
         GitChangesPanel.AddModelRequested -= GitChangesPanel_AddModelRequested;
         AiChatPanel.AgentOrchestratorRequested -= AiChatPanel_AgentOrchestratorRequested;
         AgentOrchestratorPanel.AgentSelected -= AgentOrchestratorPanel_AgentSelected;
+        TicketPanel.TicketActivated -= TicketPanel_TicketActivated;
+        TicketPanel.NewTicketRequested -= TicketPanel_NewTicketRequested;
+        TicketPanel.TicketOpenRequested -= TicketPanel_TicketOpenRequested;
+        _ticketSystem.StopAll();
+        _ticketSystem.Dispose();
         _agentOrchestrator.Dispose();
         CloseQuickInfoPopup();
         _viewModel.Dispose();
@@ -626,11 +647,107 @@ public partial class MainWindow : Window
         AiDebugPanel.ToolFailures = _aiDebugLogService.ToolFailures;
         AiDebugPanel.SetDebugLogService(_aiDebugLogService);
 
+        // Wire the Tickets panel to the ticket system.
+        TicketPanel.SetTicketSystem(_ticketSystem);
+        UpdateTicketPanelHeaderInfo();
+        TicketPanel.TicketActivated -= TicketPanel_TicketActivated;
+        TicketPanel.TicketActivated += TicketPanel_TicketActivated;
+        TicketPanel.NewTicketRequested -= TicketPanel_NewTicketRequested;
+        TicketPanel.NewTicketRequested += TicketPanel_NewTicketRequested;
+        TicketPanel.TicketOpenRequested -= TicketPanel_TicketOpenRequested;
+        TicketPanel.TicketOpenRequested += TicketPanel_TicketOpenRequested;
+
         // Create the root agent eagerly so the main AI chat session is always
         // backed by the orchestrator. This ensures tool execution (file-locking,
         // spawn_agent interception) is consistent between the main chat and
         // sub-agents.
         EnsureRootAgent();
+    }
+
+    /// <summary>Updates the provider/model/mode summary shown in the Tickets panel header.</summary>
+    private void UpdateTicketPanelHeaderInfo()
+    {
+        IAiProvider? provider = _aiProviderRegistry.ActiveProvider;
+        string providerText = provider?.DisplayName ?? "No provider";
+        string model = AiChatPanel.CurrentModel ?? "default";
+        string modeText = AiChatPanel.ActiveMode?.DisplayName ?? "Agent";
+        TicketPanel.SetHeaderInfo(providerText, model, modeText);
+    }
+
+    private void TicketPanel_TicketActivated(object? sender, KaneCodeTicket ticket)
+    {
+        if (string.IsNullOrWhiteSpace(ticket.ActiveAgentId))
+        {
+            return;
+        }
+
+        Services.Ai.Agents.IAgent? agent = _agentOrchestrator.GetAgent(ticket.ActiveAgentId);
+        if (agent is null)
+        {
+            return;
+        }
+
+        AiChatPanel.SelectAgentFromOrchestrator(agent);
+        ShowLayoutAnchorable(AiChatAnchorable);
+    }
+
+    private void TicketPanel_TicketOpenRequested(object? sender, KaneCodeTicket ticket)
+    {
+        if (File.Exists(ticket.FilePath))
+        {
+            _viewModel.OpenFileByPath(ticket.FilePath);
+        }
+    }
+
+    private void TicketPanel_NewTicketRequested(object? sender, EventArgs e)
+    {
+        NewTicketWindow dialog = new(
+            BuildProviderOptions(),
+            BuildModelOptions(),
+            BuildModeOptions(),
+            this);
+
+        if (dialog.ShowDialog() == true)
+        {
+            _ticketSystem.CreateTicket(
+                dialog.TicketTitle,
+                dialog.TicketDescription,
+                dialog.Provider,
+                dialog.Model,
+                dialog.AgentMode,
+                dialog.Priority,
+                dialog.StartAfter);
+        }
+    }
+
+    private List<string> BuildProviderOptions()
+    {
+        return _aiProviderRegistry.Providers
+            .Select(provider => provider.DisplayName)
+            .OrderBy(name => name, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
+    private List<string> BuildModelOptions()
+    {
+        return (_aiProviderRegistry.ActiveProvider?.AvailableModels ?? [])
+            .OrderBy(name => name, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
+    private List<string> BuildModeOptions()
+    {
+        List<string> options = _aiChatModeRegistry.Modes
+            .Select(mode => mode.DisplayName)
+            .OrderBy(name => name, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        foreach (AiPreset preset in AiPresetManager.Load())
+        {
+            options.Add(preset.Name);
+        }
+
+        return options;
     }
 
     /// <summary>
@@ -709,11 +826,27 @@ public partial class MainWindow : Window
 
     /// <summary>
 
+    /// <summary>
+    /// Resolves the project root used by path-aware agent tools. During a ticket agent
+    /// run, the ticket system pushes a worktree-root override via
+    /// <see cref="AgentToolContext.PushRunContext"/>; that override is honored here so
+    /// every file/build tool operates in the ticket's isolated workspace.
+    /// </summary>
+    private string? GetAgentProjectRoot()
+    {
+        string? overriddenRoot = AgentToolContext.GetProjectRootOverride();
+        if (!string.IsNullOrWhiteSpace(overriddenRoot))
+        {
+            return overriddenRoot;
+        }
+
+        return _viewModel.ProjectItems.FirstOrDefault(i => i.ItemType is ProjectItemType.Solution or ProjectItemType.Project)?.FullPath
+            ?? _viewModel.ProjectItems.FirstOrDefault()?.FullPath;
+    }
+
     private void RegisterAgentTools()
     {
-        Func<string?> projectRoot = () =>
-            _viewModel.ProjectItems.FirstOrDefault(i => i.ItemType is ProjectItemType.Solution or ProjectItemType.Project)?.FullPath
-            ?? _viewModel.ProjectItems.FirstOrDefault()?.FullPath;
+        Func<string?> projectRoot = GetAgentProjectRoot;
 
         Action<string> onFileChanged = _viewModel.NotifyFileChangedOnDisk;
 
@@ -807,6 +940,11 @@ public partial class MainWindow : Window
 
         // ── Multi-agent tools ────────────────────────────────────────
         _agentToolRegistry.Register(new Services.Ai.Agents.SpawnAgentTool());
+
+        // ── Ticket tools ──────────────────────────────────────────────
+        // Lets a ticket agent report its outcome back to the ticket system.
+        _agentToolRegistry.Register(new CompleteTicketTool(() => _ticketSystem));
+        _agentToolRegistry.Register(new UnableToCompleteTool(() => _ticketSystem));
     }
 
     private AiContextDocumentSnapshot? GetCurrentDocumentSnapshot()

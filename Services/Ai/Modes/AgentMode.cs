@@ -59,6 +59,10 @@ internal sealed class AgentMode : IAiChatMode
 
         // Debug
         "request_tool",
+
+        // Tickets
+        "complete_ticket",
+        "unable_to_complete",
     };
 
     public string Id => "agent";

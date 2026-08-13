@@ -15,5 +15,12 @@ internal enum AgentRole
     /// A sub-agent spawned by a parent agent to perform a delegated task.
     /// Reports results back to its parent when finished.
     /// </summary>
-    SubAgent
+    SubAgent,
+
+    /// <summary>
+    /// A top-level agent working on a KaneCode ticket. Like <see cref="Root"/> it has
+    /// no parent, but it is dispatched autonomously by the ticket system rather than
+    /// by the main AI chat panel.
+    /// </summary>
+    Ticket
 }

@@ -63,6 +63,7 @@
             <ListBoxItem Content="Hotkeys" />
             <ListBoxItem Content="Provider Settings" />
             <ListBoxItem Content="AI Settings" />
+            <ListBoxItem Content="Tickets" />
         </ListBox>
 
         <!-- Separator -->
@@ -470,6 +471,44 @@
                     </ListView.View>
                 </ListView>
             </DockPanel>
+        </Border>
+
+        <!-- Tickets page -->
+        <Border Grid.Column="2"
+                x:Name="TicketsPageBorder"
+                Background="{DynamicResource WindowBackground}"
+                Padding="20,16"
+                Visibility="Collapsed">
+            <StackPanel>
+                <TextBlock Text="Tickets"
+                           FontSize="18" FontWeight="SemiBold"
+                           Foreground="{DynamicResource WindowForeground}"
+                           Margin="0,0,0,16" />
+
+                <TextBlock Text="Ticket-side overrides"
+                           Foreground="{DynamicResource WindowForeground}"
+                           FontSize="13" FontWeight="SemiBold"
+                           Margin="0,0,0,4" />
+                <TextBlock Text="Tickets can optionally specify their own provider, model, and agent mode in their header line. For safety, these overrides are ignored unless explicitly enabled here."
+                           Foreground="{DynamicResource PanelForeground}"
+                           FontSize="11"
+                           TextWrapping="Wrap"
+                           Margin="0,0,0,10" />
+                <CheckBox x:Name="AllowTicketOverridesCheckBox"
+                          Content="Allow tickets to override the provider, model, and agent mode"
+                          Foreground="{DynamicResource WindowForeground}"
+                          FontSize="12"
+                          Margin="0,0,0,16" />
+
+                <TextBlock Text="Where tickets live"
+                           Foreground="{DynamicResource WindowForeground}"
+                           FontSize="13" FontWeight="SemiBold"
+                           Margin="0,0,0,4" />
+                <TextBlock Text="Tickets are plain text files stored under .kanecode/tickets in your project. Add files there any time (even while the IDE is running) and the ticket system will pick them up. The first line of each file is an optional KaneCodeTicket|... header; the remaining lines are the task description handed to the agent."
+                           Foreground="{DynamicResource PanelForeground}"
+                           FontSize="11"
+                           TextWrapping="Wrap" />
+            </StackPanel>
         </Border>
     </Grid>
 </Window>

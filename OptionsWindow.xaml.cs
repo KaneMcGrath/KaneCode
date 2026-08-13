@@ -1,5 +1,6 @@
 using KaneCode.Services;
 using KaneCode.Services.Ai;
+using KaneCode.Services.Tickets;
 using KaneCode.Theming;
 using KaneCode.ViewModels;
 using Microsoft.Win32;
@@ -56,6 +57,12 @@ public partial class OptionsWindow : Window
         // Save auto-context rules
         AutoContextSettingsManager.Save(_autoContextRules);
 
+        // Save ticket system settings
+        TicketSettingsManager.Save(new TicketSettings
+        {
+            AllowTicketOverrides = AllowTicketOverridesCheckBox.IsChecked == true
+        });
+
         // Save AI provider settings (the view model auto-saves on every change,
         // but this ensures any deferred or missed saves are flushed on close).
         _aiSettingsViewModel.Save();
@@ -98,6 +105,9 @@ public partial class OptionsWindow : Window
         }
         AutoContextRulesList.ItemsSource = _autoContextRules;
 
+        // Load ticket system settings
+        AllowTicketOverridesCheckBox.IsChecked = TicketSettingsManager.Load().AllowTicketOverrides;
+
         _isInitializing = false;
 
         if (!string.IsNullOrWhiteSpace(_initialCategory))
@@ -122,6 +132,7 @@ public partial class OptionsWindow : Window
         HotkeysPageBorder.Visibility = Visibility.Collapsed;
         AiProvidersPageBorder.Visibility = Visibility.Collapsed;
         AiSettingsPageBorder.Visibility = Visibility.Collapsed;
+        TicketsPageBorder.Visibility = Visibility.Collapsed;
 
         // Show selected page
         switch (category)
@@ -140,6 +151,9 @@ public partial class OptionsWindow : Window
                 break;
             case AiSettingsCategoryName:
                 AiSettingsPageBorder.Visibility = Visibility.Visible;
+                break;
+            case "Tickets":
+                TicketsPageBorder.Visibility = Visibility.Visible;
                 break;
         }
     }

@@ -126,6 +126,9 @@ ResizeMode="CanResizeWithGrip">
                 <MenuItem Header="_AI Chat"
                           Tag="{Binding ElementName=AiChatAnchorable}"
                           Click="ViewMenuPanel_Click" />
+                <MenuItem Header="_Tickets"
+                          Tag="{Binding ElementName=TicketAnchorable}"
+                          Click="ViewMenuPanel_Click" />
                 <MenuItem Header="_Agent Orchestrator"
                           Tag="{Binding ElementName=AgentOrchestratorAnchorable}"
                           Click="ViewMenuPanel_Click" />
@@ -606,6 +609,13 @@ ResizeMode="CanResizeWithGrip">
                     </avalonDock:LayoutPanel>
 
                     <avalonDock:LayoutAnchorablePane DockWidth="1.5*">
+                        <avalonDock:LayoutAnchorable x:Name="TicketAnchorable" Title="Tickets"
+                                                     CanClose="False"
+                                                     CanHide="True"
+                                                     CanAutoHide="True"
+                                                     ContentId="TicketPane">
+                            <controls:TicketPanel x:Name="TicketPanel" />
+                        </avalonDock:LayoutAnchorable>
                         <avalonDock:LayoutAnchorable x:Name="AgentOrchestratorAnchorable" Title="Agent Orchestrator"
                                                      CanClose="False"
                                                      CanHide="True"
