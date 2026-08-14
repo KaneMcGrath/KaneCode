@@ -38,10 +38,17 @@ internal static class AgentToolPathResolver
         throw new InvalidOperationException("The loaded project root could not be resolved.");
     }
 
+    /// <summary>
+    /// Resolves <paramref name="inputPath"/> against the loaded project root and enforces
+    /// sandboxing. Paths are allowed when they fall inside the project, inside an attached
+    /// external context folder, or inside the local user's NuGet cache (the
+    /// <c>%USERPROFILE%\.nuget</c> folder, or <paramref name="nuGetCacheRoot"/> when supplied).
+    /// </summary>
     internal static string ResolvePath(
         Func<string?> projectRootProvider,
         string inputPath,
-        IReadOnlyList<string>? allowedExternalRoots = null)
+        IReadOnlyList<string>? allowedExternalRoots = null,
+        string? nuGetCacheRoot = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(inputPath);
 
@@ -75,12 +82,32 @@ internal static class AgentToolPathResolver
             ? Path.GetFullPath(inputPath)
             : Path.GetFullPath(Path.Combine(projectRoot, inputPath));
 
-        if (!IsPathWithinRoot(candidatePath, projectRoot) && !IsPathWithinAnyRoot(candidatePath, allowedExternalRoots))
+        string nuGetRoot = nuGetCacheRoot ?? GetDefaultNuGetCacheRoot();
+        bool isWithinNuGetCache = !string.IsNullOrWhiteSpace(nuGetRoot) && IsPathWithinRoot(candidatePath, nuGetRoot);
+
+        if (!IsPathWithinRoot(candidatePath, projectRoot) &&
+            !IsPathWithinAnyRoot(candidatePath, allowedExternalRoots) &&
+            !isWithinNuGetCache)
         {
-            throw new InvalidOperationException($"Path must stay inside the loaded project or an attached external context folder: {inputPath}");
+            throw new InvalidOperationException($"Path must stay inside the loaded project, an attached external context folder, or your local NuGet cache (~/.nuget): {inputPath}");
         }
 
         return candidatePath;
+    }
+
+    /// <summary>
+    /// Returns the local user's NuGet cache root (the <c>.nuget</c> folder under the user
+    /// profile). Returns an empty string when the user profile cannot be resolved.
+    /// </summary>
+    private static string GetDefaultNuGetCacheRoot()
+    {
+        string? userProfile = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        if (string.IsNullOrWhiteSpace(userProfile))
+        {
+            return string.Empty;
+        }
+
+        return Path.Combine(userProfile, ".nuget");
     }
 
     internal static string ResolveFilePathOrFileName(

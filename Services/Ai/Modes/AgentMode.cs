@@ -98,6 +98,8 @@ internal sealed class AgentMode : IAiChatMode
 
             Only invoke git tools when the user explicitly asks for version control operations
             or when the project's documentation indicates they are necessary.
+
+            File tools may also read from your local NuGet cache (~/.nuget) to inspect package contents.
             """;
     }
 }

@@ -136,4 +136,66 @@ public sealed class AgentToolPathResolverTests : IDisposable
             catch { }
         }
     }
+
+    [Fact]
+    public void WhenAbsolutePathIsInsideNuGetCacheThenReturnsResolvedPath()
+    {
+        string nuGetRoot = Path.Combine(Path.GetTempPath(), $"KaneCodeNuGet_{Guid.NewGuid():N}");
+        Directory.CreateDirectory(Path.Combine(nuGetRoot, "packages"));
+
+        try
+        {
+            string packageFilePath = Path.Combine(nuGetRoot, "packages", "some.package", "lib", "net8.0", "Some.Package.dll");
+
+            string resolvedPath = AgentToolPathResolver.ResolvePath(
+                () => _projectRoot,
+                packageFilePath,
+                nuGetCacheRoot: nuGetRoot);
+
+            Assert.Equal(Path.GetFullPath(packageFilePath), resolvedPath, ignoreCase: OperatingSystem.IsWindows());
+        }
+        finally
+        {
+            try { Directory.Delete(nuGetRoot, recursive: true); }
+            catch { }
+        }
+    }
+
+    [Fact]
+    public void WhenAbsolutePathIsInsideDefaultNuGetCacheThenReturnsResolvedPath()
+    {
+        string? userProfile = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        if (string.IsNullOrWhiteSpace(userProfile))
+        {
+            return; // Cannot exercise the default cache root without a user profile
+        }
+
+        string packageFilePath = Path.Combine(userProfile, ".nuget", "packages", "some.package", "some.package.nuspec");
+
+        string resolvedPath = AgentToolPathResolver.ResolvePath(() => _projectRoot, packageFilePath);
+
+        Assert.Equal(Path.GetFullPath(packageFilePath), resolvedPath, ignoreCase: OperatingSystem.IsWindows());
+    }
+
+    [Fact]
+    public void WhenPathIsOutsideProjectAndNuGetCacheThenErrorMentionsNuGetCache()
+    {
+        string outsideDirectory = Path.Combine(Path.GetTempPath(), $"KaneCodeOutside_{Guid.NewGuid():N}");
+        Directory.CreateDirectory(outsideDirectory);
+
+        try
+        {
+            string outsidePath = Path.Combine(outsideDirectory, "outside.cs");
+
+            InvalidOperationException exception = Assert.Throws<InvalidOperationException>(
+                () => AgentToolPathResolver.ResolvePath(() => _projectRoot, outsidePath));
+
+            Assert.Contains("NuGet cache", exception.Message, StringComparison.OrdinalIgnoreCase);
+        }
+        finally
+        {
+            try { Directory.Delete(outsideDirectory, recursive: true); }
+            catch { }
+        }
+    }
 }
