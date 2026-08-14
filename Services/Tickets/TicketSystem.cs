@@ -51,6 +51,15 @@ internal sealed class TicketSystem : ITicketStatusService, IDisposable
     /// </summary>
     internal event EventHandler? StateChanged;
 
+    /// <summary>
+    /// Raised when the dispatcher declines a ticket or hits an error while trying to
+    /// start one. The payload carries a human-readable reason (and the ticket title when
+    /// the issue is ticket-specific). Raised with a null reason when the issue is cleared
+    /// (e.g. on a fresh <see cref="Start"/>). May be raised on a background thread;
+    /// subscribers marshal to the UI thread.
+    /// </summary>
+    internal event EventHandler<TicketDispatchIssueEventArgs>? DispatchIssue;
+
     public TicketSystem(
         TicketFileStore store,
         AgentToolRegistry toolRegistry,
@@ -107,6 +116,10 @@ internal sealed class TicketSystem : ITicketStatusService, IDisposable
         IsRunning = true;
         _store.EnsureTicketsDirectory();
         _store.InitializeHeaderlessTickets();
+
+        // A fresh start clears any issue left over from a previous session so the
+        // panel does not show a stale reason after the user fixed the underlying problem.
+        SetDispatchIssue(null, null);
 
         _timer = new System.Threading.Timer(
             _ =>
@@ -355,6 +368,14 @@ internal sealed class TicketSystem : ITicketStatusService, IDisposable
     /// <summary>The most recent completion/unable note, surfaced in the status text.</summary>
     internal string? LastNote => _lastNote;
 
+    private string? _lastDispatchIssue;
+
+    /// <summary>
+    /// The most recent reason a ticket could not be dispatched (provider/mode not
+    /// available, worktree failure, etc.), or null when there is nothing to report.
+    /// </summary>
+    internal string? LastDispatchIssue => _lastDispatchIssue;
+
     private IReadOnlyList<KaneCodeTicket> Refresh()
     {
         IReadOnlyList<KaneCodeTicket> tickets = _store.ScanTickets();
@@ -440,11 +461,25 @@ internal sealed class TicketSystem : ITicketStatusService, IDisposable
                     continue;
                 }
 
-                if (TryPrepareDispatch(ticket))
+                try
                 {
-                    capacity--;
+                    if (TryPrepareDispatch(ticket))
+                    {
+                        capacity--;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    // A single misbehaving ticket must never take down the dispatch
+                    // loop or crash Start()'s direct dispatch call.
+                    SetDispatchIssue(ticket.Title, $"Unexpected error dispatching '{ticket.Title}': {ex.Message}");
                 }
             }
+        }
+        catch (Exception ex)
+        {
+            // Never let a dispatch failure take down the timer loop or crash Start().
+            SetDispatchIssue(null, $"Ticket dispatch loop error: {ex.Message}");
         }
         finally
         {
@@ -489,8 +524,11 @@ internal sealed class TicketSystem : ITicketStatusService, IDisposable
     /// </summary>
     private bool TryPrepareDispatch(KaneCodeTicket ticket)
     {
-        if (!TryResolveConfiguration(ticket, out IAiProvider provider, out string model, out IAiChatMode mode))
+        if (!TryResolveConfiguration(ticket, out IAiProvider provider, out string model, out IAiChatMode mode, out string? configFailure))
         {
+            SetDispatchIssue(
+                ticket.Title,
+                configFailure ?? $"Could not resolve AI configuration for '{ticket.Title}'.");
             return false;
         }
 
@@ -504,10 +542,13 @@ internal sealed class TicketSystem : ITicketStatusService, IDisposable
             {
                 worktreeRoot = _worktreeManager.CreateWorktree(repositoryRoot, ticket.Title);
             }
-            catch (Exception)
+            catch (Exception ex)
             {
                 // Could not create an isolated worktree. Leave the ticket open rather
                 // than dispatching an agent that would mutate the user's workspace.
+                SetDispatchIssue(
+                    ticket.Title,
+                    $"Could not create an isolated Git worktree for '{ticket.Title}': {ex.Message}");
                 return false;
             }
         }
@@ -567,7 +608,8 @@ internal sealed class TicketSystem : ITicketStatusService, IDisposable
         KaneCodeTicket ticket,
         out IAiProvider provider,
         out string model,
-        out IAiChatMode mode)
+        out IAiChatMode mode,
+        out string? failureReason)
     {
         bool overridesAllowed = TicketSettingsManager.Load().AllowTicketOverrides;
 
@@ -588,16 +630,34 @@ internal sealed class TicketSystem : ITicketStatusService, IDisposable
             provider = null!;
             model = string.Empty;
             mode = null!;
+            failureReason =
+                $"Ticket '{ticket.Title}' requests a provider/model/mode override, but ticket-side overrides are " +
+                "disabled. Enable \"Allow ticket overrides\" in the ticket settings, or remove the Provider/Model/" +
+                "AgentMode options from the ticket header.";
             return false;
         }
 
         IAiProvider? resolvedProvider = _currentProviderProvider();
-        if (resolvedProvider is null || !resolvedProvider.IsConfigured)
+        if (resolvedProvider is null)
         {
             // Leave the ticket open until a provider is configured.
             provider = null!;
             model = string.Empty;
             mode = null!;
+            failureReason =
+                "No AI provider is configured. Add and configure a provider in AI Settings, " +
+                "then initialize tickets again.";
+            return false;
+        }
+
+        if (!resolvedProvider.IsConfigured)
+        {
+            provider = null!;
+            model = string.Empty;
+            mode = null!;
+            failureReason =
+                $"The active AI provider '{resolvedProvider.DisplayName}' is not configured (missing API key or " +
+                "endpoint). Open AI Settings to configure it, then initialize tickets again.";
             return false;
         }
 
@@ -616,6 +676,9 @@ internal sealed class TicketSystem : ITicketStatusService, IDisposable
             provider = null!;
             model = string.Empty;
             mode = null!;
+            failureReason =
+                "No AI mode with tools enabled is available. Switch the chat panel to a mode such as Agent, " +
+                "then initialize tickets again.";
             return false;
         }
 
@@ -646,6 +709,7 @@ internal sealed class TicketSystem : ITicketStatusService, IDisposable
         provider = resolvedProvider;
         model = resolvedModel;
         mode = resolvedMode;
+        failureReason = null;
         return true;
     }
 
@@ -765,6 +829,12 @@ internal sealed class TicketSystem : ITicketStatusService, IDisposable
         catch (UnauthorizedAccessException)
         {
         }
+    }
+
+    private void SetDispatchIssue(string? ticketTitle, string? reason)
+    {
+        _lastDispatchIssue = reason;
+        DispatchIssue?.Invoke(this, new TicketDispatchIssueEventArgs(ticketTitle, reason));
     }
 
     private KaneCodeTicket? FindTicketByTitle(string title)
@@ -903,5 +973,24 @@ internal sealed class TicketsChangedEventArgs : EventArgs
     public TicketsChangedEventArgs(IReadOnlyList<KaneCodeTicket> tickets)
     {
         Tickets = tickets ?? throw new ArgumentNullException(nameof(tickets));
+    }
+}
+
+/// <summary>
+/// Event arguments describing why the dispatcher declined a ticket or hit an error.
+/// A null <see cref="Reason"/> means the issue was cleared.
+/// </summary>
+internal sealed class TicketDispatchIssueEventArgs : EventArgs
+{
+    /// <summary>The ticket title the issue applies to, or null when the issue is system-wide.</summary>
+    public string? TicketTitle { get; }
+
+    /// <summary>Human-readable explanation of the dispatch problem, or null when cleared.</summary>
+    public string? Reason { get; }
+
+    public TicketDispatchIssueEventArgs(string? ticketTitle, string? reason)
+    {
+        TicketTitle = ticketTitle;
+        Reason = reason;
     }
 }

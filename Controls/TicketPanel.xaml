@@ -10,40 +10,50 @@
                 Background="{DynamicResource AiChatHeaderBackground}"
                 BorderBrush="{DynamicResource AiChatBorder}"
                 BorderThickness="0,0,0,1">
-            <Grid>
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="Auto" />
-                </Grid.ColumnDefinitions>
+            <StackPanel>
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
 
-                <StackPanel Grid.Column="0" VerticalAlignment="Center">
-                    <TextBlock Text="Tickets" FontWeight="SemiBold" Foreground="{DynamicResource PanelForeground}" />
-                    <TextBlock x:Name="HeaderInfoText"
-                               Margin="0,3,0,0"
-                               FontSize="10"
-                               TextTrimming="CharacterEllipsis"
-                               Foreground="{DynamicResource AiChatSecondaryForeground}" />
-                </StackPanel>
+                    <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                        <TextBlock Text="Tickets" FontWeight="SemiBold" Foreground="{DynamicResource PanelForeground}" />
+                        <TextBlock x:Name="HeaderInfoText"
+                                   Margin="0,3,0,0"
+                                   FontSize="10"
+                                   TextTrimming="CharacterEllipsis"
+                                   Foreground="{DynamicResource AiChatSecondaryForeground}" />
+                    </StackPanel>
 
-                <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
-                    <TextBlock x:Name="StatusText"
-                               Margin="0,0,8,0"
-                               FontSize="10"
-                               VerticalAlignment="Center"
-                               Foreground="{DynamicResource AiChatSecondaryForeground}" />
-                    <Button x:Name="InitializeButton"
-                            Content="Initialize"
-                            Click="InitializeButton_Click"
-                            Height="22"
-                            Padding="8,1"
-                            FontSize="11"
-                            Cursor="Hand"
-                            Foreground="{DynamicResource PanelForeground}"
-                            Background="{DynamicResource ControlBackground}"
-                            BorderBrush="{DynamicResource ControlBorder}"
-                            BorderThickness="1" />
-                </StackPanel>
-            </Grid>
+                    <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                        <TextBlock x:Name="StatusText"
+                                   Margin="0,0,8,0"
+                                   FontSize="10"
+                                   VerticalAlignment="Center"
+                                   Foreground="{DynamicResource AiChatSecondaryForeground}" />
+                        <Button x:Name="InitializeButton"
+                                Content="Initialize"
+                                Click="InitializeButton_Click"
+                                Height="22"
+                                Padding="8,1"
+                                FontSize="11"
+                                Cursor="Hand"
+                                Foreground="{DynamicResource PanelForeground}"
+                                Background="{DynamicResource ControlBackground}"
+                                BorderBrush="{DynamicResource ControlBorder}"
+                                BorderThickness="1" />
+                    </StackPanel>
+                </Grid>
+
+                <!-- Last dispatch problem (e.g. no provider configured, worktree failure) -->
+                <TextBlock x:Name="IssueText"
+                           Margin="0,6,0,0"
+                           FontSize="10"
+                           TextWrapping="Wrap"
+                           Visibility="Collapsed"
+                           Foreground="{DynamicResource AiChatToolCallErrorForeground}" />
+            </StackPanel>
         </Border>
 
         <!-- New Ticket button pinned at the bottom -->

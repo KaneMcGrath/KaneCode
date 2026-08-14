@@ -41,13 +41,16 @@ public partial class TicketPanel : UserControl
         {
             _ticketSystem.TicketsChanged -= TicketSystem_TicketsChanged;
             _ticketSystem.StateChanged -= TicketSystem_StateChanged;
+            _ticketSystem.DispatchIssue -= TicketSystem_DispatchIssue;
         }
 
         _ticketSystem = system;
         _ticketSystem.TicketsChanged += TicketSystem_TicketsChanged;
         _ticketSystem.StateChanged += TicketSystem_StateChanged;
+        _ticketSystem.DispatchIssue += TicketSystem_DispatchIssue;
 
         RefreshFromSystem();
+        ApplyDispatchIssue(new TicketDispatchIssueEventArgs(null, system.LastDispatchIssue));
     }
 
     /// <summary>
@@ -81,6 +84,34 @@ public partial class TicketPanel : UserControl
         }
 
         Dispatcher.BeginInvoke(UpdateStatusText);
+    }
+
+    private void TicketSystem_DispatchIssue(object? sender, TicketDispatchIssueEventArgs e)
+    {
+        if (Dispatcher.CheckAccess())
+        {
+            ApplyDispatchIssue(e);
+            return;
+        }
+
+        Dispatcher.BeginInvoke(() => ApplyDispatchIssue(e));
+    }
+
+    private void ApplyDispatchIssue(TicketDispatchIssueEventArgs e)
+    {
+        if (string.IsNullOrWhiteSpace(e.Reason))
+        {
+            IssueText.Text = string.Empty;
+            IssueText.Visibility = Visibility.Collapsed;
+            return;
+        }
+
+        string prefix = string.IsNullOrWhiteSpace(e.TicketTitle)
+            ? string.Empty
+            : $"[{e.TicketTitle}] ";
+
+        IssueText.Text = "⚠ " + prefix + e.Reason;
+        IssueText.Visibility = Visibility.Visible;
     }
 
     private void RefreshFromSystem()

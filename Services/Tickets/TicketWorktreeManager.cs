@@ -63,6 +63,13 @@ internal sealed class TicketWorktreeManager
         using Repository repository = new(repositoryPath);
         string branchName = AgentBranchPrefix + safeTicketId;
 
+        if (repository.Info.IsHeadUnborn || repository.Head?.Tip is null)
+        {
+            throw new InvalidOperationException(
+                $"the Git repository has no commits yet, so an isolated worktree cannot be created. " +
+                "Make an initial commit (or check out an existing commit) and try again.");
+        }
+
         // Remove a stale branch with the same name so the new worktree starts fresh.
         Branch? staleBranch = repository.Branches[branchName];
         if (staleBranch is not null && !staleBranch.IsRemote)
@@ -79,7 +86,7 @@ internal sealed class TicketWorktreeManager
         }
 
         Branch branch = repository.CreateBranch(branchName);
-        repository.Worktrees.Add(safeTicketId, worktreePath, branch.CanonicalName, isLocked: false);
+        repository.Worktrees.Add(branch.CanonicalName, safeTicketId, worktreePath, isLocked: false);
         return worktreePath;
     }
 
@@ -202,6 +209,10 @@ internal sealed class TicketWorktreeManager
             builder.Append(char.IsLetterOrDigit(c) || c is '-' or '_' ? c : '-');
         }
 
-        return builder.ToString();
+        // Git worktree/ref names cannot start or end with '-' or be empty, so trim
+        // any leading/trailing separators produced by a title that begins or ends
+        // with non-alphanumeric characters.
+        string sanitized = builder.ToString().Trim('-');
+        return string.IsNullOrEmpty(sanitized) ? "ticket" : sanitized;
     }
 }
