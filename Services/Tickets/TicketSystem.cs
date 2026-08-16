@@ -24,6 +24,15 @@ internal sealed class TicketSystem : ITicketStatusService, IDisposable
 {
     private const int MaxIterations = 150;
 
+    /// <summary>
+    /// How many finished ticket agents stay registered with the orchestrator. Their
+    /// runs are over, but keeping them in the agent tree lets the user open and read
+    /// the session afterwards — removing an agent the moment it finishes pulls the
+    /// conversation out of the chat panel while it is being watched. Older agents are
+    /// released so a long session does not accumulate them without bound.
+    /// </summary>
+    private const int RetainedFinishedAgents = 10;
+
     private readonly TicketFileStore _store;
     private readonly TicketWorktreeManager _worktreeManager = new();
     private readonly AgentToolRegistry _toolRegistry;
@@ -38,6 +47,7 @@ internal sealed class TicketSystem : ITicketStatusService, IDisposable
 
     private readonly SemaphoreSlim _sync = new(1, 1);
     private readonly Dictionary<string, TicketRun> _activeRuns = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Queue<string> _finishedAgentIds = new();
     private System.Threading.Timer? _timer;
 
     /// <summary>
@@ -786,15 +796,20 @@ internal sealed class TicketSystem : ITicketStatusService, IDisposable
         {
         }
 
-        // Release the agent so it does not accumulate in the orchestrator. The worktree
-        // and branch are kept so the user can review the agent's commits later.
+        // The run is over, so its file locks must go back even though the agent itself
+        // stays registered for inspection (RemoveAgent would normally have released them).
         try
         {
-            _orchestrator.RemoveAgent(run.AgentId);
+            _orchestrator.FileLockManager.ReleaseAll(run.AgentId);
         }
         catch (Exception)
         {
         }
+
+        // Keep the agent in the tree so its session remains readable, retiring the
+        // oldest finished agents once the retention limit is reached. The worktree and
+        // branch are kept too so the user can review the agent's commits later.
+        RetainFinishedAgent(run.AgentId);
 
         lock (_activeRuns)
         {
@@ -805,6 +820,35 @@ internal sealed class TicketSystem : ITicketStatusService, IDisposable
 
         // Dispatch the next eligible ticket.
         _ = TryDispatchNextAsync();
+    }
+
+    /// <summary>
+    /// Records a finished ticket agent as retained, removing the ones that have aged
+    /// past <see cref="RetainedFinishedAgents"/> from the orchestrator.
+    /// </summary>
+    private void RetainFinishedAgent(string agentId)
+    {
+        List<string> retired = [];
+
+        lock (_finishedAgentIds)
+        {
+            _finishedAgentIds.Enqueue(agentId);
+            while (_finishedAgentIds.Count > RetainedFinishedAgents)
+            {
+                retired.Add(_finishedAgentIds.Dequeue());
+            }
+        }
+
+        foreach (string retiredAgentId in retired)
+        {
+            try
+            {
+                _orchestrator.RemoveAgent(retiredAgentId);
+            }
+            catch (Exception)
+            {
+            }
+        }
     }
 
     private void UpdateTicketStatus(string ticketId, TicketStatus status)

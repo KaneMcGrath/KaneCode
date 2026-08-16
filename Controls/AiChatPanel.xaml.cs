@@ -60,6 +60,23 @@ public partial class AiChatPanel : UserControl
     private string? _viewingAgentId;
 
     /// <summary>
+    /// The agent currently rendered in the panel (matching <see cref="_viewingAgentId"/>),
+    /// held so its <see cref="Services.Ai.Agents.IAgent.Activity"/> and
+    /// <see cref="Services.Ai.Agents.IAgent.TokenStreamed"/> subscriptions can be
+    /// released when the view changes.
+    /// </summary>
+    private Services.Ai.Agents.IAgent? _viewedAgent;
+
+    /// <summary>
+    /// 1 while a refresh of the agent view is already queued on the dispatcher.
+    /// A running agent can report progress faster than the UI thread drains it and
+    /// every refresh re-renders the whole conversation, so redundant refreshes are
+    /// dropped — the queued one reads the agent's messages when it runs, so it still
+    /// picks up everything that arrived in the meantime.
+    /// </summary>
+    private int _agentViewRefreshQueued;
+
+    /// <summary>
     /// Guard flag to prevent <see cref="AgentSessionSelector_SelectionChanged"/>
     /// from triggering view switches during programmatic refreshes of the dropdown.
     /// </summary>
@@ -75,8 +92,8 @@ public partial class AiChatPanel : UserControl
 
     /// <summary>
     /// Per-agent streaming state used by <see cref="RenderAgentStreamToken"/> to
-    /// incrementally render sub-agent responses as they arrive via the agent's
-    /// <see cref="Agent.TokenCallback"/>. Keyed by agent ID.
+    /// incrementally render an agent's response as it arrives via the agent's
+    /// <see cref="Services.Ai.Agents.IAgent.TokenStreamed"/> event. Keyed by agent ID.
     /// </summary>
     private readonly Dictionary<string, AgentStreamingState> _agentStreamingStates = new();
 
@@ -2628,6 +2645,7 @@ public partial class AiChatPanel : UserControl
     private void SwitchToNormalView()
     {
         _viewingAgentId = null;
+        DetachViewedAgent();
 
         // Restore the input area
         SetInputEnabled(true);
@@ -2724,6 +2742,12 @@ public partial class AiChatPanel : UserControl
 
         _viewingAgentId = agent.Id;
 
+        // Follow the agent's live progress. This is what keeps the view moving for
+        // agents this panel did not dispatch itself (ticket agents, and sub-agents
+        // spawned by another agent) — without it the panel would only ever show the
+        // snapshot taken at the moment the user switched to the agent.
+        AttachViewedAgent(agent);
+
         // Disable the input area — the user cannot send messages to a sub-agent
         SetInputEnabled(false);
 
@@ -2747,9 +2771,8 @@ public partial class AiChatPanel : UserControl
             _savedRootMessageChildren = null;
         }
 
-        // Clear and re-render using the agent's current messages.
-        // Live updates will be dispatched via the agent's IterationCallback
-        // (set up in ExecuteSpawnAgentInternalAsync).
+        // Clear and re-render using the agent's current messages. Live updates
+        // arrive through the subscriptions taken out by AttachViewedAgent above.
         RefreshAgentViewMessages(agent);
     }
 
@@ -2761,6 +2784,11 @@ public partial class AiChatPanel : UserControl
     /// </summary>
     private void RefreshAgentViewMessages(Services.Ai.Agents.IAgent agent)
     {
+        // Drop any accumulated streaming state: the panel is about to be rebuilt from
+        // the agent's messages, so the next token must start a fresh section rather
+        // than append to text that is already part of the re-rendered history.
+        _agentStreamingStates.Remove(agent.Id);
+
         _streamSections.Clear();
         _inlineImageBorders.Clear();
         _inlineContextSections.Clear();
@@ -2768,13 +2796,102 @@ public partial class AiChatPanel : UserControl
         PinnedSectionPanel.Children.Clear();
         PinnedSectionPanel.Visibility = Visibility.Collapsed;
 
-        RenderAgentMessages(agent.Messages);
+        // Take a single snapshot: each read of Messages copies the agent's list, and
+        // the counts below must describe exactly what was rendered.
+        IReadOnlyList<AiChatMessage> messages = agent.Messages;
+        RenderAgentMessages(messages);
 
         // Update stats bar for the agent
-        int messageCount = agent.Messages.Count;
-        int toolCallCount = agent.Messages.Count(m => m.Role == AiChatRole.Tool);
+        int messageCount = messages.Count;
+        int toolCallCount = messages.Count(m => m.Role == AiChatRole.Tool);
         StatsBar.Text = $"{messageCount} msgs · {toolCallCount} tool results";
         ContextWindowBar.Text = $"agent: {agent.DisplayName}  •  model: {agent.Model}";
+    }
+
+    /// <summary>
+    /// Subscribes to the given agent's live progress events so the agent view keeps
+    /// updating while the agent runs, releasing any previous subscription first.
+    /// </summary>
+    private void AttachViewedAgent(Services.Ai.Agents.IAgent agent)
+    {
+        ArgumentNullException.ThrowIfNull(agent);
+
+        if (ReferenceEquals(_viewedAgent, agent))
+        {
+            return;
+        }
+
+        DetachViewedAgent();
+
+        _viewedAgent = agent;
+        agent.Activity += ViewedAgent_Activity;
+        agent.TokenStreamed += ViewedAgent_TokenStreamed;
+    }
+
+    /// <summary>
+    /// Releases the live progress subscription held on the agent currently being viewed.
+    /// </summary>
+    private void DetachViewedAgent()
+    {
+        if (_viewedAgent is null)
+        {
+            return;
+        }
+
+        _viewedAgent.Activity -= ViewedAgent_Activity;
+        _viewedAgent.TokenStreamed -= ViewedAgent_TokenStreamed;
+        _viewedAgent = null;
+    }
+
+    /// <summary>
+    /// Handles an agent progress notification. Raised on the agent's run thread, so
+    /// the re-render is marshalled to the UI thread. Every activity kind rebuilds the
+    /// panel from the agent's message history: that is what surfaces completed tool
+    /// results, and it is also the final render when the run ends.
+    /// </summary>
+    private void ViewedAgent_Activity(object? sender, Services.Ai.Agents.AgentActivityEventArgs e)
+    {
+        if (sender is not Services.Ai.Agents.IAgent agent)
+        {
+            return;
+        }
+
+        if (Interlocked.Exchange(ref _agentViewRefreshQueued, 1) == 1)
+        {
+            // A refresh is already pending and has not started reading yet, so it will
+            // render this update too.
+            return;
+        }
+
+        string agentId = agent.Id;
+        Dispatcher.BeginInvoke(() =>
+        {
+            Interlocked.Exchange(ref _agentViewRefreshQueued, 0);
+
+            if (!string.Equals(_viewingAgentId, agentId, StringComparison.Ordinal))
+            {
+                return;
+            }
+
+            RefreshAgentViewMessages(agent);
+        });
+    }
+
+    /// <summary>
+    /// Handles a streaming token from the agent being viewed. Raised on the agent's
+    /// run thread; the render is queued on the UI thread with <see cref="Dispatcher.BeginInvoke"/>
+    /// so the agent never blocks waiting on the UI.
+    /// </summary>
+    private void ViewedAgent_TokenStreamed(object? sender, Services.Ai.Agents.AgentTokenEventArgs e)
+    {
+        if (sender is not Services.Ai.Agents.IAgent agent)
+        {
+            return;
+        }
+
+        string agentId = agent.Id;
+        AiStreamToken token = e.Token;
+        Dispatcher.BeginInvoke(() => RenderAgentStreamToken(agentId, token));
     }
 
     /// <summary>
@@ -2848,23 +2965,23 @@ public partial class AiChatPanel : UserControl
     }
 
     /// <summary>
-    /// Renders a streaming token from a sub-agent's <see cref="Agent.RunAsync"/> loop
-    /// to the message panel, enabling real-time text streaming when viewing a sub-agent.
+    /// Renders a streaming token from the agent being viewed, enabling real-time text
+    /// streaming for any agent — a sub-agent spawned from this panel, a sub-agent
+    /// spawned by another agent, or a ticket agent dispatched by the ticket system.
     ///
-    /// This method is invoked via the agent's <see cref="Agent.TokenCallback"/> (set in
-    /// <see cref="ExecuteSpawnAgentInternalAsync"/>). The callback is dispatched to the
-    /// UI thread via <see cref="Dispatcher.BeginInvoke"/>, so this method always runs
-    /// on the UI thread. It accumulates token text in an <see cref="AgentStreamingState"/>
-    /// and renders it incrementally — mirroring the streaming behavior of the main
-    /// <see cref="SendMessageAsync"/> loop.
+    /// This method is invoked from <see cref="ViewedAgent_TokenStreamed"/>, which
+    /// subscribes to <see cref="IAgent.TokenStreamed"/> while the panel shows an agent
+    /// session and marshals to the UI thread via <see cref="Dispatcher.BeginInvoke"/>,
+    /// so this method always runs on the UI thread. It accumulates token text in an
+    /// <see cref="AgentStreamingState"/> and renders it incrementally — mirroring the
+    /// streaming behavior of the main <see cref="SendMessageAsync"/> loop.
     ///
-    /// The streaming state is cleared by <see cref="RefreshAgentViewMessages"/> (called
-    /// from the <see cref="Agent.IterationCallback"/> at the start of each iteration,
-    /// from the final refresh after <see cref cref="Agent.RunAsync"/> completes, and from
-    /// <see cref="SwitchToAgentView"/>). This ensures that between streaming sessions,
-    /// the panel is re-rendered from the agent's <see cref="IAgent.Messages"/> list
-    /// (which contains the completed assistant message), and the next streaming session
-    /// starts with fresh UI elements.
+    /// The streaming state is cleared by <see cref="RefreshAgentViewMessages"/>, which
+    /// runs whenever the agent reports an <see cref="Services.Ai.Agents.AgentActivityKind"/>
+    /// (iteration start, new messages, run completed) and when the user switches into the
+    /// agent view. This ensures that between streaming sessions the panel is re-rendered
+    /// from the agent's <see cref="IAgent.Messages"/> list (which contains the completed
+    /// assistant message), and the next streaming session starts with fresh UI elements.
     /// </summary>
     /// <summary>
     /// Handles a streaming token for a spawn_agent's inline section, updating
@@ -3084,7 +3201,12 @@ public partial class AiChatPanel : UserControl
             state.HasThinking = false;
         }
 
-        bool toolsEnabled = _activeMode?.ToolsEnabled == true;
+        // The viewed agent decides how its own content is displayed — its mode may
+        // differ from the mode selected in the chat panel (ticket agents in particular
+        // run under whatever mode the ticket resolved to).
+        bool toolsEnabled = _viewedAgent is { } viewedAgent
+            ? viewedAgent.Mode.ToolsEnabled
+            : _activeMode?.ToolsEnabled == true;
 
         switch (token.Type)
         {
@@ -5646,65 +5768,31 @@ public partial class AiChatPanel : UserControl
                 mode,
                 systemPrompt);
 
-            // Wire up live-update callbacks so the UI can display the sub-agent's
-            // progress in real time when the user switches to its view.
-            if (subAgent is Services.Ai.Agents.Agent agentImpl)
+            // Wire up the inline rendering callbacks so the sub-agent's progress
+            // appears inside the spawn_agent tool section in the main chat.
+            //
+            // The agent *session* view (when the user switches the panel to this
+            // sub-agent) is driven separately by the agent's Activity/TokenStreamed
+            // events, subscribed in SwitchToAgentView. That path covers every agent,
+            // including ones this panel did not dispatch, so it must not be duplicated
+            // here — doing both would render each token twice.
+            if (spawnContext is not null && subAgent is Services.Ai.Agents.Agent agentImpl)
             {
-                // Capture the dispatcher and agent reference for the callbacks.
-                // The callbacks are invoked on background threads, so we must
-                // dispatch UI updates to the main thread.
+                // The callbacks are invoked on background threads, so UI updates
+                // must be dispatched to the main thread.
                 System.Windows.Threading.Dispatcher dispatcher = Dispatcher;
-                string agentId = agentImpl.Id;
-
-                // Capture the spawn context for inline iteration/token callbacks
-                SpawnAgentInlineContext? capturedSpawnContext = spawnContext;
+                SpawnAgentInlineContext capturedSpawnContext = spawnContext;
 
                 agentImpl.IterationCallback = async (_, _) =>
                 {
-                    // Dispatch a re-render of the agent's messages if the user
-                    // is currently viewing this agent. Clear the streaming state
-                    // first so the TokenCallback creates fresh UI elements for
-                    // the new iteration's streaming response.
-                    await dispatcher.InvokeAsync(() =>
-                    {
-                        if (_viewingAgentId == agentId && _agentOrchestrator?.GetAgent(agentId) is { } currentAgent)
-                        {
-                            _agentStreamingStates.Remove(agentId);
-                            RefreshAgentViewMessages(currentAgent);
-                        }
-
-                        // Reset the inline spawn section for the new iteration
-                        // (finalize previous thinking/tool-call headers, clear builders)
-                        if (capturedSpawnContext is not null)
-                        {
-                            BeginSpawnAgentIteration(capturedSpawnContext);
-                        }
-                    });
+                    // Reset the inline spawn section for the new iteration
+                    // (finalize previous thinking/tool-call headers, clear builders)
+                    await dispatcher.InvokeAsync(() => BeginSpawnAgentIteration(capturedSpawnContext));
                 };
 
-                // Wire up the token callback so that sub-agent responses are
-                // streamed to the UI in real time, matching the behavior of the
-                // main chat loop. The Agent.RunAsync method already streams
-                // tokens via Provider.StreamCompletionAsync and invokes this
-                // callback for each token — we just need to render them.
-                // If an inline spawn context is provided, tokens are also
-                // streamed into the spawn_agent tool section in the main chat.
-                agentImpl.TokenCallback = (agent, token) =>
+                agentImpl.TokenCallback = (_, token) =>
                 {
-                    dispatcher.BeginInvoke(() =>
-                    {
-                        if (_viewingAgentId == agentId)
-                        {
-                            RenderAgentStreamToken(agentId, token);
-                        }
-
-                        // Stream into the inline spawn section if one exists
-                        if (capturedSpawnContext is not null)
-                        {
-                            HandleSpawnAgentInlineToken(capturedSpawnContext, token);
-                        }
-                    });
-
+                    dispatcher.BeginInvoke(() => HandleSpawnAgentInlineToken(capturedSpawnContext, token));
                     return Task.CompletedTask;
                 };
             }
@@ -5722,19 +5810,8 @@ public partial class AiChatPanel : UserControl
                 maxIterations,
                 cancellationToken).ConfigureAwait(false);
 
-            // Dispatch a final refresh so the agent view shows the completed
-            // state (the IterationCallback only fires at the start of each
-            // iteration, not after the last one). Clear the streaming state
-            // so the re-render from _messages is authoritative.
-            await Dispatcher.InvokeAsync(() =>
-            {
-                if (_viewingAgentId == subAgent.Id &&
-                    _agentOrchestrator?.GetAgent(subAgent.Id) is { } finalAgent)
-                {
-                    _agentStreamingStates.Remove(subAgent.Id);
-                    RefreshAgentViewMessages(finalAgent);
-                }
-            });
+            // The agent session view's final render is driven by the agent's
+            // RunCompleted activity notification, so no refresh is needed here.
 
             // Report back to parent
             rootAgent.ReceiveChildResult(subAgent.Id, result);
@@ -5753,20 +5830,10 @@ public partial class AiChatPanel : UserControl
             if (subAgent is not null)
             {
                 _agentOrchestrator.FileLockManager.ReleaseAll(subAgent.Id);
-
-                // Refresh the view one last time so the user sees the partial result
-                string agentId = subAgent.Id;
-                await Dispatcher.InvokeAsync(() =>
-                {
-                    if (_viewingAgentId == agentId &&
-                        _agentOrchestrator?.GetAgent(agentId) is { } cancelledAgent)
-                    {
-                        _agentStreamingStates.Remove(agentId);
-                        RefreshAgentViewMessages(cancelledAgent);
-                    }
-                });
             }
 
+            // The partial result is rendered by the agent's RunCompleted notification,
+            // which the run loop raises on the cancellation path too.
             return ToolCallResult.Fail("Sub-agent execution was cancelled.");
         }
         catch (Exception ex)
@@ -8541,7 +8608,7 @@ public partial class AiChatPanel : UserControl
             get
             {
                 string modelInfo = $"{Agent.Provider.DisplayName} · {Agent.Model}";
-                int messageCount = Agent.Messages.Count;
+                int messageCount = Agent.MessageCount;
 
                 if (Agent.ChildIds.Count > 0)
                 {

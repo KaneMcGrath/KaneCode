@@ -24,7 +24,14 @@ namespace KaneCode.Services.Ai.Agents;
 internal sealed class Agent : IAgent
 {
     private readonly List<AiChatMessage> _messages = [];
+    private readonly object _messagesLock = new();
     private readonly HashSet<string> _childIds = new(StringComparer.Ordinal);
+
+    /// <inheritdoc />
+    public event EventHandler<AgentActivityEventArgs>? Activity;
+
+    /// <inheritdoc />
+    public event EventHandler<AgentTokenEventArgs>? TokenStreamed;
 
     public string Id { get; }
 
@@ -44,7 +51,29 @@ internal sealed class Agent : IAgent
 
     public IReadOnlySet<string> ChildIds => _childIds;
 
-    public IReadOnlyList<AiChatMessage> Messages => _messages;
+    /// <inheritdoc />
+    public IReadOnlyList<AiChatMessage> Messages
+    {
+        get
+        {
+            lock (_messagesLock)
+            {
+                return _messages.ToList();
+            }
+        }
+    }
+
+    /// <inheritdoc />
+    public int MessageCount
+    {
+        get
+        {
+            lock (_messagesLock)
+            {
+                return _messages.Count;
+            }
+        }
+    }
 
     /// <summary>
     /// Callback invoked when the agent is about to execute a tool.
@@ -113,7 +142,8 @@ internal sealed class Agent : IAgent
 
         // Add the task as a user message
         AiChatMessage taskMessage = new(AiChatRole.User, task);
-        _messages.Add(taskMessage);
+        AppendMessage(taskMessage);
+        RaiseActivity(AgentActivityKind.MessagesChanged);
 
         // Build the request history (with system prompt if configured)
         List<AiChatMessage> requestHistory = BuildInitialRequestHistory(toolsDef);
@@ -132,6 +162,35 @@ internal sealed class Agent : IAgent
         AgentOrchestrator orchestrator,
         int maxIterations,
         CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            return await RunLoopAsync(
+                requestHistory, toolsDef, toolRegistry, fileLockManager, orchestrator, maxIterations, cancellationToken)
+                .ConfigureAwait(false);
+        }
+        finally
+        {
+            // Raised on every exit path (completion, cancellation, error) so observers
+            // showing this agent's session render its final state instead of freezing
+            // on whatever the last iteration produced.
+            RaiseActivity(AgentActivityKind.RunCompleted);
+        }
+    }
+
+    /// <summary>
+    /// The tool-calling loop itself. Split out of <see cref="RunWithHistoryAsync"/>
+    /// so the <see cref="AgentActivityKind.RunCompleted"/> notification can be raised
+    /// from a single finally block covering every exit path.
+    /// </summary>
+    private async Task<AgentRunResult> RunLoopAsync(
+        List<AiChatMessage> requestHistory,
+        JsonElement toolsDef,
+        AgentToolRegistry toolRegistry,
+        FileLockManager fileLockManager,
+        AgentOrchestrator orchestrator,
+        int maxIterations,
+        CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(requestHistory);
         ArgumentNullException.ThrowIfNull(toolRegistry);
@@ -154,6 +213,8 @@ internal sealed class Agent : IAgent
             {
                 await IterationCallback(this, iteration).ConfigureAwait(false);
             }
+
+            RaiseActivity(AgentActivityKind.IterationStarted, iteration);
 
             // Step 1: Stream completion from provider
             System.Text.StringBuilder responseBuilder = new();
@@ -179,6 +240,8 @@ internal sealed class Agent : IAgent
                 {
                     await TokenCallback(this, token).ConfigureAwait(false);
                 }
+
+                RaiseTokenStreamed(token);
 
                 if (token.Type == AiStreamTokenType.ToolCall && token.ToolCall is not null)
                 {
@@ -237,8 +300,9 @@ internal sealed class Agent : IAgent
                 {
                     ThinkingContent = string.IsNullOrWhiteSpace(reasoningContent) ? null : reasoningContent
                 };
-                _messages.Add(finalAssistantMessage);
+                AppendMessage(finalAssistantMessage);
                 requestHistory.Add(finalAssistantMessage);
+                RaiseActivity(AgentActivityKind.MessagesChanged, iteration);
 
                 return AgentRunResult.Ok(responseContent, iteration + 1, totalToolCallCount, mergedUsageStats);
             }
@@ -260,8 +324,9 @@ internal sealed class Agent : IAgent
                 ThinkingContent = string.IsNullOrWhiteSpace(reasoningContent) ? null : reasoningContent,
                 ToolCalls = toolCallRequests
             };
-            _messages.Add(toolCallingAssistantMessage);
+            AppendMessage(toolCallingAssistantMessage);
             requestHistory.Add(toolCallingAssistantMessage);
+            RaiseActivity(AgentActivityKind.MessagesChanged, iteration);
 
             // Step 6: Execute all tool calls in parallel
             List<Task<(ToolCallResult Result, int Index, string ToolCallId)>> toolTasks = new(pendingToolCalls.Count);
@@ -296,9 +361,11 @@ internal sealed class Agent : IAgent
                     ToolCallId = toolCallId,
                     Details = result.Details
                 };
-                _messages.Add(toolMessage);
+                AppendMessage(toolMessage);
                 requestHistory.Add(toolMessage);
             }
+
+            RaiseActivity(AgentActivityKind.MessagesChanged, iteration);
 
             // Loop continues to the next iteration
         }
@@ -314,7 +381,8 @@ internal sealed class Agent : IAgent
     public void AddMessage(AiChatMessage message)
     {
         ArgumentNullException.ThrowIfNull(message);
-        _messages.Add(message);
+        AppendMessage(message);
+        RaiseActivity(AgentActivityKind.MessagesChanged);
     }
 
     /// <inheritdoc />
@@ -332,7 +400,8 @@ internal sealed class Agent : IAgent
         {
             ToolCallId = $"spawn_{childAgentId}"
         };
-        _messages.Add(toolMessage);
+        AppendMessage(toolMessage);
+        RaiseActivity(AgentActivityKind.MessagesChanged);
     }
 
     /// <inheritdoc />
@@ -347,6 +416,63 @@ internal sealed class Agent : IAgent
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(childAgentId);
         _childIds.Remove(childAgentId);
+    }
+
+    /// <summary>
+    /// Appends a message to the conversation history under the message lock so
+    /// observers reading <see cref="Messages"/> from another thread never see a
+    /// partially mutated list.
+    /// </summary>
+    private void AppendMessage(AiChatMessage message)
+    {
+        lock (_messagesLock)
+        {
+            _messages.Add(message);
+        }
+    }
+
+    /// <summary>
+    /// Raises <see cref="Activity"/>. Subscriber failures are swallowed: an
+    /// observer (typically a UI panel) must never be able to abort an agent run.
+    /// </summary>
+    private void RaiseActivity(AgentActivityKind kind, int iteration = -1)
+    {
+        EventHandler<AgentActivityEventArgs>? handler = Activity;
+        if (handler is null)
+        {
+            return;
+        }
+
+        try
+        {
+            handler(this, new AgentActivityEventArgs(kind, iteration));
+        }
+        catch (Exception)
+        {
+            // An observer threw — keep running.
+        }
+    }
+
+    /// <summary>
+    /// Raises <see cref="TokenStreamed"/>. Subscriber failures are swallowed for
+    /// the same reason as <see cref="RaiseActivity"/>.
+    /// </summary>
+    private void RaiseTokenStreamed(AiStreamToken token)
+    {
+        EventHandler<AgentTokenEventArgs>? handler = TokenStreamed;
+        if (handler is null)
+        {
+            return;
+        }
+
+        try
+        {
+            handler(this, new AgentTokenEventArgs(token));
+        }
+        catch (Exception)
+        {
+            // An observer threw — keep streaming.
+        }
     }
 
     /// <summary>
@@ -382,7 +508,7 @@ internal sealed class Agent : IAgent
         // Add existing conversation messages (for continuation scenarios)
         // Skip the first message if it's a system prompt that we already merged
         bool skipFirstSystemMessage = systemParts.Count > 0;
-        foreach (AiChatMessage message in _messages)
+        foreach (AiChatMessage message in Messages)
         {
             if (skipFirstSystemMessage && message.Role == AiChatRole.System)
             {

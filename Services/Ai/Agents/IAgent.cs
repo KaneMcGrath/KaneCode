@@ -13,6 +13,22 @@ namespace KaneCode.Services.Ai.Agents;
 internal interface IAgent
 {
     /// <summary>
+    /// Raised while the agent runs, whenever it starts an iteration, appends
+    /// messages, or finishes its run. Multicast, so any observer can follow an
+    /// agent it did not dispatch itself (for example the chat panel rendering a
+    /// ticket agent's session). Raised on the agent's background run thread —
+    /// subscribers must marshal to their own thread.
+    /// </summary>
+    event EventHandler<AgentActivityEventArgs>? Activity;
+
+    /// <summary>
+    /// Raised for every streaming token the agent receives from its provider,
+    /// so observers can render the response as it is produced. Raised on the
+    /// agent's background run thread — subscribers must marshal to their own thread.
+    /// </summary>
+    event EventHandler<AgentTokenEventArgs>? TokenStreamed;
+
+    /// <summary>
     /// Unique identifier for this agent within the orchestrator.
     /// </summary>
     string Id { get; }
@@ -60,9 +76,17 @@ internal interface IAgent
     IReadOnlySet<string> ChildIds { get; }
 
     /// <summary>
-    /// The messages in this agent's conversation history.
+    /// A snapshot of the messages in this agent's conversation history.
+    /// Each read returns a new copy so observers on other threads can enumerate
+    /// it safely while the agent keeps appending on its run thread.
     /// </summary>
     IReadOnlyList<AiChatMessage> Messages { get; }
+
+    /// <summary>
+    /// The number of messages in this agent's conversation history. Cheaper than
+    /// <see cref="Messages"/> when only the count is needed, since it does not copy.
+    /// </summary>
+    int MessageCount { get; }
 
     /// <summary>
     /// Runs the agent's tool-calling loop with the given user task.
