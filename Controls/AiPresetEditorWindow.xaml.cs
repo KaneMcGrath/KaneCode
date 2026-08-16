@@ -35,12 +35,20 @@ internal partial class AiPresetEditorWindow : Window
         public required Border AccentBar { get; init; }
     }
 
+    private sealed class CategoryHeaderVisual
+    {
+        public required CheckBox CheckBox { get; init; }
+
+        public required TextBlock CountText { get; init; }
+    }
+
     private readonly AgentToolRegistry _toolRegistry;
     private readonly AiChatModeRegistry _modeRegistry;
     private readonly IAiChatMode? _activeMode;
     private readonly ObservableCollection<AiPreset> _presets = [];
     private readonly Dictionary<string, ToolEditState> _toolStates = new(StringComparer.Ordinal);
     private readonly Dictionary<string, ToolRowVisual> _toolRows = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, CategoryHeaderVisual> _categoryHeaders = new(StringComparer.Ordinal);
 
     private AiPreset? _currentPreset;
     private AiPreset? _revertSnapshot;
@@ -190,6 +198,7 @@ internal partial class AiPresetEditorWindow : Window
     {
         ToolsListPanel.Children.Clear();
         _toolRows.Clear();
+        _categoryHeaders.Clear();
 
         string search = ToolSearchBox.Text?.Trim() ?? string.Empty;
 
@@ -220,15 +229,7 @@ internal partial class AiPresetEditorWindow : Window
 
             anyAdded = true;
 
-            TextBlock header = new()
-            {
-                Text = $"{group.Key.ToUpperInvariant()}    {visible.Count}",
-                FontSize = 10.5,
-                FontWeight = FontWeights.SemiBold,
-                Foreground = Brush("Brush.Faint"),
-                Margin = new Thickness(10, 4, 10, 2)
-            };
-            ToolsListPanel.Children.Add(header);
+            ToolsListPanel.Children.Add(CreateCategoryHeader(group.Key, group, visible.Count));
 
             foreach (IAgentTool tool in visible)
             {
@@ -246,6 +247,66 @@ internal partial class AiPresetEditorWindow : Window
                 Margin = new Thickness(10, 8, 10, 8)
             });
         }
+    }
+
+    /// <summary>
+    /// Builds a category header row: a three-state checkbox that enables or
+    /// disables every tool in the category (mirroring the group checkboxes in
+    /// the AI chat panel's tool list), followed by the visible tool count.
+    /// The checkbox state reflects the full category, not just the tools that
+    /// survive the current search/filter.
+    /// </summary>
+    private Border CreateCategoryHeader(string category, IGrouping<string, IAgentTool> group, int visibleCount)
+    {
+        List<ToolEditState> states = group.Select(t => _toolStates[t.Name]).ToList();
+        bool allEnabled = states.All(s => s.IsEnabled);
+        bool anyEnabled = states.Any(s => s.IsEnabled);
+
+        CheckBox checkBox = new()
+        {
+            IsThreeState = true,
+            IsChecked = allEnabled ? true : anyEnabled ? (bool?)null : false,
+            Tag = category,
+            Content = category.ToUpperInvariant(),
+            FontSize = 10.5,
+            FontWeight = FontWeights.SemiBold,
+            Foreground = Brush("Brush.Text"),
+            VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(8, 0, 0, 0),
+            ToolTip = $"Enable or disable all {category} tools"
+        };
+        checkBox.Checked += CategoryCheckChanged;
+        checkBox.Unchecked += CategoryCheckChanged;
+        checkBox.Indeterminate += CategoryCheckChanged;
+
+        TextBlock countText = new()
+        {
+            Text = visibleCount.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            FontSize = 10.5,
+            Foreground = Brush("Brush.Faint"),
+            VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(0, 0, 10, 0)
+        };
+
+        Grid grid = new();
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        grid.Children.Add(checkBox);
+        Grid.SetColumn(countText, 2);
+        grid.Children.Add(countText);
+
+        _categoryHeaders[category] = new CategoryHeaderVisual
+        {
+            CheckBox = checkBox,
+            CountText = countText
+        };
+
+        return new Border
+        {
+            Child = grid,
+            Margin = new Thickness(4, 6, 4, 2)
+        };
     }
 
     private bool MatchesFilter(IAgentTool tool, string search)
@@ -312,10 +373,12 @@ internal partial class AiPresetEditorWindow : Window
         ToolEditState state = _toolStates[tool.Name];
         bool isSelected = string.Equals(tool.Name, _selectedToolName, StringComparison.Ordinal);
 
+        // Indented one step past the category header checkbox so tool rows
+        // read as children of their category group.
         Border container = new()
         {
             Background = isSelected ? Brush("Brush.SelectedRow") : Brushes.Transparent,
-            Margin = new Thickness(4, 1, 4, 1),
+            Margin = new Thickness(16, 1, 4, 1),
             Cursor = Cursors.Hand,
             Tag = tool.Name
         };
@@ -443,6 +506,48 @@ internal partial class AiPresetEditorWindow : Window
             row.Badge.Visibility = state.OverrideCount > 0 ? Visibility.Visible : Visibility.Collapsed;
             row.BadgeText.Text = state.OverrideCount.ToString(System.Globalization.CultureInfo.InvariantCulture);
         }
+
+        RefreshCategoryHeaders();
+    }
+
+    /// <summary>
+    /// Recalculates the three-state category checkboxes from the current
+    /// per-tool states: checked when every tool in the category is enabled,
+    /// indeterminate when only some are, unchecked when none are.
+    /// </summary>
+    private void RefreshCategoryHeaders()
+    {
+        foreach ((string category, CategoryHeaderVisual header) in _categoryHeaders)
+        {
+            bool allEnabled = true;
+            bool anyEnabled = false;
+            foreach (ToolEditState state in _toolStates.Values)
+            {
+                if (!string.Equals(state.Tool.Category ?? "General", category, StringComparison.Ordinal))
+                {
+                    continue;
+                }
+
+                if (state.IsEnabled)
+                {
+                    anyEnabled = true;
+                }
+                else
+                {
+                    allEnabled = false;
+                }
+            }
+
+            _suppressEvents = true;
+            try
+            {
+                header.CheckBox.IsChecked = allEnabled ? true : anyEnabled ? (bool?)null : false;
+            }
+            finally
+            {
+                _suppressEvents = false;
+            }
+        }
     }
 
     private void ToolCheckChanged(object sender, RoutedEventArgs e)
@@ -458,6 +563,58 @@ internal partial class AiPresetEditorWindow : Window
             state.IsEnabled = checkBox.IsChecked == true;
             MarkDirty();
         }
+    }
+
+    /// <summary>
+    /// Handles the category header checkbox: a simple on/off toggle based on
+    /// the tools' actual state. When every tool in the category is enabled the
+    /// click disables them all; otherwise (partial or none enabled) the click
+    /// enables them all. Deciding from tool state — instead of the checkbox's
+    /// post-click tri-state value — keeps the toggle predictable no matter
+    /// where WPF's indeterminate cycle left the checkbox.
+    /// </summary>
+    private void CategoryCheckChanged(object sender, RoutedEventArgs e)
+    {
+        if (_suppressEvents || _currentPreset is null)
+        {
+            return;
+        }
+
+        if (sender is not CheckBox checkBox || checkBox.Tag is not string category)
+        {
+            return;
+        }
+
+        bool allEnabled = true;
+        foreach (ToolEditState state in _toolStates.Values)
+        {
+            if (string.Equals(state.Tool.Category ?? "General", category, StringComparison.Ordinal) && !state.IsEnabled)
+            {
+                allEnabled = false;
+                break;
+            }
+        }
+
+        bool enable = !allEnabled;
+        foreach (ToolEditState state in _toolStates.Values)
+        {
+            if (string.Equals(state.Tool.Category ?? "General", category, StringComparison.Ordinal))
+            {
+                state.IsEnabled = enable;
+            }
+        }
+
+        _suppressEvents = true;
+        try
+        {
+            checkBox.IsChecked = enable;
+        }
+        finally
+        {
+            _suppressEvents = false;
+        }
+
+        MarkDirty();
     }
 
     private void SelectTool(string name)
