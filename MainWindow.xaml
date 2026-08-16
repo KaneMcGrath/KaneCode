@@ -609,6 +609,13 @@ ResizeMode="CanResizeWithGrip">
                     </avalonDock:LayoutPanel>
 
                     <avalonDock:LayoutAnchorablePane DockWidth="1.5*">
+                        <avalonDock:LayoutAnchorable x:Name="AiChatAnchorable" Title="AI Chat"
+                                                     CanClose="False"
+                                                     CanHide="True"
+                                                     CanAutoHide="True"
+                                                     ContentId="AiChatPane">
+                            <controls:AiChatPanel x:Name="AiChatPanel" />
+                        </avalonDock:LayoutAnchorable>
                         <avalonDock:LayoutAnchorable x:Name="TicketAnchorable" Title="Tickets"
                                                      CanClose="False"
                                                      CanHide="True"
@@ -622,13 +629,6 @@ ResizeMode="CanResizeWithGrip">
                                                      CanAutoHide="True"
                                                      ContentId="AgentOrchestratorPane">
                             <controls:AgentOrchestratorPanel x:Name="AgentOrchestratorPanel" />
-                        </avalonDock:LayoutAnchorable>
-                        <avalonDock:LayoutAnchorable x:Name="AiChatAnchorable" Title="AI Chat"
-                                                     CanClose="False"
-                                                     CanHide="True"
-                                                     CanAutoHide="True"
-                                                     ContentId="AiChatPane">
-                            <controls:AiChatPanel x:Name="AiChatPanel" />
                         </avalonDock:LayoutAnchorable>
                     </avalonDock:LayoutAnchorablePane>
 
