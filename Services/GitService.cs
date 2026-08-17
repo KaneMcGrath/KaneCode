@@ -54,6 +54,62 @@ internal sealed class GitService : IDisposable
     }
 
     /// <summary>
+    /// Gets the main worktree and every linked worktree of the open repository,
+    /// with the main worktree first. Returns an empty list when no repository is open.
+    /// </summary>
+    internal IReadOnlyList<GitWorktreeInfo> GetWorktrees()
+    {
+        if (_repository is null)
+        {
+            return [];
+        }
+
+        string? commonDirectory = ResolveCommonDirectory(_repository);
+        if (string.IsNullOrEmpty(commonDirectory))
+        {
+            return [];
+        }
+
+        string? currentDirectory = NormalizeDirectory(_repository.Info.WorkingDirectory);
+        List<GitWorktreeInfo> worktrees = [];
+
+        // The main working directory is the parent of the shared .git directory.
+        string? mainDirectory = NormalizeDirectory(Path.GetDirectoryName(commonDirectory));
+        if (!string.IsNullOrEmpty(mainDirectory) && Directory.Exists(mainDirectory))
+        {
+            string? mainBranch = DirectoriesEqual(mainDirectory, currentDirectory)
+                ? CurrentBranchName
+                : ReadHeadBranchName(Path.Combine(commonDirectory, "HEAD"));
+
+            worktrees.Add(new GitWorktreeInfo(
+                Path.GetFileName(mainDirectory),
+                mainDirectory,
+                mainBranch,
+                IsMain: true,
+                IsWorkspace: DirectoriesEqual(mainDirectory, currentDirectory)));
+        }
+
+        foreach (string name in GetLinkedWorktreeNames(_repository))
+        {
+            (string? directory, string? branch) = ReadWorktreeAdministration(commonDirectory, name);
+            if (string.IsNullOrEmpty(directory) || !Directory.Exists(directory))
+            {
+                // The worktree directory was deleted without pruning its admin entry.
+                continue;
+            }
+
+            worktrees.Add(new GitWorktreeInfo(
+                name,
+                directory,
+                branch,
+                IsMain: false,
+                IsWorkspace: DirectoriesEqual(directory, currentDirectory)));
+        }
+
+        return worktrees;
+    }
+
+    /// <summary>
     /// Gets the latest commit history entries for the opened repository.
     /// </summary>
     internal IReadOnlyList<GitCommitLogItem> GetCommitHistory(int maxCount = 200)
@@ -1299,6 +1355,168 @@ FodyWeavers.xsd
     /// <summary>Normalizes path separators to the forward-slash form expected by LibGit2Sharp.</summary>
     private static string NormalizePath(string path) =>
         path.Replace(Path.DirectorySeparatorChar, '/');
+
+    /// <summary>
+    /// Returns the shared (main) <c>.git</c> directory for a repository. When the
+    /// repository is a linked worktree, its administrative directory contains a
+    /// <c>commondir</c> file pointing back at the main <c>.git</c> directory.
+    /// </summary>
+    private static string? ResolveCommonDirectory(Repository repository)
+    {
+        string gitDirectory = Path.TrimEndingDirectorySeparator(repository.Info.Path);
+
+        try
+        {
+            string commonDirectoryFile = Path.Combine(gitDirectory, "commondir");
+            if (File.Exists(commonDirectoryFile))
+            {
+                string relative = File.ReadAllText(commonDirectoryFile).Trim();
+                if (relative.Length > 0)
+                {
+                    return Path.TrimEndingDirectorySeparator(
+                        Path.GetFullPath(Path.Combine(gitDirectory, relative)));
+                }
+            }
+        }
+        catch (IOException)
+        {
+            // Fall back to the repository's own Git directory.
+        }
+        catch (UnauthorizedAccessException)
+        {
+            // Fall back to the repository's own Git directory.
+        }
+
+        return gitDirectory;
+    }
+
+    /// <summary>
+    /// Gets the names of the repository's linked worktrees. Returns an empty list when
+    /// the worktree administration data cannot be read.
+    /// </summary>
+    private static IReadOnlyList<string> GetLinkedWorktreeNames(Repository repository)
+    {
+        try
+        {
+            // LibGit2Sharp yields a null entry for a worktree whose working directory
+            // has been deleted without pruning its administrative entry.
+            return repository.Worktrees
+                .Where(worktree => !string.IsNullOrWhiteSpace(worktree?.Name))
+                .Select(worktree => worktree.Name)
+                .OrderBy(name => name, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+        }
+        catch (LibGit2SharpException)
+        {
+            return [];
+        }
+    }
+
+    /// <summary>
+    /// Reads a linked worktree's working directory and checked-out branch from its
+    /// administrative directory (<c>&lt;common&gt;/worktrees/&lt;name&gt;</c>).
+    /// </summary>
+    private static (string? Directory, string? Branch) ReadWorktreeAdministration(string commonDirectory, string name)
+    {
+        string administrationDirectory = Path.Combine(commonDirectory, "worktrees", name);
+
+        try
+        {
+            string gitDirectoryFile = Path.Combine(administrationDirectory, "gitdir");
+            if (!File.Exists(gitDirectoryFile))
+            {
+                return (null, null);
+            }
+
+            // 'gitdir' holds the path of the worktree's own .git file, which lives in
+            // the worktree working directory. Newer Git versions may store it relative
+            // to the administration directory.
+            string gitDirectoryPath = File.ReadAllText(gitDirectoryFile).Trim();
+            if (gitDirectoryPath.Length == 0)
+            {
+                return (null, null);
+            }
+
+            if (!Path.IsPathRooted(gitDirectoryPath))
+            {
+                gitDirectoryPath = Path.Combine(administrationDirectory, gitDirectoryPath);
+            }
+
+            string? workingDirectory = Path.GetDirectoryName(
+                Path.TrimEndingDirectorySeparator(Path.GetFullPath(gitDirectoryPath)));
+
+            string? branch = ReadHeadBranchName(Path.Combine(administrationDirectory, "HEAD"));
+            return (NormalizeDirectory(workingDirectory), branch);
+        }
+        catch (IOException)
+        {
+            return (null, null);
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return (null, null);
+        }
+        catch (ArgumentException)
+        {
+            return (null, null);
+        }
+    }
+
+    /// <summary>
+    /// Reads the branch name from a Git <c>HEAD</c> file, or returns <see langword="null"/>
+    /// when HEAD is detached or unreadable.
+    /// </summary>
+    private static string? ReadHeadBranchName(string headFilePath)
+    {
+        const string branchPrefix = "ref: refs/heads/";
+
+        try
+        {
+            if (!File.Exists(headFilePath))
+            {
+                return null;
+            }
+
+            string head = File.ReadAllText(headFilePath).Trim();
+            return head.StartsWith(branchPrefix, StringComparison.Ordinal)
+                ? head[branchPrefix.Length..]
+                : null;
+        }
+        catch (IOException)
+        {
+            return null;
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>Trims a trailing directory separator and resolves the path to its full form.</summary>
+    private static string? NormalizeDirectory(string? path)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            return null;
+        }
+
+        return Path.TrimEndingDirectorySeparator(Path.GetFullPath(path));
+    }
+
+    /// <summary>Compares two directory paths using the platform's path casing rules.</summary>
+    private static bool DirectoriesEqual(string? left, string? right)
+    {
+        if (left is null || right is null)
+        {
+            return false;
+        }
+
+        StringComparison comparison = OperatingSystem.IsWindows()
+            ? StringComparison.OrdinalIgnoreCase
+            : StringComparison.Ordinal;
+
+        return string.Equals(left, right, comparison);
+    }
 }
 
 internal enum GitConflictResolution

@@ -311,6 +311,7 @@ public partial class MainWindow : Window
         TicketPanel.TicketActivated -= TicketPanel_TicketActivated;
         TicketPanel.NewTicketRequested -= TicketPanel_NewTicketRequested;
         TicketPanel.TicketOpenRequested -= TicketPanel_TicketOpenRequested;
+        TicketPanel.StopWatching();
         _ticketSystem.StopAll();
         _ticketSystem.Dispose();
         _agentOrchestrator.Dispose();
@@ -366,6 +367,18 @@ public partial class MainWindow : Window
             // built-in Agent mode when no preset is marked as default) so the AI can
             // inspect files, gather diagnostics, and make edits.
             AiChatPanel.SwitchToMode(GetDefaultAgentModeId());
+        }
+
+        if (e.PropertyName == nameof(MainViewModel.ProjectItems))
+        {
+            // The tickets folder is resolved from the loaded project, so the panel is
+            // rescanned whenever the project tree is replaced (project, solution, or
+            // folder load). Without this, tickets stay hidden until the user presses
+            // Initialize, because the only scan happened at startup with no project
+            // loaded. ProjectItems is used rather than ProjectRootPath because the
+            // ticket store reads its root from ProjectItems, which is assigned after
+            // ProjectRootPath during a load.
+            TicketPanel.Refresh();
         }
 
         if (e.PropertyName == nameof(MainViewModel.EditorFontSize))

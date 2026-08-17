@@ -12,32 +12,88 @@
                         DockPanel.Dock="Right"
                         Content="⟳ Refresh"
                         Padding="8,2"
-                        Margin="4,0,0,0"
+                        Margin="8,0,0,0"
                         Click="RefreshButton_Click"
                         Background="{DynamicResource PanelSecondaryBackground}"
                         Foreground="{DynamicResource ErrorListHeaderForeground}"
                         BorderThickness="0"
                         Cursor="Hand"
-                        VerticalAlignment="Center" />
-                <StackPanel x:Name="BranchSelectorPanel"
-                            DockPanel.Dock="Right"
-                            Orientation="Horizontal"
-                            VerticalAlignment="Center"
-                            Margin="8,0,0,0">
-                    <TextBlock Text="Branch:"
-                               Margin="0,0,6,0"
-                               Foreground="{DynamicResource ErrorListHeaderForeground}"
-                               VerticalAlignment="Center" />
-                    <ComboBox x:Name="BranchCombo"
-                              Width="150"
-                              Height="22"
-                              SelectionChanged="BranchCombo_SelectionChanged"
-                              VerticalAlignment="Center"
-                              IsEditable="False"
-                              Background="{DynamicResource PanelSecondaryBackground}"
-                              Foreground="{DynamicResource ErrorListHeaderForeground}" />
+                        VerticalAlignment="Top" />
+                <StackPanel x:Name="SelectorPanel">
+                    <StackPanel x:Name="WorktreeSelectorPanel"
+                                Orientation="Horizontal"
+                                Margin="0,0,0,4">
+                        <TextBlock Text="Worktree:"
+                                   Width="56"
+                                   Foreground="{DynamicResource ErrorListHeaderForeground}"
+                                   VerticalAlignment="Center" />
+                        <ComboBox x:Name="WorktreeCombo"
+                                  MinWidth="150"
+                                  Height="22"
+                                  SelectionChanged="WorktreeCombo_SelectionChanged"
+                                  VerticalAlignment="Center"
+                                  IsEditable="False"
+                                  ToolTip="Show the changes of another worktree, such as one an agent is working in"
+                                  Background="{DynamicResource PanelSecondaryBackground}"
+                                  Foreground="{DynamicResource ErrorListHeaderForeground}">
+                            <ComboBox.ItemTemplate>
+                                <DataTemplate DataType="{x:Type models:GitWorktreeInfo}">
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock Text="{Binding DisplayName}"
+                                                   VerticalAlignment="Center" />
+                                        <TextBlock Text="IDE"
+                                                   FontSize="9"
+                                                   FontWeight="Bold"
+                                                   Margin="6,0,0,0"
+                                                   Padding="3,0"
+                                                   VerticalAlignment="Center"
+                                                   Foreground="{DynamicResource GitAddedForeground}">
+                                            <TextBlock.Style>
+                                                <Style TargetType="TextBlock">
+                                                    <Setter Property="Visibility" Value="Collapsed" />
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding IsWorkspace}" Value="True">
+                                                            <Setter Property="Visibility" Value="Visible" />
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </TextBlock.Style>
+                                        </TextBlock>
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ComboBox.ItemTemplate>
+                        </ComboBox>
+                    </StackPanel>
+                    <StackPanel x:Name="BranchSelectorPanel"
+                                Orientation="Horizontal">
+                        <TextBlock Text="Branch:"
+                                   Width="56"
+                                   Foreground="{DynamicResource ErrorListHeaderForeground}"
+                                   VerticalAlignment="Center" />
+                        <ComboBox x:Name="BranchCombo"
+                                  MinWidth="150"
+                                  Height="22"
+                                  SelectionChanged="BranchCombo_SelectionChanged"
+                                  VerticalAlignment="Center"
+                                  IsEditable="False"
+                                  Background="{DynamicResource PanelSecondaryBackground}"
+                                  Foreground="{DynamicResource ErrorListHeaderForeground}" />
+                    </StackPanel>
                 </StackPanel>
             </DockPanel>
+        </Border>
+
+        <Border x:Name="ForeignWorktreeNotice"
+                DockPanel.Dock="Top"
+                Visibility="Collapsed"
+                Background="{DynamicResource PanelSecondaryBackground}"
+                BorderBrush="{DynamicResource WindowBorderBrush}"
+                BorderThickness="0,0,0,1"
+                Padding="8,4">
+            <TextBlock x:Name="ForeignWorktreeNoticeText"
+                       TextWrapping="Wrap"
+                       FontSize="11"
+                       Foreground="{DynamicResource GitModifiedForeground}" />
         </Border>
 
         <Border x:Name="CommitPanel"

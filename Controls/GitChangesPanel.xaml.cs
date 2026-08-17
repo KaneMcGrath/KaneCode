@@ -99,6 +99,38 @@ public partial class GitChangesPanel : UserControl
     }
 
     /// <summary>
+    /// Worktrees of the open repository shown in the worktree selector.
+    /// </summary>
+    public static readonly DependencyProperty GitWorktreesProperty =
+        DependencyProperty.Register(
+            nameof(GitWorktrees),
+            typeof(ObservableCollection<GitWorktreeInfo>),
+            typeof(GitChangesPanel),
+            new PropertyMetadata(null, OnGitWorktreesChanged));
+
+    public ObservableCollection<GitWorktreeInfo>? GitWorktrees
+    {
+        get => (ObservableCollection<GitWorktreeInfo>?)GetValue(GitWorktreesProperty);
+        set => SetValue(GitWorktreesProperty, value);
+    }
+
+    /// <summary>
+    /// Worktree whose changes are currently displayed.
+    /// </summary>
+    public static readonly DependencyProperty SelectedGitWorktreeProperty =
+        DependencyProperty.Register(
+            nameof(SelectedGitWorktree),
+            typeof(GitWorktreeInfo),
+            typeof(GitChangesPanel),
+            new PropertyMetadata(null, OnSelectedGitWorktreeChanged));
+
+    public GitWorktreeInfo? SelectedGitWorktree
+    {
+        get => (GitWorktreeInfo?)GetValue(SelectedGitWorktreeProperty);
+        set => SetValue(SelectedGitWorktreeProperty, value);
+    }
+
+    /// <summary>
     /// Indicates whether the current workspace is backed by an open Git repository.
     /// </summary>
     public static readonly DependencyProperty IsRepositoryOpenProperty =
@@ -209,6 +241,35 @@ public partial class GitChangesPanel : UserControl
         }
     }
 
+    private static void OnGitWorktreesChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+    {
+        if (d is GitChangesPanel panel)
+        {
+            panel.WorktreeCombo.ItemsSource = e.NewValue as ObservableCollection<GitWorktreeInfo>;
+
+            if (e.OldValue is ObservableCollection<GitWorktreeInfo> old)
+            {
+                old.CollectionChanged -= panel.OnWorktreesCollectionChanged;
+            }
+
+            if (e.NewValue is ObservableCollection<GitWorktreeInfo> next)
+            {
+                next.CollectionChanged += panel.OnWorktreesCollectionChanged;
+            }
+
+            panel.UpdatePanelLayout();
+        }
+    }
+
+    private static void OnSelectedGitWorktreeChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+    {
+        if (d is GitChangesPanel panel)
+        {
+            panel.WorktreeCombo.SelectedItem = e.NewValue as GitWorktreeInfo;
+            panel.UpdateForeignWorktreeNotice();
+        }
+    }
+
     private static void OnIsRepositoryOpenChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {
         if (d is GitChangesPanel panel)
@@ -216,6 +277,11 @@ public partial class GitChangesPanel : UserControl
             panel.UpdatePanelLayout();
         }
     }
+
+    private void OnWorktreesCollectionChanged(
+        object? sender,
+        System.Collections.Specialized.NotifyCollectionChangedEventArgs e) =>
+        UpdatePanelLayout();
 
     private void OnUnstagedCollectionChanged(
         object? sender,
@@ -251,10 +317,16 @@ public partial class GitChangesPanel : UserControl
         bool hasRepository = IsRepositoryOpen;
         bool hasStagedChanges = (StagedChanges?.Count ?? 0) > 0;
 
+        // The worktree selector only earns its space once the repository actually has
+        // more than one worktree.
+        bool hasWorktreeChoice = hasRepository && (GitWorktrees?.Count ?? 0) > 1;
+
         RepositoryContent.Visibility = hasRepository ? Visibility.Visible : Visibility.Collapsed;
         NoRepositoryState.Visibility = hasRepository ? Visibility.Collapsed : Visibility.Visible;
         BranchSelectorPanel.Visibility = hasRepository ? Visibility.Visible : Visibility.Collapsed;
+        WorktreeSelectorPanel.Visibility = hasWorktreeChoice ? Visibility.Visible : Visibility.Collapsed;
         CommitPanel.Visibility = hasRepository ? Visibility.Visible : Visibility.Collapsed;
+        UpdateForeignWorktreeNotice();
         SplitterRow.Height = hasStagedChanges ? new GridLength(4) : new GridLength(0);
         StagedSectionRow.Height = hasStagedChanges ? new GridLength(1, GridUnitType.Star) : new GridLength(0);
         StagedSplitter.Visibility = hasStagedChanges ? Visibility.Visible : Visibility.Collapsed;
@@ -274,6 +346,27 @@ public partial class GitChangesPanel : UserControl
     private void BranchCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         SelectedGitBranch = BranchCombo.SelectedItem as string;
+    }
+
+    private void WorktreeCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        SelectedGitWorktree = WorktreeCombo.SelectedItem as GitWorktreeInfo;
+    }
+
+    /// <summary>
+    /// Shows a warning while the panel displays a worktree the IDE is not working in,
+    /// because staging, discarding, and committing then apply to that worktree.
+    /// </summary>
+    private void UpdateForeignWorktreeNotice()
+    {
+        GitWorktreeInfo? selected = SelectedGitWorktree;
+        bool isForeign = IsRepositoryOpen && selected is not null && !selected.IsWorkspace;
+
+        ForeignWorktreeNotice.Visibility = isForeign ? Visibility.Visible : Visibility.Collapsed;
+        ForeignWorktreeNoticeText.Text = isForeign
+            ? $"Viewing worktree '{selected!.Name}'. Staging, discarding, and committing here apply to that "
+              + "worktree, not the IDE workspace. Use Git ▸ Worktree to switch the IDE to it."
+            : string.Empty;
     }
 
     private void StageAllButton_Click(object sender, RoutedEventArgs e)

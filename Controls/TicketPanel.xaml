@@ -74,7 +74,8 @@
                     BorderThickness="1" />
         </Border>
 
-        <!-- Ticket list -->
+        <!-- Ticket list (with an empty-state hint layered over it) -->
+        <Grid>
         <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Padding="4">
             <ListBox x:Name="TicketList"
                      Background="Transparent"
@@ -159,5 +160,16 @@
                 </ListBox.ItemTemplate>
             </ListBox>
         </ScrollViewer>
+
+            <TextBlock x:Name="EmptyStateText"
+                       Margin="16,20,16,16"
+                       FontSize="11"
+                       TextWrapping="Wrap"
+                       TextAlignment="Center"
+                       VerticalAlignment="Top"
+                       IsHitTestVisible="False"
+                       Visibility="Collapsed"
+                       Foreground="{DynamicResource AiChatSecondaryForeground}" />
+        </Grid>
     </DockPanel>
 </UserControl>

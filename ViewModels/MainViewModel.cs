@@ -47,6 +47,13 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
     private readonly BuildService _buildService = new();
     private readonly GitService _gitService = new();
 
+    /// <summary>
+    /// Repository of the worktree currently shown in the Git Changes panel, when that
+    /// worktree is not the one the IDE has loaded. Null while the panel shows the
+    /// workspace worktree.
+    /// </summary>
+    private GitService? _viewedWorktreeGitService;
+
     /// <summary>Exposes the build service for agent tool registration.</summary>
     internal BuildService BuildService => _buildService;
     /// <summary>Exposes the Git service for agent tool registration.</summary>
@@ -55,6 +62,14 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
     internal RoslynWorkspaceService RoslynService => _roslynService;
     /// <summary>Exposes the theme manager for OptionsWindow creation.</summary>
     internal ThemeManager? ThemeManager { get; set; }
+
+    /// <summary>
+    /// Git service backing the Git Changes panel. This is the selected worktree's
+    /// repository while another worktree is being inspected, and the IDE workspace
+    /// repository otherwise. Agent tools and the editor gutter always use
+    /// <see cref="_gitService"/> so they stay bound to the loaded workspace.
+    /// </summary>
+    private GitService ChangesGitService => _viewedWorktreeGitService ?? _gitService;
     private readonly TemplateService _templateService = new();
     private RoslynClassificationColorizer? _classificationColorizer;
     private RoslynDiagnosticRenderer? _diagnosticRenderer;
@@ -92,6 +107,7 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
     private (int Start, int End)? _lastClassifiedBounds;
     private bool _isLoadingProject;
     private bool _isUpdatingSelectedBranch;
+    private bool _isUpdatingSelectedWorktree;
     private CancellationTokenSource? _loadingStatusClearCts;
     private string? _loadedProjectOrSolutionPath;
     private List<string> _loadedSolutionProjectPaths = [];
@@ -221,10 +237,10 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
         NewFolderCommand = new RelayCommand(param => CreateNewFolder(param as ProjectItem));
         RefreshGitStatusCommand = new RelayCommand(_ => RefreshGitStatus(), _ => _gitService.IsRepositoryOpen);
         InitializeGitRepositoryCommand = new RelayCommand(_ => InitializeGitRepository(), _ => CanInitializeGitRepository);
-        StageFileCommand   = new RelayCommand(param => ExecuteGitOperation(() => _gitService.StageFile(AsRelativePath(param))), _ => _gitService.IsRepositoryOpen);
-        StageAllCommand    = new RelayCommand(_ => ExecuteGitOperation(() => _gitService.StageAll()), _ => _gitService.IsRepositoryOpen);
-        UnstageFileCommand = new RelayCommand(param => ExecuteGitOperation(() => _gitService.UnstageFile(AsRelativePath(param))), _ => _gitService.IsRepositoryOpen);
-        UnstageAllCommand  = new RelayCommand(_ => ExecuteGitOperation(() => _gitService.UnstageAll()), _ => _gitService.IsRepositoryOpen);
+        StageFileCommand   = new RelayCommand(param => ExecuteGitOperation(() => ChangesGitService.StageFile(AsRelativePath(param))), _ => _gitService.IsRepositoryOpen);
+        StageAllCommand    = new RelayCommand(_ => ExecuteGitOperation(() => ChangesGitService.StageAll()), _ => _gitService.IsRepositoryOpen);
+        UnstageFileCommand = new RelayCommand(param => ExecuteGitOperation(() => ChangesGitService.UnstageFile(AsRelativePath(param))), _ => _gitService.IsRepositoryOpen);
+        UnstageAllCommand  = new RelayCommand(_ => ExecuteGitOperation(() => ChangesGitService.UnstageAll()), _ => _gitService.IsRepositoryOpen);
         DiscardFileCommand = new RelayCommand(param => DiscardFile(param as GitChangesEntry), _ => _gitService.IsRepositoryOpen);
         AcceptCurrentConflictCommand = new RelayCommand(param => ResolveConflict(param as GitChangesEntry, GitConflictResolution.AcceptCurrent), _ => _gitService.IsRepositoryOpen);
         AcceptIncomingConflictCommand = new RelayCommand(param => ResolveConflict(param as GitChangesEntry, GitConflictResolution.AcceptIncoming), _ => _gitService.IsRepositoryOpen);
@@ -238,6 +254,9 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
         FetchCommand = new RelayCommand(async _ => await FetchAsync(), _ => _gitService.IsRepositoryOpen);
         PullCommand = new RelayCommand(async _ => await PullAsync(), _ => _gitService.IsRepositoryOpen);
         PushCommand = new RelayCommand(async _ => await PushAsync(), _ => _gitService.IsRepositoryOpen);
+        UseWorktreeCommand = new RelayCommand(
+            async param => await UseWorktreeAsync(param as GitWorktreeInfo),
+            param => param is GitWorktreeInfo worktree && !worktree.IsWorkspace && !_isLoadingProject);
         OpenRecentProjectCommand = new RelayCommand(param => OpenRecentProject(param as RecentProjectItem));
         RemoveRecentProjectCommand = new RelayCommand(param => RemoveRecentProject(param as RecentProjectItem));
         ClearRecentProjectsCommand = new RelayCommand(_ => ClearRecentProjects());
@@ -306,6 +325,9 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
     public ICommand FetchCommand { get; }
     public ICommand PullCommand { get; }
     public ICommand PushCommand { get; }
+
+    /// <summary>Switches the IDE workspace to the worktree passed as the command parameter.</summary>
+    public ICommand UseWorktreeCommand { get; }
     public ICommand OpenRecentProjectCommand { get; }
     public ICommand RemoveRecentProjectCommand { get; }
     public ICommand ClearRecentProjectsCommand { get; }
@@ -428,6 +450,12 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
     /// <summary>Local Git branches available for checkout, shown in the Git Changes panel branch selector.</summary>
     public ObservableCollection<string> GitBranches { get; } = [];
 
+    /// <summary>
+    /// Worktrees of the open repository, shown in the Git Changes panel worktree selector
+    /// and in the Git menu. Linked worktrees include the isolated ones agents work in.
+    /// </summary>
+    public ObservableCollection<GitWorktreeInfo> GitWorktrees { get; } = [];
+
     private string _gitChangesStatusText = string.Empty;
     /// <summary>Summary text shown in the Git Changes panel header.</summary>
     public string GitChangesStatusText
@@ -464,6 +492,25 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
             {
                 CommandManager.InvalidateRequerySuggested();
             }
+        }
+    }
+
+    private GitWorktreeInfo? _selectedGitWorktree;
+    /// <summary>
+    /// Worktree whose changes the Git Changes panel displays. Selecting a worktree the
+    /// IDE has not loaded shows that worktree's changes without moving the workspace.
+    /// </summary>
+    public GitWorktreeInfo? SelectedGitWorktree
+    {
+        get => _selectedGitWorktree;
+        set
+        {
+            if (!SetProperty(ref _selectedGitWorktree, value) || _isUpdatingSelectedWorktree)
+            {
+                return;
+            }
+
+            ViewWorktree(value);
         }
     }
 
@@ -1936,7 +1983,7 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
 
         try
         {
-            return await _gitService.GetFileDiffAsync(relativePath).ConfigureAwait(true);
+            return await ChangesGitService.GetFileDiffAsync(relativePath).ConfigureAwait(true);
         }
         catch (ArgumentException ex)
         {
@@ -4100,6 +4147,10 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
 
     private void OpenRepositoryForPath(string path)
     {
+        // A worktree view from the previous workspace does not carry over.
+        CloseViewedWorktree();
+        _selectedGitWorktree = null;
+
         _gitService.TryOpenRepository(path);
         ApplyGitStatusToTree(_gitService.GetStatus());
         UpdateGitRepositoryState();
@@ -4122,7 +4173,7 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
         {
             if (StagedChanges.Count == 0)
             {
-                _gitService.StageAll();
+                ChangesGitService.StageAll();
             }
         }
         catch (ArgumentException ex)
@@ -4158,7 +4209,7 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
 
         try
         {
-            await _gitService.CommitAsync(commitMessage.Trim()).ConfigureAwait(true);
+            await ChangesGitService.CommitAsync(commitMessage.Trim()).ConfigureAwait(true);
             RefreshGitStatus();
             GitCommitMessage = string.Empty;
             MessageBox.Show("Commit created.", "Git Commit",
@@ -4184,6 +4235,8 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
     private void RefreshGitStatus()
     {
         _gitService.RefreshStatus();
+        _viewedWorktreeGitService?.RefreshStatus();
+        RefreshGitChangesLists();
         UpdateGitRepositoryState();
     }
 
@@ -4250,7 +4303,7 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
 
         if (result != MessageBoxResult.Yes) return;
 
-        ExecuteGitOperation(() => _gitService.DiscardFile(entry.RelativePath));
+        ExecuteGitOperation(() => ChangesGitService.DiscardFile(entry.RelativePath));
     }
 
     private void ResolveConflict(GitChangesEntry? entry, GitConflictResolution resolution)
@@ -4260,7 +4313,7 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
             return;
         }
 
-        ExecuteGitOperation(() => _gitService.ResolveConflict(entry.RelativePath, resolution));
+        ExecuteGitOperation(() => ChangesGitService.ResolveConflict(entry.RelativePath, resolution));
 
         if (_editor is not null && ActiveTab is not null
             && string.Equals(ActiveTab.FilePath, entry.FullPath, StringComparison.OrdinalIgnoreCase)
@@ -4279,6 +4332,10 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
         try
         {
             operation();
+
+            // A viewed worktree's repository raises no status events into this view
+            // model, so pull its file lists back in explicitly.
+            RefreshGitChangesLists();
         }
         catch (ArgumentException ex)
         {
@@ -4371,19 +4428,21 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
 
     private async Task CheckoutSelectedBranchAsync(string? branchName)
     {
-        if (string.IsNullOrWhiteSpace(branchName) || !_gitService.IsRepositoryOpen)
+        GitService service = ChangesGitService;
+
+        if (string.IsNullOrWhiteSpace(branchName) || !service.IsRepositoryOpen)
         {
             return;
         }
 
-        if (string.Equals(branchName, _gitService.CurrentBranchName, StringComparison.OrdinalIgnoreCase))
+        if (string.Equals(branchName, service.CurrentBranchName, StringComparison.OrdinalIgnoreCase))
         {
             return;
         }
 
         try
         {
-            await _gitService.CheckoutAsync(branchName).ConfigureAwait(true);
+            await service.CheckoutAsync(branchName).ConfigureAwait(true);
             RefreshProjectItems();
             RefreshGitStatus();
         }
@@ -4557,12 +4616,12 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
         try
         {
             GitBranches.Clear();
-            foreach (var branch in _gitService.GetLocalBranches())
+            foreach (var branch in ChangesGitService.GetLocalBranches())
             {
                 GitBranches.Add(branch);
             }
 
-            SelectedGitBranch = _gitService.CurrentBranchName;
+            SelectedGitBranch = ChangesGitService.CurrentBranchName;
         }
         finally
         {
@@ -4570,11 +4629,155 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
         }
     }
 
+    /// <summary>
+    /// Rebuilds the worktree list, keeping the panel pointed at the same worktree when it
+    /// still exists and falling back to the IDE workspace worktree when it does not.
+    /// </summary>
+    private void RefreshGitWorktrees()
+    {
+        IReadOnlyList<GitWorktreeInfo> worktrees = _gitService.GetWorktrees();
+        string? previousPath = SelectedGitWorktree?.Path;
+
+        _isUpdatingSelectedWorktree = true;
+        try
+        {
+            GitWorktrees.Clear();
+            foreach (GitWorktreeInfo worktree in worktrees)
+            {
+                GitWorktrees.Add(worktree);
+            }
+
+            GitWorktreeInfo? selected =
+                GitWorktrees.FirstOrDefault(worktree => AreSamePath(worktree.Path, previousPath))
+                ?? GitWorktrees.FirstOrDefault(worktree => worktree.IsWorkspace);
+
+            // Assigned through the backing field: rebuilding the list clears the
+            // selector's selection, so the notification must be raised even when the
+            // chosen worktree compares equal to the previously selected one.
+            _selectedGitWorktree = selected;
+            OnPropertyChanged(nameof(SelectedGitWorktree));
+
+            // The viewed worktree was pruned or the workspace moved onto it, so the
+            // separate view repository is no longer needed.
+            if (selected is null || selected.IsWorkspace)
+            {
+                CloseViewedWorktree();
+            }
+        }
+        finally
+        {
+            _isUpdatingSelectedWorktree = false;
+        }
+    }
+
+    /// <summary>
+    /// Points the Git Changes panel at <paramref name="worktree"/> without moving the IDE
+    /// workspace. Passing the workspace worktree (or null) returns the panel to it.
+    /// </summary>
+    private void ViewWorktree(GitWorktreeInfo? worktree)
+    {
+        CloseViewedWorktree();
+
+        if (worktree is not null && !worktree.IsWorkspace && Directory.Exists(worktree.Path))
+        {
+            GitService worktreeService = new();
+            if (worktreeService.TryOpenRepository(worktree.Path))
+            {
+                _viewedWorktreeGitService = worktreeService;
+            }
+            else
+            {
+                worktreeService.Dispose();
+                MessageBox.Show($"Could not open the worktree repository:\n{worktree.Path}",
+                    "Git Worktree", MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
+        }
+
+        RefreshGitChangesLists();
+        RefreshGitBranches();
+        RefreshGitLog();
+        OnPropertyChanged(nameof(GitCommitButtonText));
+        CommandManager.InvalidateRequerySuggested();
+    }
+
+    /// <summary>Disposes the repository opened for a viewed (non-workspace) worktree.</summary>
+    private void CloseViewedWorktree()
+    {
+        _viewedWorktreeGitService?.Dispose();
+        _viewedWorktreeGitService = null;
+    }
+
+    /// <summary>
+    /// Switches the IDE workspace to another worktree, reopening the loaded solution,
+    /// project, or folder from that worktree's copy of the tree.
+    /// </summary>
+    private async Task UseWorktreeAsync(GitWorktreeInfo? worktree)
+    {
+        if (worktree is null || worktree.IsWorkspace)
+        {
+            return;
+        }
+
+        if (!Directory.Exists(worktree.Path))
+        {
+            MessageBox.Show($"The worktree directory no longer exists:\n{worktree.Path}",
+                "Git Worktree", MessageBoxButton.OK, MessageBoxImage.Warning);
+            RefreshGitWorktrees();
+            return;
+        }
+
+        string? targetPath = Services.Tickets.TicketWorktreeManager.ComputeWorktreeProjectPath(
+            worktree.Path,
+            _loadedProjectOrSolutionPath,
+            _gitService.RepositoryWorkingDirectory);
+
+        // The worktree is becoming the workspace, so the separate view repository (and
+        // its file handles) must be released before the project is reloaded.
+        CloseViewedWorktree();
+
+        if (!string.IsNullOrWhiteSpace(targetPath) && File.Exists(targetPath))
+        {
+            if (IsSolutionFile(targetPath))
+            {
+                await LoadSolutionFileAsync(targetPath).ConfigureAwait(true);
+                return;
+            }
+
+            if (Path.GetExtension(targetPath).Equals(".csproj", StringComparison.OrdinalIgnoreCase))
+            {
+                await LoadProjectFileAsync(targetPath).ConfigureAwait(true);
+                return;
+            }
+        }
+
+        // No solution or project of the same name exists in the worktree — open the
+        // worktree directory as a plain folder instead.
+        LoadProjectRoot(worktree.Path);
+    }
+
+    /// <summary>Compares two file-system paths using the platform's path casing rules.</summary>
+    private static bool AreSamePath(string? left, string? right)
+    {
+        if (string.IsNullOrWhiteSpace(left) || string.IsNullOrWhiteSpace(right))
+        {
+            return false;
+        }
+
+        StringComparison comparison = OperatingSystem.IsWindows()
+            ? StringComparison.OrdinalIgnoreCase
+            : StringComparison.Ordinal;
+
+        return string.Equals(
+            Path.TrimEndingDirectorySeparator(Path.GetFullPath(left)),
+            Path.TrimEndingDirectorySeparator(Path.GetFullPath(right)),
+            comparison);
+    }
+
     private void RefreshGitLog()
     {
         GitCommitHistory.Clear();
 
-        var commits = _gitService.GetCommitHistory();
+        var commits = ChangesGitService.GetCommitHistory();
         foreach (var commit in commits)
         {
             GitCommitHistory.Add(commit);
@@ -4587,6 +4790,7 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
 
     private void UpdateGitRepositoryState()
     {
+        RefreshGitWorktrees();
         RefreshGitBranches();
         RefreshGitLog();
         OnPropertyChanged(nameof(CanInitializeGitRepository));
@@ -4630,7 +4834,25 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
             ApplyBadgeToItem(item, statusByPath);
         }
 
-        UpdateGitChangesCollections(entries, workDir);
+        RefreshGitChangesLists();
+    }
+
+    /// <summary>
+    /// Repopulates the Git Changes panel lists from the worktree currently selected in
+    /// the panel, which is the IDE workspace unless another worktree is being viewed.
+    /// </summary>
+    private void RefreshGitChangesLists()
+    {
+        GitService service = ChangesGitService;
+        string? workingDirectory = service.RepositoryWorkingDirectory;
+
+        if (!service.IsRepositoryOpen || string.IsNullOrEmpty(workingDirectory))
+        {
+            ClearGitChangesCollections();
+            return;
+        }
+
+        UpdateGitChangesCollections(service.GetStatus(), workingDirectory);
     }
 
     private static GitStatusBadge ApplyBadgeToItem(
@@ -5338,6 +5560,7 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
         _buildService.Dispose();
         _gitService.StatusChanged -= OnGitStatusChanged;
         _gitService.Dispose();
+        CloseViewedWorktree();
         DisposeExplorerWatcher();
         _explorerRefreshCts?.Cancel();
         _explorerRefreshCts?.Dispose();

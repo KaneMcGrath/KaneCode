@@ -100,6 +100,13 @@ internal sealed class TicketSystem : ITicketStatusService, IDisposable
     /// <summary>Settings currently in effect.</summary>
     public TicketSettings Settings => TicketSettingsManager.Load();
 
+    /// <summary>
+    /// The <c>.kanecode/tickets</c> directory for the loaded project, or null when no
+    /// project is loaded. Reading tickets never requires the dispatch loop to be
+    /// running, so the panel uses this to tell "no project" apart from "no tickets".
+    /// </summary>
+    internal string? TicketsDirectory => _store.TryGetTicketsDirectory();
+
     /// <summary>Number of active (working or paused) ticket runs.</summary>
     public int ActiveRunCount
     {

@@ -1,9 +1,11 @@
 using KaneCode.Models;
 using KaneCode.Services.Tickets;
 using System.Collections.ObjectModel;
+using System.IO;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
+using System.Windows.Threading;
 
 namespace KaneCode.Controls;
 
@@ -11,11 +13,26 @@ namespace KaneCode.Controls;
 /// The Tickets panel — lists every KaneCode ticket found under
 /// <c>.kanecode/tickets</c>, shows which ones have active agents, and provides an
 /// Initialize button to start the autonomous ticket dispatch loop.
+///
+/// Listing tickets is independent of the dispatch loop: the panel rescans whenever the
+/// loaded project changes, the panel comes back into view, or the tickets folder changes
+/// on disk, so tickets are visible (and can be opened, ignored, reopened, or deleted)
+/// before Initialize is ever pressed.
 /// </summary>
 public partial class TicketPanel : UserControl
 {
+    /// <summary>
+    /// How long file-change notifications are coalesced before rescanning. A single
+    /// ticket write raises several events, and an agent can touch a batch of tickets
+    /// at once, so the rescan waits for the burst to settle.
+    /// </summary>
+    private static readonly TimeSpan WatcherDebounce = TimeSpan.FromMilliseconds(300);
+
     private readonly ObservableCollection<KaneCodeTicket> _tickets = [];
     private TicketSystem? _ticketSystem;
+    private FileSystemWatcher? _watcher;
+    private DispatcherTimer? _watcherRefreshTimer;
+    private string? _watchedDirectory;
 
     /// <summary>Raised when the user double-clicks an active ticket (to watch its agent).</summary>
     internal event EventHandler<KaneCodeTicket>? TicketActivated;
@@ -30,7 +47,28 @@ public partial class TicketPanel : UserControl
     {
         InitializeComponent();
         TicketList.ItemsSource = _tickets;
+        IsVisibleChanged += TicketPanel_IsVisibleChanged;
+        Unloaded += (_, _) => StopWatching();
         UpdateStatusText();
+    }
+
+    /// <summary>
+    /// Rescans when the panel is shown, and runs the tickets-folder watcher only while
+    /// the panel is in view. Tickets are plain files that agents and external tools
+    /// create at any time, so the list would otherwise go stale whenever the dispatch
+    /// loop is not running to refresh it — but a watcher left armed behind a hidden tab
+    /// would be pure overhead.
+    /// </summary>
+    private void TicketPanel_IsVisibleChanged(object sender, DependencyPropertyChangedEventArgs e)
+    {
+        if (e.NewValue is true)
+        {
+            RefreshFromSystem();
+            StartWatching();
+            return;
+        }
+
+        StopWatching();
     }
 
     internal void SetTicketSystem(TicketSystem system)
@@ -51,6 +89,13 @@ public partial class TicketPanel : UserControl
 
         RefreshFromSystem();
         ApplyDispatchIssue(new TicketDispatchIssueEventArgs(null, system.LastDispatchIssue));
+
+        // The panel is wired to the ticket system after it is first shown, so the
+        // watcher has to be armed here rather than only on the visibility change.
+        if (IsVisible)
+        {
+            StartWatching();
+        }
     }
 
     /// <summary>
@@ -62,7 +107,213 @@ public partial class TicketPanel : UserControl
     }
 
     /// <summary>Refreshes the ticket list from the ticket system.</summary>
-    internal void Refresh() => RefreshFromSystem();
+    internal void Refresh()
+    {
+        RefreshFromSystem();
+
+        // A refresh usually follows a project load, which moves the tickets folder, so
+        // the watcher is re-pointed at the new location.
+        if (IsVisible)
+        {
+            StartWatching();
+        }
+    }
+
+    // ── Tickets folder watcher ──────────────────────────────────────
+
+    /// <summary>
+    /// Arms the tickets-folder watcher. When <c>.kanecode/tickets</c> does not exist yet,
+    /// the nearest existing ancestor is watched instead — non-recursively, so watching a
+    /// project root stays cheap — and the watcher re-points itself one level deeper once
+    /// the folder appears.
+    /// </summary>
+    private void StartWatching()
+    {
+        string? target = ResolveWatchTarget(_ticketSystem?.TicketsDirectory);
+        if (target is null)
+        {
+            StopWatching();
+            return;
+        }
+
+        if (_watcher is not null &&
+            string.Equals(_watchedDirectory, target, StringComparison.OrdinalIgnoreCase))
+        {
+            _watcher.EnableRaisingEvents = true;
+            return;
+        }
+
+        StopWatching();
+
+        try
+        {
+            FileSystemWatcher watcher = new(target)
+            {
+                // DirectoryName is needed for the ancestor case (spotting the tickets
+                // folder being created); LastWrite and Size catch header rewrites made
+                // by agents and external tools.
+                NotifyFilter = NotifyFilters.FileName
+                    | NotifyFilters.DirectoryName
+                    | NotifyFilters.LastWrite
+                    | NotifyFilters.Size,
+                IncludeSubdirectories = false
+            };
+
+            watcher.Created += Watcher_Changed;
+            watcher.Deleted += Watcher_Changed;
+            watcher.Changed += Watcher_Changed;
+            watcher.Renamed += Watcher_Changed;
+            watcher.Error += Watcher_Error;
+            watcher.EnableRaisingEvents = true;
+
+            _watcher = watcher;
+            _watchedDirectory = target;
+        }
+        catch (ArgumentException)
+        {
+            // The folder disappeared between the existence check and the watch.
+        }
+        catch (IOException)
+        {
+            // No watch handle available (e.g. a network path). The panel still
+            // refreshes on visibility changes and project loads.
+        }
+    }
+
+    /// <summary>Disarms and releases the watcher, and cancels any pending rescan.</summary>
+    internal void StopWatching()
+    {
+        _watcherRefreshTimer?.Stop();
+
+        if (_watcher is null)
+        {
+            return;
+        }
+
+        _watcher.EnableRaisingEvents = false;
+        _watcher.Created -= Watcher_Changed;
+        _watcher.Deleted -= Watcher_Changed;
+        _watcher.Changed -= Watcher_Changed;
+        _watcher.Renamed -= Watcher_Changed;
+        _watcher.Error -= Watcher_Error;
+        _watcher.Dispose();
+        _watcher = null;
+        _watchedDirectory = null;
+    }
+
+    /// <summary>
+    /// Returns the deepest existing folder on the path to the tickets directory, or
+    /// null when no project is loaded.
+    /// </summary>
+    private static string? ResolveWatchTarget(string? ticketsDirectory)
+    {
+        string? candidate = ticketsDirectory;
+        while (!string.IsNullOrWhiteSpace(candidate))
+        {
+            if (Directory.Exists(candidate))
+            {
+                return candidate;
+            }
+
+            candidate = Path.GetDirectoryName(candidate);
+        }
+
+        return null;
+    }
+
+    private void Watcher_Changed(object sender, FileSystemEventArgs e) => RequestWatcherRefresh();
+
+    private void Watcher_Error(object sender, ErrorEventArgs e)
+    {
+        // The watch handle was lost (folder deleted or renamed, or the event buffer
+        // overflowed). Re-arm from scratch so the list does not silently freeze.
+        bool queued = TryBeginInvoke(() =>
+        {
+            StopWatching();
+            if (IsVisible)
+            {
+                StartWatching();
+                RefreshFromSystem();
+            }
+        });
+
+        if (queued)
+        {
+            return;
+        }
+
+        // The UI thread is gone, and StopWatching touches a DispatcherTimer that has
+        // thread affinity, so the dead watch is simply silenced here.
+        try
+        {
+            if (sender is FileSystemWatcher watcher)
+            {
+                watcher.EnableRaisingEvents = false;
+            }
+        }
+        catch (Exception)
+        {
+        }
+    }
+
+    /// <summary>
+    /// Queues a debounced rescan. Watcher events arrive on a thread-pool thread, so the
+    /// timer is started on the UI thread.
+    /// </summary>
+    private void RequestWatcherRefresh()
+    {
+        TryBeginInvoke(() =>
+        {
+            if (_watcherRefreshTimer is null)
+            {
+                _watcherRefreshTimer = new DispatcherTimer(DispatcherPriority.Background, Dispatcher)
+                {
+                    Interval = WatcherDebounce
+                };
+                _watcherRefreshTimer.Tick += WatcherRefreshTimer_Tick;
+            }
+
+            _watcherRefreshTimer.Stop();
+            _watcherRefreshTimer.Start();
+        });
+    }
+
+    private void WatcherRefreshTimer_Tick(object? sender, EventArgs e)
+    {
+        _watcherRefreshTimer?.Stop();
+
+        if (!IsVisible)
+        {
+            return;
+        }
+
+        // The tickets folder may have just been created, so the watch target is
+        // re-evaluated before rescanning.
+        StartWatching();
+        RefreshFromSystem();
+    }
+
+    /// <summary>
+    /// Marshals an action to the UI thread, returning false when the dispatcher is
+    /// shutting down (watcher events can still arrive while the window closes).
+    /// </summary>
+    private bool TryBeginInvoke(Action action)
+    {
+        if (Dispatcher.HasShutdownStarted || Dispatcher.HasShutdownFinished)
+        {
+            return false;
+        }
+
+        try
+        {
+            Dispatcher.BeginInvoke(action);
+            return true;
+        }
+        catch (InvalidOperationException)
+        {
+            return false;
+        }
+    }
 
     private void TicketSystem_TicketsChanged(object? sender, TicketsChangedEventArgs e)
     {
@@ -118,6 +369,7 @@ public partial class TicketPanel : UserControl
     {
         if (_ticketSystem is null)
         {
+            UpdateStatusText();
             return;
         }
 
@@ -141,8 +393,9 @@ public partial class TicketPanel : UserControl
     {
         if (_ticketSystem is null)
         {
-            StatusText.Text = "not initialized";
+            StatusText.Text = "not connected";
             InitializeButton.Content = "Initialize";
+            UpdateEmptyState();
             return;
         }
 
@@ -169,6 +422,26 @@ public partial class TicketPanel : UserControl
         string state = _ticketSystem.IsRunning ? "running" : "stopped";
         StatusText.Text = $"{state} · {working} active · {open} open · {completed} complete";
         InitializeButton.Content = _ticketSystem.IsRunning ? "Stop" : "Initialize";
+        UpdateEmptyState();
+    }
+
+    /// <summary>
+    /// Explains an empty list. The distinction that matters is "no project loaded"
+    /// (so there is nowhere to look for tickets) versus "project loaded, no ticket
+    /// files yet" — neither of which has anything to do with the dispatch loop.
+    /// </summary>
+    private void UpdateEmptyState()
+    {
+        if (_tickets.Count > 0)
+        {
+            EmptyStateText.Visibility = Visibility.Collapsed;
+            return;
+        }
+
+        EmptyStateText.Text = _ticketSystem?.TicketsDirectory is null
+            ? "No project is loaded. Open a project, solution, or folder to see its tickets."
+            : "No tickets yet. Use ＋ New Ticket, or drop a .txt file into .kanecode\\tickets.";
+        EmptyStateText.Visibility = Visibility.Visible;
     }
 
     private void InitializeButton_Click(object sender, RoutedEventArgs e)
