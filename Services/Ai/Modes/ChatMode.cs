@@ -11,9 +11,11 @@ internal sealed class ChatMode : IAiChatMode
 {
     private static readonly HashSet<string> AllowedToolsSet = new(StringComparer.Ordinal)
     {
-        // Drawing — visual communication only, no side effects
+        // Drawing — visual communication; render_svg also saves a rasterized
+        // image (PNG/JPEG) into the loaded project
         "draw_svg",
         "edit_last_svg",
+        "render_svg",
 
         // Diagnostics and code intelligence — read-only
         "get_diagnostics",

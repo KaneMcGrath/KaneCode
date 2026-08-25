@@ -5436,7 +5436,8 @@ public partial class AiChatPanel : UserControl
                         if (result.Success &&
                             !string.IsNullOrWhiteSpace(result.SvgContent) &&
                             (string.Equals(item.ToolCall.FunctionName, "draw_svg", StringComparison.Ordinal) ||
-                             string.Equals(item.ToolCall.FunctionName, "edit_last_svg", StringComparison.Ordinal)))
+                             string.Equals(item.ToolCall.FunctionName, "edit_last_svg", StringComparison.Ordinal) ||
+                             string.Equals(item.ToolCall.FunctionName, "render_svg", StringComparison.Ordinal)))
                         {
                             bool addToContext = _provider?.SupportsImages == true &&
                                 SvgToContextCheckBox.IsChecked == true;
@@ -7505,10 +7506,11 @@ public partial class AiChatPanel : UserControl
             block.ToolCancellation = null;
         }
 
-        // Render SVG inline if present (draw_svg or edit_last_svg tools)
+        // Render SVG inline if present (draw_svg, edit_last_svg, or render_svg tools)
         if (result.Success && !string.IsNullOrWhiteSpace(result.SvgContent) &&
             (string.Equals(block.ToolName, "draw_svg", StringComparison.Ordinal) ||
-             string.Equals(block.ToolName, "edit_last_svg", StringComparison.Ordinal)))
+             string.Equals(block.ToolName, "edit_last_svg", StringComparison.Ordinal) ||
+             string.Equals(block.ToolName, "render_svg", StringComparison.Ordinal)))
         {
             // If the provider supports images and the "Add SVG to context" checkbox
             // is enabled, add the rendered SVG as a vision reference so the model

@@ -914,6 +914,7 @@ public partial class MainWindow : Window
         _agentToolRegistry.Register(new PresentationAddSlideTool(_presentationService, projectRoot));
         _agentToolRegistry.Register(new DrawSvgTool());
         _agentToolRegistry.Register(new EditLastSvgTool());
+        _agentToolRegistry.Register(new RenderSvgTool(projectRoot, onFileChanged));
 
         // ── Git tools ─────────────────────────────────────────────
         Func<GitService?> gitService = () => _viewModel.GitService;

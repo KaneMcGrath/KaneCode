@@ -29,6 +29,7 @@ internal sealed class AgentMode : IAiChatMode
         // Drawing
         "draw_svg",
         "edit_last_svg",
+        "render_svg",
 
         // Git
         "git_branches",
