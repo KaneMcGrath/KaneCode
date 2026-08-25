@@ -311,6 +311,7 @@ public partial class MainWindow : Window
         TicketPanel.TicketActivated -= TicketPanel_TicketActivated;
         TicketPanel.NewTicketRequested -= TicketPanel_NewTicketRequested;
         TicketPanel.TicketOpenRequested -= TicketPanel_TicketOpenRequested;
+        TicketPanel.TicketWorktreeMerged -= TicketPanel_TicketWorktreeMerged;
         TicketPanel.StopWatching();
         _ticketSystem.StopAll();
         _ticketSystem.Dispose();
@@ -669,6 +670,8 @@ public partial class MainWindow : Window
         TicketPanel.NewTicketRequested += TicketPanel_NewTicketRequested;
         TicketPanel.TicketOpenRequested -= TicketPanel_TicketOpenRequested;
         TicketPanel.TicketOpenRequested += TicketPanel_TicketOpenRequested;
+        TicketPanel.TicketWorktreeMerged -= TicketPanel_TicketWorktreeMerged;
+        TicketPanel.TicketWorktreeMerged += TicketPanel_TicketWorktreeMerged;
 
         // Create the root agent eagerly so the main AI chat session is always
         // backed by the orchestrator. This ensures tool execution (file-locking,
@@ -710,6 +713,15 @@ public partial class MainWindow : Window
         {
             _viewModel.OpenFileByPath(ticket.FilePath);
         }
+    }
+
+    /// <summary>
+    /// Refreshes the Git Changes panel after the user merges or commits a ticket's
+    /// worktree changes, so the newly applied files show up immediately.
+    /// </summary>
+    private void TicketPanel_TicketWorktreeMerged(object? sender, EventArgs e)
+    {
+        _viewModel.RefreshGitStatusCommand.Execute(null);
     }
 
     private void TicketPanel_NewTicketRequested(object? sender, EventArgs e)

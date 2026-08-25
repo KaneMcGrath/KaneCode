@@ -346,6 +346,87 @@ internal sealed class TicketSystem : ITicketStatusService, IDisposable
         Refresh();
     }
 
+    // ── Reviewing and merging ticket worktree changes ──────────────
+
+    /// <summary>
+    /// Returns the on-disk worktree directory for a ticket, or null when the ticket
+    /// has no worktree (no repository, or never dispatched). The path is resolved from
+    /// the running ticket's <see cref="KaneCodeTicket.WorktreePath"/> first, then from
+    /// the deterministic <c>.kanecode/worktrees/&lt;title&gt;</c> convention so finished
+    /// tickets can still be reviewed and merged.
+    /// </summary>
+    internal string? GetTicketWorktreePath(KaneCodeTicket ticket)
+    {
+        ArgumentNullException.ThrowIfNull(ticket);
+
+        if (!string.IsNullOrWhiteSpace(ticket.WorktreePath) && Directory.Exists(ticket.WorktreePath))
+        {
+            return ticket.WorktreePath;
+        }
+
+        string? repositoryRoot = _repositoryRootProvider();
+        if (string.IsNullOrWhiteSpace(repositoryRoot))
+        {
+            return null;
+        }
+
+        string? resolved = TicketWorktreeManager.TryGetWorktreePath(repositoryRoot, ticket.Title);
+        return !string.IsNullOrWhiteSpace(resolved) && Directory.Exists(resolved) ? resolved : null;
+    }
+
+    /// <summary>
+    /// Lists the files an agent changed in a ticket's worktree. Returns an empty list
+    /// when the ticket has no worktree or the worktree is clean.
+    /// </summary>
+    internal IReadOnlyList<TicketWorktreeChange> GetTicketWorktreeChanges(KaneCodeTicket ticket)
+    {
+        ArgumentNullException.ThrowIfNull(ticket);
+
+        string? worktreePath = GetTicketWorktreePath(ticket);
+        string? repositoryRoot = _repositoryRootProvider();
+        if (string.IsNullOrWhiteSpace(worktreePath) || string.IsNullOrWhiteSpace(repositoryRoot))
+        {
+            return [];
+        }
+
+        return _worktreeManager.GetWorktreeChanges(repositoryRoot, worktreePath);
+    }
+
+    /// <summary>
+    /// Applies every change from a ticket's worktree to the main IDE worktree without
+    /// staging or committing, so the user can review them in Git Changes. Returns the
+    /// number of files applied.
+    /// </summary>
+    internal int ApplyTicketWorktreeChangesToWorkspace(KaneCodeTicket ticket)
+    {
+        ArgumentNullException.ThrowIfNull(ticket);
+
+        string? worktreePath = GetTicketWorktreePath(ticket)
+            ?? throw new InvalidOperationException("This ticket has no worktree to merge from.");
+        string? repositoryRoot = _repositoryRootProvider()
+            ?? throw new InvalidOperationException("No Git repository is open.");
+
+        return _worktreeManager.ApplyWorktreeChangesToWorkspace(repositoryRoot, worktreePath);
+    }
+
+    /// <summary>
+    /// Applies every change from a ticket's worktree to the main IDE worktree, stages
+    /// them, and commits them on the current branch with the given message. Returns
+    /// the number of files committed.
+    /// </summary>
+    internal int CommitTicketWorktreeChanges(KaneCodeTicket ticket, string message)
+    {
+        ArgumentNullException.ThrowIfNull(ticket);
+        ArgumentException.ThrowIfNullOrWhiteSpace(message);
+
+        string? worktreePath = GetTicketWorktreePath(ticket)
+            ?? throw new InvalidOperationException("This ticket has no worktree to commit.");
+        string? repositoryRoot = _repositoryRootProvider()
+            ?? throw new InvalidOperationException("No Git repository is open.");
+
+        return _worktreeManager.CommitWorktreeChanges(repositoryRoot, worktreePath, message);
+    }
+
     /// <inheritdoc />
     public Task<bool> MarkTicketCompleteAsync(string ticketId, string? summary)
     {

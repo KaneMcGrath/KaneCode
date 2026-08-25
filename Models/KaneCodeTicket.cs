@@ -1,3 +1,7 @@
+using System.Collections.ObjectModel;
+using System.ComponentModel;
+using System.Runtime.CompilerServices;
+
 namespace KaneCode.Models;
 
 /// <summary>
@@ -7,7 +11,7 @@ namespace KaneCode.Models;
 /// <c>KaneCodeTicket|...</c> header carrying status and per-ticket options; the
 /// remaining lines are the free-form task description handed to the agent.
 /// </summary>
-public sealed class KaneCodeTicket
+public sealed class KaneCodeTicket : INotifyPropertyChanged
 {
     /// <summary>The full path to the ticket file on disk.</summary>
     public required string FilePath { get; init; }
@@ -56,6 +60,59 @@ public sealed class KaneCodeTicket
 
     /// <summary>The ticket worktree path, when the ticket was dispatched in a Git worktree.</summary>
     public string? WorktreePath { get; set; }
+
+    /// <summary>
+    /// Whether the ticket's collapsible "worktree changes" section is expanded in the
+    /// Tickets panel. UI state only — not persisted to the ticket file.
+    /// </summary>
+    public bool ChangesExpanded
+    {
+        get => _changesExpanded;
+        set
+        {
+            if (_changesExpanded == value)
+            {
+                return;
+            }
+
+            _changesExpanded = value;
+            OnPropertyChanged();
+        }
+    }
+
+    /// <summary>
+    /// Status line shown above the worktree change list (e.g. "3 changed files").
+    /// </summary>
+    public string WorktreeChangesStatusText
+    {
+        get => _worktreeChangesStatusText;
+        set
+        {
+            if (_worktreeChangesStatusText == value)
+            {
+                return;
+            }
+
+            _worktreeChangesStatusText = value;
+            OnPropertyChanged();
+        }
+    }
+
+    /// <summary>
+    /// The files the agent changed in the ticket's worktree, shown when the changes
+    /// section is expanded. Populated lazily by the Tickets panel.
+    /// </summary>
+    public ObservableCollection<TicketWorktreeChange> WorktreeChanges { get; } = [];
+
+    public event PropertyChangedEventHandler? PropertyChanged;
+
+    private void OnPropertyChanged([CallerMemberName] string? propertyName = null)
+    {
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+    }
+
+    private bool _changesExpanded;
+    private string _worktreeChangesStatusText = string.Empty;
 
     /// <summary>Whether the ticket requests a provider override.</summary>
     public bool HasProviderOverride => !string.IsNullOrWhiteSpace(Provider);

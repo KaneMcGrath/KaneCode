@@ -43,6 +43,18 @@ public partial class TicketPanel : UserControl
     /// <summary>Raised when the user chooses "Open" on a ticket (open the file in the editor).</summary>
     internal event EventHandler<KaneCodeTicket>? TicketOpenRequested;
 
+    /// <summary>
+    /// Raised after the user merges or commits a ticket's worktree changes into the
+    /// workspace, so the host can refresh the Git Changes panel.
+    /// </summary>
+    internal event EventHandler? TicketWorktreeMerged;
+
+    /// <summary>
+    /// Titles of tickets whose worktree-changes section is expanded. Kept across
+    /// rescans so expanding a section survives the panel rebuilding its ticket list.
+    /// </summary>
+    private readonly HashSet<string> _expandedTicketTitles = new(StringComparer.OrdinalIgnoreCase);
+
     public TicketPanel()
     {
         InitializeComponent();
@@ -383,7 +395,16 @@ public partial class TicketPanel : UserControl
         _tickets.Clear();
         foreach (KaneCodeTicket ticket in tickets)
         {
+            // Preserve which sections the user had expanded: a rescan builds fresh
+            // ticket instances, so the UI-only expansion state has to be re-applied.
+            ticket.ChangesExpanded = _expandedTicketTitles.Contains(ticket.Title);
             _tickets.Add(ticket);
+
+            // Expanded sections keep their change list fresh across rescans.
+            if (ticket.ChangesExpanded)
+            {
+                LoadTicketWorktreeChanges(ticket);
+            }
         }
 
         UpdateStatusText();
@@ -575,5 +596,206 @@ public partial class TicketPanel : UserControl
         menu.PlacementTarget = TicketList;
         menu.IsOpen = true;
         e.Handled = true;
+    }
+
+    // ── Worktree changes: expand/collapse, merge, commit ───────────
+
+    /// <summary>
+    /// Toggles a ticket's worktree-changes section. Expanding loads the changed-file
+    /// list from the ticket system; collapsing just hides it (the list is kept so a
+    /// quick re-expand is instant, and refreshed on the next rescan anyway).
+    /// </summary>
+    private void ChangesToggle_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement { DataContext: KaneCodeTicket ticket })
+        {
+            return;
+        }
+
+        bool expanded = !ticket.ChangesExpanded;
+        ticket.ChangesExpanded = expanded;
+
+        if (expanded)
+        {
+            _expandedTicketTitles.Add(ticket.Title);
+            LoadTicketWorktreeChanges(ticket);
+        }
+        else
+        {
+            _expandedTicketTitles.Remove(ticket.Title);
+        }
+    }
+
+    /// <summary>
+    /// Populates <see cref="KaneCodeTicket.WorktreeChanges"/> for a ticket and updates
+    /// its status line. The worktree path is resolved by the ticket system, so tickets
+    /// that finished (and lost their in-memory worktree path) still resolve correctly.
+    /// </summary>
+    private void LoadTicketWorktreeChanges(KaneCodeTicket ticket)
+    {
+        ticket.WorktreeChanges.Clear();
+        ticket.WorktreeChangesStatusText = string.Empty;
+
+        if (_ticketSystem is null)
+        {
+            ticket.WorktreeChangesStatusText = "Ticket system is not connected.";
+            return;
+        }
+
+        if (_ticketSystem.GetTicketWorktreePath(ticket) is null)
+        {
+            ticket.WorktreeChangesStatusText = "This ticket has no worktree to review.";
+            return;
+        }
+
+        try
+        {
+            IReadOnlyList<TicketWorktreeChange> changes = _ticketSystem.GetTicketWorktreeChanges(ticket);
+            foreach (TicketWorktreeChange change in changes)
+            {
+                ticket.WorktreeChanges.Add(change);
+            }
+
+            ticket.WorktreeChangesStatusText = changes.Count switch
+            {
+                0 => "No changes to apply.",
+                1 => "1 changed file",
+                _ => $"{changes.Count} changed files"
+            };
+        }
+        catch (Exception ex)
+        {
+            ticket.WorktreeChangesStatusText = $"Could not read worktree changes: {ex.Message}";
+        }
+    }
+
+    private void MergeWorktreeChanges_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement { DataContext: KaneCodeTicket ticket } || _ticketSystem is null)
+        {
+            return;
+        }
+
+        try
+        {
+            int applied = _ticketSystem.ApplyTicketWorktreeChangesToWorkspace(ticket);
+            if (applied == 0)
+            {
+                MessageBox.Show("No changes to merge — the ticket worktree is clean.",
+                    "Merge Worktree Changes", MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+
+            TicketWorktreeMerged?.Invoke(this, EventArgs.Empty);
+            MessageBox.Show(
+                $"Applied {applied} changed file(s) to the workspace.\n\n" +
+                "Review them in Git Changes; nothing has been committed yet.",
+                "Merge Worktree Changes", MessageBoxButton.OK, MessageBoxImage.Information);
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"Could not merge worktree changes:\n{ex.Message}",
+                "Merge Worktree Changes", MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+    }
+
+    private void CommitWorktreeChanges_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement { DataContext: KaneCodeTicket ticket } || _ticketSystem is null)
+        {
+            return;
+        }
+
+        string? message = PromptForCommitMessage(ticket.Title);
+        if (string.IsNullOrWhiteSpace(message))
+        {
+            return;
+        }
+
+        try
+        {
+            int applied = _ticketSystem.CommitTicketWorktreeChanges(ticket, message);
+            if (applied == 0)
+            {
+                MessageBox.Show("No changes to commit — the ticket worktree is clean.",
+                    "Commit Worktree Changes", MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+
+            TicketWorktreeMerged?.Invoke(this, EventArgs.Empty);
+            MessageBox.Show($"Committed {applied} changed file(s) to the current branch.",
+                "Commit Worktree Changes", MessageBoxButton.OK, MessageBoxImage.Information);
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"Could not commit worktree changes:\n{ex.Message}",
+                "Commit Worktree Changes", MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+    }
+
+    /// <summary>
+    /// Shows the "enter commit message" popup used by the Commit button. Returns the
+    /// entered message, or null when the user cancels. The ticket title is pre-filled
+    /// as a sensible default commit subject.
+    /// </summary>
+    private static string? PromptForCommitMessage(string defaultText)
+    {
+        Window window = new()
+        {
+            Title = "Commit Ticket Changes",
+            Width = 420,
+            Height = 170,
+            WindowStartupLocation = WindowStartupLocation.CenterOwner,
+            ResizeMode = ResizeMode.NoResize,
+            Owner = Application.Current.MainWindow
+        };
+
+        string? result = null;
+        StackPanel panel = new() { Margin = new Thickness(12) };
+
+        TextBlock label = new()
+        {
+            Text = "Commit message:",
+            Margin = new Thickness(0, 0, 0, 6)
+        };
+        panel.Children.Add(label);
+
+        TextBox textBox = new()
+        {
+            Text = defaultText,
+            Margin = new Thickness(0, 0, 0, 12),
+            AcceptsReturn = true,
+            TextWrapping = TextWrapping.Wrap
+        };
+        textBox.SelectAll();
+        panel.Children.Add(textBox);
+
+        StackPanel buttonPanel = new()
+        {
+            Orientation = Orientation.Horizontal,
+            HorizontalAlignment = HorizontalAlignment.Right
+        };
+
+        Button commitButton = new()
+        {
+            Content = "Commit",
+            Width = 90,
+            Margin = new Thickness(0, 0, 8, 0),
+            IsDefault = true
+        };
+        commitButton.Click += (_, _) =>
+        {
+            result = textBox.Text;
+            window.DialogResult = true;
+        };
+        buttonPanel.Children.Add(commitButton);
+
+        Button cancelButton = new() { Content = "Cancel", Width = 75, IsCancel = true };
+        buttonPanel.Children.Add(cancelButton);
+
+        panel.Children.Add(buttonPanel);
+        window.Content = panel;
+
+        return window.ShowDialog() == true ? result : null;
     }
 }
