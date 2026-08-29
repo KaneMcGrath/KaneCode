@@ -77,8 +77,10 @@ public partial class PowerShellPanel : UserControl, IDisposable
                 _hasActivated = true;
                 StartSession();
             }
-
-            FocusTerminal();
+            else
+            {
+                FocusTerminal();
+            }
         });
     }
 
@@ -99,8 +101,12 @@ public partial class PowerShellPanel : UserControl, IDisposable
 
             TerminalHost.Connection = connection;
             TerminalStatusText.Text = "ConPTY terminal - interactive console applications supported";
-            session.Win32DirectInputMode(true);
             session.Resize(Math.Max(TerminalHost.Columns, 20), Math.Max(TerminalHost.Rows, 5));
+
+            // PowerShell works reliably with normal VT input. Forcing private
+            // mode 9001 here left the terminal unable to deliver keystrokes
+            // until a full terminal reset disabled that mode again.
+            QueueTerminalFocus(session);
         });
 
         lock (_sessionLock)
@@ -147,7 +153,6 @@ public partial class PowerShellPanel : UserControl, IDisposable
         StopSession();
         ApplyTheme();
         StartSession();
-        FocusTerminal();
     }
 
     private void StopSession()
@@ -213,9 +218,22 @@ public partial class PowerShellPanel : UserControl, IDisposable
         Keyboard.Focus(TerminalHost);
     }
 
+    private void QueueTerminalFocus(TermPTY session)
+    {
+        Dispatcher.BeginInvoke(DispatcherPriority.ContextIdle, () =>
+        {
+            if (_disposed || !IsVisible || !ReferenceEquals(_session, session))
+            {
+                return;
+            }
+
+            FocusTerminal();
+        });
+    }
+
     private void ClearButton_Click(object sender, RoutedEventArgs e)
     {
-        _session?.ClearUITerminal(true);
+        _session?.ClearUITerminal();
         FocusTerminal();
     }
 
