@@ -100,7 +100,6 @@ public partial class PowerShellPanel : UserControl, IDisposable
             }
 
             TerminalHost.Connection = connection;
-            TerminalStatusText.Text = "ConPTY terminal - interactive console applications supported";
             session.Resize(Math.Max(TerminalHost.Columns, 20), Math.Max(TerminalHost.Rows, 5));
 
             // PowerShell works reliably with normal VT input. Forcing private
@@ -145,7 +144,7 @@ public partial class PowerShellPanel : UserControl, IDisposable
             return;
         }
 
-        TerminalStatusText.Text = $"PowerShell failed to start: {exception.Message}";
+        Trace.WriteLine($"PowerShell failed to start: {exception.Message}");
     }
 
     private void RestartSession()

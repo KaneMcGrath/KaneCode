@@ -16,13 +16,6 @@
                     <Button Content="Restart" Padding="8,2" Margin="4,0,0,0"
                             IsTabStop="False" Click="RestartButton_Click" />
                 </StackPanel>
-                <StackPanel>
-                    <TextBlock Text="PowerShell" FontWeight="SemiBold"
-                               Foreground="{DynamicResource PanelForeground}" />
-                    <TextBlock x:Name="TerminalStatusText" Margin="0,2,8,0" FontSize="10"
-                               Text="ConPTY terminal - interactive console applications supported"
-                               Foreground="{DynamicResource AiChatSecondaryForeground}" />
-                </StackPanel>
             </DockPanel>
         </Border>
 
