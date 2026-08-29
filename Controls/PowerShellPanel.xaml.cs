@@ -212,6 +212,43 @@ public partial class PowerShellPanel : UserControl, IDisposable
         FocusTerminal();
     }
 
+    private void TerminalHost_PreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        if (_disposed || e.Key != Key.Tab)
+        {
+            return;
+        }
+
+        ModifierKeys modifiers = Keyboard.Modifiers;
+        if ((modifiers & (ModifierKeys.Control | ModifierKeys.Alt | ModifierKeys.Windows)) != ModifierKeys.None)
+        {
+            return;
+        }
+
+        DispatcherTerminalConnection? connection;
+        lock (_sessionLock)
+        {
+            connection = _connection;
+        }
+
+        if (connection is null)
+        {
+            return;
+        }
+
+        string input = modifiers.HasFlag(ModifierKeys.Shift) ? "\x1b[Z" : "\t";
+        try
+        {
+            connection.WriteInput(input);
+            e.Handled = true;
+        }
+        catch (InvalidOperationException)
+        {
+            // The session was restarted between retrieving the connection and
+            // sending the key. The replacement session will receive focus when ready.
+        }
+    }
+
     private void FocusTerminal()
     {
         TerminalHost.Focus();
