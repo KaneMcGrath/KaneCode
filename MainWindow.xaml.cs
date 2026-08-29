@@ -313,6 +313,7 @@ public partial class MainWindow : Window
         TicketPanel.TicketOpenRequested -= TicketPanel_TicketOpenRequested;
         TicketPanel.TicketWorktreeMerged -= TicketPanel_TicketWorktreeMerged;
         TicketPanel.StopWatching();
+        PowerShellPanel.Dispose();
         _ticketSystem.StopAll();
         _ticketSystem.Dispose();
         _agentOrchestrator.Dispose();
@@ -363,6 +364,7 @@ public partial class MainWindow : Window
         if (e.PropertyName == nameof(MainViewModel.ProjectRootPath)
             && !string.IsNullOrWhiteSpace(_viewModel.ProjectRootPath))
         {
+            PowerShellPanel.SetWorkingDirectory(_viewModel.ProjectRootPath);
             // A project, solution, or folder was loaded — switch from Application mode
             // to the user's default agent mode (their chosen default preset, or the
             // built-in Agent mode when no preset is marked as default) so the AI can

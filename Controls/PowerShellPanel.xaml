@@ -1,0 +1,31 @@
+<UserControl x:Class="KaneCode.Controls.PowerShellPanel"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:terminal="clr-namespace:Microsoft.Terminal.Wpf;assembly=Microsoft.Terminal.Wpf"
+             IsVisibleChanged="PowerShellPanel_IsVisibleChanged"
+             PreviewMouseDown="PowerShellPanel_PreviewMouseDown">
+    <DockPanel Background="#FF0C0C0C">
+        <Border DockPanel.Dock="Top" Padding="8,5"
+                Background="{DynamicResource AiChatHeaderBackground}"
+                BorderBrush="{DynamicResource AiChatBorder}" BorderThickness="0,0,0,1">
+            <DockPanel>
+                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                    <Button Content="Clear" Padding="8,2" Margin="4,0,0,0" Click="ClearButton_Click" />
+                    <Button Content="Restart" Padding="8,2" Margin="4,0,0,0" Click="RestartButton_Click" />
+                </StackPanel>
+                <StackPanel>
+                    <TextBlock Text="PowerShell" FontWeight="SemiBold"
+                               Foreground="{DynamicResource PanelForeground}" />
+                    <TextBlock x:Name="TerminalStatusText" Margin="0,2,8,0" FontSize="10"
+                               Text="ConPTY terminal - interactive console applications supported"
+                               Foreground="{DynamicResource AiChatSecondaryForeground}" />
+                </StackPanel>
+            </DockPanel>
+        </Border>
+
+        <terminal:TerminalControl x:Name="TerminalHost"
+                                  MinWidth="40"
+                                  MinHeight="40"
+                                  AutoResize="True" />
+    </DockPanel>
+</UserControl>
