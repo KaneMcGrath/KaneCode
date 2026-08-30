@@ -3,6 +3,7 @@ using EasyWindowsTerminalControl.Internals;
 using KaneCode.Services;
 using Microsoft.Terminal.Wpf;
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Windows;
 using System.Windows.Controls;
@@ -213,13 +214,13 @@ public partial class PowerShellPanel : UserControl, IDisposable
 
     private void TerminalHost_PreviewKeyDown(object sender, KeyEventArgs e)
     {
-        if (_disposed || e.Key != Key.Tab)
+        if (_disposed)
         {
             return;
         }
 
         ModifierKeys modifiers = Keyboard.Modifiers;
-        if ((modifiers & (ModifierKeys.Control | ModifierKeys.Alt | ModifierKeys.Windows)) != ModifierKeys.None)
+        if (!TryGetTerminalNavigationInput(e.Key, modifiers, out string? input))
         {
             return;
         }
@@ -235,7 +236,6 @@ public partial class PowerShellPanel : UserControl, IDisposable
             return;
         }
 
-        string input = modifiers.HasFlag(ModifierKeys.Shift) ? "\x1b[Z" : "\t";
         try
         {
             connection.WriteInput(input);
@@ -246,6 +246,28 @@ public partial class PowerShellPanel : UserControl, IDisposable
             // The session was restarted between retrieving the connection and
             // sending the key. The replacement session will receive focus when ready.
         }
+    }
+
+    internal static bool TryGetTerminalNavigationInput(
+        Key key,
+        ModifierKeys modifiers,
+        [NotNullWhen(true)] out string? input)
+    {
+        input = null;
+        if ((modifiers & (ModifierKeys.Control | ModifierKeys.Alt | ModifierKeys.Windows)) != ModifierKeys.None)
+        {
+            return false;
+        }
+
+        input = key switch
+        {
+            Key.Tab => modifiers.HasFlag(ModifierKeys.Shift) ? "\x1b[Z" : "\t",
+            Key.Home => "\x1b[H",
+            Key.End => "\x1b[F",
+            _ => null
+        };
+
+        return input is not null;
     }
 
     private void FocusTerminal()
