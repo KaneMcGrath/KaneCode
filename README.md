@@ -36,7 +36,7 @@ But it is capable of developing c# programs, and currently almost all KaneCode d
 
 ## AI Agent
 
-KaneCode's AI agent uses any OpenAI-compatible API provider, and uses a variety of tools to complete tasks.
+KaneCode's AI agent supports OpenAI-compatible APIs, Anthropic-compatible Messages APIs (including llama.cpp), and Google Gemini, and uses a variety of tools to complete tasks.
 
 ### Available tools
 
@@ -66,7 +66,7 @@ KaneCode's AI agent uses any OpenAI-compatible API provider, and uses a variety 
 - **Conversation** save/load with conversation store
 - **Context window** builder — add files, folders, diagnostics, build output, and Git status as context
 - **Model selection** and per-parameter configuration (temperature, max tokens, etc.)
-- **Multiple OpenAI-compatible providers** (configure endpoint, API key, model name)
+- **Multiple AI providers** including OpenAI-compatible endpoints, `/v1/messages` endpoints, and Google Gemini
 - **Malformed tool call** recovery and debugging panel for tool failures
 - **Raw mode** to disable response formatting
 

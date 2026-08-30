@@ -282,7 +282,9 @@ internal static class EditorService
             return false;
         }
 
-        string[] segments = relativePath.Split([Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar], StringSplitOptions.RemoveEmptyEntries);
+        string[] segments = relativePath.Split(
+            new char[] { Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar },
+            StringSplitOptions.RemoveEmptyEntries);
         if (segments.Any(ExcludedDirectories.Contains))
         {
             return true;

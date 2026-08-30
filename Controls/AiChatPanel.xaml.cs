@@ -1854,7 +1854,7 @@ public partial class AiChatPanel : UserControl
         string singleLineTitle = string.Join(
             " ",
             messageText
-                .Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
+                .Split(new char[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
 
         if (string.IsNullOrWhiteSpace(singleLineTitle))
         {
@@ -4669,9 +4669,17 @@ public partial class AiChatPanel : UserControl
 
         AiConversation conversation = EnsureActiveConversation();
 
-        if (_provider is null || !_provider.IsConfigured)
+        if (_provider is null)
         {
             AppendSystemMessage("No AI provider configured. Go to Options → AI Providers.");
+            return;
+        }
+
+        if (!_provider.IsConfigured)
+        {
+            AppendSystemMessage(
+                $"AI provider '{_provider.DisplayName}' is selected but not configured. " +
+                "Set its endpoint or API key in Options > AI Providers.");
             return;
         }
 
@@ -4849,6 +4857,21 @@ public partial class AiChatPanel : UserControl
                         toolsDef,
                         streamResponses);
                     string endpointUrl = v1ChatCompletionsProvider.GetChatCompletionEndpoint();
+                    _rawRequestPayloads.Add(new RawRequestPayload(
+                        endpointUrl,
+                        model,
+                        rawJson,
+                        ResponseContent: null,
+                        ReasoningContent: null));
+                }
+                else if (_provider is AnthropicMessagesProvider anthropicMessagesProvider)
+                {
+                    string rawJson = anthropicMessagesProvider.BuildRawRequestJson(
+                        outboundMessages,
+                        model,
+                        toolsDef,
+                        streamResponses);
+                    string endpointUrl = anthropicMessagesProvider.GetMessagesEndpoint();
                     _rawRequestPayloads.Add(new RawRequestPayload(
                         endpointUrl,
                         model,

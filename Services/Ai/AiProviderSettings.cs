@@ -7,6 +7,7 @@ namespace KaneCode.Services.Ai;
 internal sealed class AiProviderSettings
 {
     public const int DefaultContextLength = 12000;
+    public const int DefaultMaxOutputTokens = 8192;
     public const double DefaultTemperature = 0.6;
     public const double DefaultTopP = 0.95;
     public const int DefaultTopK = 20;
@@ -54,6 +55,12 @@ internal sealed class AiProviderSettings
     /// This value is not sent to the provider.
     /// </summary>
     public int? ContextLength { get; set; } = DefaultContextLength;
+
+    /// <summary>
+    /// Maximum number of tokens the provider may generate for a response.
+    /// This is required by Anthropic-compatible Messages API providers.
+    /// </summary>
+    public int? MaxOutputTokens { get; set; }
 
     /// <summary>
     /// Optional sampling temperature for OpenAI-compatible providers.

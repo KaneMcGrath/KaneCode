@@ -64,6 +64,7 @@ internal sealed class AiSettingsViewModel : ObservableObject, IDisposable
     [
         "/v1/completions",
         "/v1/chat/completions",
+        "/v1/messages",
         "Google Gemini"
     ];
 
@@ -77,6 +78,7 @@ internal sealed class AiSettingsViewModel : ObservableObject, IDisposable
         {
             "/v1/completions" => "v1completions",
             "/v1/chat/completions" => "v1chatcompletions",
+            "/v1/messages" => "anthropicmessages",
             "Google Gemini" => "googlegemini",
             null or "" => "v1chatcompletions",
             _ => displayName
@@ -93,6 +95,7 @@ internal sealed class AiSettingsViewModel : ObservableObject, IDisposable
         {
             "v1completions" => "/v1/completions",
             "v1chatcompletions" => "/v1/chat/completions",
+            "anthropicmessages" => "/v1/messages",
             "googlegemini" => "Google Gemini",
             null or "" => "/v1/chat/completions",
             _ => providerId
@@ -317,6 +320,7 @@ internal sealed class AiProviderEntryViewModel : ObservableObject
     private string _apiKey;
     private string _selectedModel;
     private string _contextLength;
+    private string _maxOutputTokens;
     private string _temperature;
     private string _topP;
     private string _topK;
@@ -346,6 +350,7 @@ internal sealed class AiProviderEntryViewModel : ObservableObject
         _selectedModel = settings.SelectedModel;
         IsActive = settings.IsActive;
         _contextLength = FormatNullableInt(settings.ContextLength, AiProviderSettings.DefaultContextLength);
+        _maxOutputTokens = FormatNullableInt(settings.MaxOutputTokens, AiProviderSettings.DefaultMaxOutputTokens);
         _temperature = FormatNullableDouble(settings.Temperature, AiProviderSettings.DefaultTemperature);
         _topP = FormatNullableDouble(settings.TopP, AiProviderSettings.DefaultTopP);
         _topK = FormatNullableInt(settings.TopK, AiProviderSettings.DefaultTopK);
@@ -373,6 +378,12 @@ internal sealed class AiProviderEntryViewModel : ObservableObject
     public bool IsEndpointVisible => InternalProviderId != "googlegemini";
 
     /// <summary>
+    /// Whether the maximum output token field should be shown. The Messages API
+    /// requires this value on every request.
+    /// </summary>
+    public bool IsMaxOutputTokensVisible => InternalProviderId == "anthropicmessages";
+
+    /// <summary>
     /// Whether the API Key field should be visible in the detail panel.
     /// Shown for all providers.
     /// </summary>
@@ -380,21 +391,21 @@ internal sealed class AiProviderEntryViewModel : ObservableObject
 
     /// <summary>
     /// Whether MinP inference parameter should be visible.
-    /// Hidden for Google Gemini which does not support it.
+    /// Hidden for providers whose request schema does not support it.
     /// </summary>
-    public bool IsMinPVisible => InternalProviderId != "googlegemini";
+    public bool IsMinPVisible => InternalProviderId is not ("googlegemini" or "anthropicmessages");
 
     /// <summary>
     /// Whether Presence Penalty inference parameter should be visible.
-    /// Hidden for Google Gemini which does not support it.
+    /// Hidden for providers whose request schema does not support it.
     /// </summary>
-    public bool IsPresencePenaltyVisible => InternalProviderId != "googlegemini";
+    public bool IsPresencePenaltyVisible => InternalProviderId is not ("googlegemini" or "anthropicmessages");
 
     /// <summary>
     /// Whether Repetition Penalty inference parameter should be visible.
-    /// Hidden for Google Gemini which does not support it.
+    /// Hidden for providers whose request schema does not support it.
     /// </summary>
-    public bool IsRepetitionPenaltyVisible => InternalProviderId != "googlegemini";
+    public bool IsRepetitionPenaltyVisible => InternalProviderId is not ("googlegemini" or "anthropicmessages");
 
     public string ProviderId
     {
@@ -405,6 +416,7 @@ internal sealed class AiProviderEntryViewModel : ObservableObject
             {
                 // When the provider type changes, update visibility of dependent fields
                 OnPropertyChanged(nameof(IsEndpointVisible));
+                OnPropertyChanged(nameof(IsMaxOutputTokensVisible));
                 OnPropertyChanged(nameof(IsMinPVisible));
                 OnPropertyChanged(nameof(IsPresencePenaltyVisible));
                 OnPropertyChanged(nameof(IsRepetitionPenaltyVisible));
@@ -450,6 +462,12 @@ internal sealed class AiProviderEntryViewModel : ObservableObject
     {
         get => _contextLength;
         set => SetProperty(ref _contextLength, value);
+    }
+
+    public string MaxOutputTokens
+    {
+        get => _maxOutputTokens;
+        set => SetProperty(ref _maxOutputTokens, value);
     }
 
     public string Temperature
@@ -536,6 +554,7 @@ internal sealed class AiProviderEntryViewModel : ObservableObject
         SelectedModel = SelectedModel,
         IsActive = IsActive,
         ContextLength = ParseNullableInt(ContextLength),
+        MaxOutputTokens = IsMaxOutputTokensVisible ? ParseNullableInt(MaxOutputTokens) : null,
         Temperature = IsTemperatureEnabled ? ParseNullableDouble(Temperature) : null,
         TopP = IsTopPEnabled ? ParseNullableDouble(TopP) : null,
         TopK = IsTopKEnabled ? ParseNullableInt(TopK) : null,

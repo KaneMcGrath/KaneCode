@@ -123,6 +123,7 @@ internal static class AiSettingsManager
                     SelectedModel = dto.SelectedModel ?? string.Empty,
                     IsActive = dto.IsActive,
                     ContextLength = dto.ContextLength,
+                    MaxOutputTokens = dto.MaxOutputTokens,
                     Temperature = dto.Temperature,
                     TopP = dto.TopP,
                     TopK = dto.TopK,
@@ -206,6 +207,7 @@ internal static class AiSettingsManager
                 SelectedModel = s.SelectedModel,
                 IsActive = s.IsActive,
                 ContextLength = s.ContextLength,
+                MaxOutputTokens = s.MaxOutputTokens,
                 Temperature = s.Temperature,
                 TopP = s.TopP,
                 TopK = s.TopK,
@@ -386,6 +388,7 @@ internal static class AiSettingsManager
         public string SelectedModel { get; set; } = string.Empty;
         public bool IsActive { get; set; }
         public int? ContextLength { get; set; }
+        public int? MaxOutputTokens { get; set; }
         public double? Temperature { get; set; }
         public double? TopP { get; set; }
         public int? TopK { get; set; }

@@ -6,6 +6,33 @@ namespace KaneCode.Tests.ViewModels;
 public class AiSettingsViewModelTests
 {
     [Fact]
+    public void WhenMappingAnthropicProviderThenDisplayNameAndIdRoundTrip()
+    {
+        Assert.Contains("/v1/messages", AiSettingsViewModel.ProviderTypes);
+        Assert.Equal("anthropicmessages", AiSettingsViewModel.DisplayToProviderId("/v1/messages"));
+        Assert.Equal("/v1/messages", AiSettingsViewModel.ProviderIdToDisplay("anthropicmessages"));
+    }
+
+    [Fact]
+    public void WhenAnthropicMaxOutputTokensIsSetThenItRoundTrips()
+    {
+        AiProviderEntryViewModel entry = new(new AiProviderSettings
+        {
+            ProviderId = "anthropicmessages",
+            MaxOutputTokens = 2048
+        });
+
+        AiProviderSettings settings = entry.ToSettings();
+
+        Assert.True(entry.IsMaxOutputTokensVisible);
+        Assert.False(entry.IsMinPVisible);
+        Assert.False(entry.IsPresencePenaltyVisible);
+        Assert.False(entry.IsRepetitionPenaltyVisible);
+        Assert.Equal("2048", entry.MaxOutputTokens);
+        Assert.Equal(2048, settings.MaxOutputTokens);
+    }
+
+    [Fact]
     public void WhenSettingsContainsContextLengthThenEntryFormatsIt()
     {
         AiProviderSettings settings = new()

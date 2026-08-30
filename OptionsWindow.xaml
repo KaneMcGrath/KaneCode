@@ -218,6 +218,15 @@
                                          Width="120" HorizontalAlignment="Left" Margin="0,0,0,10"
                                          ToolTip="Internal metric used by KaneCode for local context trimming. This value is not sent to the model." />
 
+                                <TextBlock Text="Max Output Tokens" FontSize="12" FontWeight="SemiBold"
+                                           Foreground="{DynamicResource WindowForeground}" Margin="0,0,0,4"
+                                           Visibility="{Binding IsMaxOutputTokensVisible, Converter={StaticResource BoolToVisibilityConverter}}"
+                                           ToolTip="Maximum tokens the Messages API may generate for one response." />
+                                <TextBox Text="{Binding MaxOutputTokens, UpdateSourceTrigger=PropertyChanged}"
+                                         Width="120" HorizontalAlignment="Left" Margin="0,0,0,10"
+                                         Visibility="{Binding IsMaxOutputTokensVisible, Converter={StaticResource BoolToVisibilityConverter}}"
+                                         ToolTip="Maximum tokens the Messages API may generate for one response." />
+
                                 <TextBlock Text="Inference Parameters" FontSize="12" FontWeight="SemiBold"
                                            Foreground="{DynamicResource WindowForeground}" Margin="0,4,0,8" />
 

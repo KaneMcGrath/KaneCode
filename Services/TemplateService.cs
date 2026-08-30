@@ -178,7 +178,7 @@ namespace {NAMESPACE};
         }
 
         var segments = relativePath
-            .Split([Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar], StringSplitOptions.RemoveEmptyEntries)
+            .Split(new char[] { Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar }, StringSplitOptions.RemoveEmptyEntries)
             .Select(SanitizeIdentifier)
             .Where(s => !string.IsNullOrWhiteSpace(s));
 

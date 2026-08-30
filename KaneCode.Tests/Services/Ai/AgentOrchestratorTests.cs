@@ -5,7 +5,7 @@ namespace KaneCode.Tests.Services.Ai;
 public sealed class AgentOrchestratorTests
 {
     private static readonly IReadOnlyList<string> KnownProviderRefs =
-        ["v1completions", "v1chatcompletions", "googlegemini"];
+        ["v1completions", "v1chatcompletions", "anthropicmessages", "googlegemini"];
 
     [Fact]
     public void WhenModelIsProviderPrefixedByIdThenItIsSplitIntoProviderAndModel()
