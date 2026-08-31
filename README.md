@@ -4,7 +4,9 @@
 
 KaneCode is a small, personal IDE project for experimenting with new ideas for developing C# software and using local LLMs.
 
-![alt text](https://github.com/KaneMcGrath/KaneCode/blob/master/Icons/Capture.png?raw=true "Screenshot")
+![alt text](https://github.com/KaneMcGrath/KaneCode/blob/master/Icons/Capture.png?raw=true "Main interface")
+
+![alt text](https://github.com/KaneMcGrath/KaneCode/blob/master/Icons/Powershell.png?raw=true "Integrated Powershell running codex")
 
 KaneCode is still in development and has many bugs and missing features.
 But it is capable of developing c# programs, and currently almost all KaneCode development happens in KaneCode
